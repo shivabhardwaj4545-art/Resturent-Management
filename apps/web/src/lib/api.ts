@@ -5,6 +5,10 @@ import { useAuthStore } from '@/store/auth.store';
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 
+if (typeof window !== 'undefined') {
+  console.log('🔌 API Base URL:', API_BASE_URL);
+}
+
 export const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
