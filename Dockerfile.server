@@ -44,5 +44,6 @@ COPY --from=builder /app/apps/server/package.json ./apps/server/
 WORKDIR /app/apps/server
 EXPOSE 4000
 
-# Run migrations then start the server
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
+# Push database schema then start the server
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node dist/index.js"]
+
