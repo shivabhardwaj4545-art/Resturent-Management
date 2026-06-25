@@ -7,6 +7,24 @@ import { logger } from './utils/logger';
 import { connectRedis, isRedisReady } from './services/redis.service';
 import { prisma } from './lib/prisma';
 
+// Gracefully handle Redis disconnections / connection failures in production without crashing the process
+process.on('unhandledRejection', (reason: any) => {
+  if (reason?.message === 'Connection is closed.' || reason?.code === 'ECONNREFUSED') {
+    logger.warn(`Redis: connection issue captured gracefully: ${reason.message}`);
+    return;
+  }
+  logger.error('Unhandled Rejection at:', reason);
+});
+
+process.on('uncaughtException', (error: any) => {
+  if (error?.message === 'Connection is closed.' || error?.code === 'ECONNREFUSED') {
+    logger.warn(`Redis: uncaught socket connection exception captured gracefully: ${error.message}`);
+    return;
+  }
+  logger.error('Uncaught Exception:', error);
+  process.exit(1);
+});
+
 const PORT = parseInt(process.env.PORT ?? '4000', 10);
 
 async function bootstrap() {

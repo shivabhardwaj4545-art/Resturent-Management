@@ -1,6 +1,7 @@
 import rateLimit, { Store, MemoryStore } from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
 import { redisClient } from '../services/redis.service';
+import { logger } from '../utils/logger';
 
 class FallbackStore implements Store {
   private redisStore: RedisStore;
@@ -16,7 +17,11 @@ class FallbackStore implements Store {
   }
 
   init(options: any) {
-    if (this.redisStore.init) this.redisStore.init(options);
+    if (this.redisStore.init) {
+      Promise.resolve(this.redisStore.init(options)).catch((err) => {
+        logger.warn('Redis rate-limit store initialization failed. Operating with memory fallback.', err);
+      });
+    }
     this.memoryStore.init(options);
   }
 

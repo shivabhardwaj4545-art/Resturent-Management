@@ -312,7 +312,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
         guestName: formData.guestName,
         guestPhone: formData.guestPhone,
         tableNumber: manualTableNumber || undefined,
-        paymentMethod: formData.paymentMethod,
+        paymentMethod: selectedPayment,
         couponCode: couponCode ?? undefined,
         restaurantSlug,
         cartItems: items.map((item) => ({
@@ -327,7 +327,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
         order: { id: string; total: number; razorpayOrderId: string | null };
       };
 
-      if (formData.paymentMethod === 'RAZORPAY' && order.razorpayOrderId) {
+      if (selectedPayment === 'RAZORPAY' && order.razorpayOrderId) {
         await handleRazorpayPayment(order.id, order.razorpayOrderId, order.total, formData.guestName, formData.guestPhone);
       } else {
         clearCart();

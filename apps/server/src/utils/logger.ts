@@ -24,4 +24,5 @@ export const logger = winston.createLogger({
   ],
   exceptionHandlers: [new winston.transports.Console()],
   rejectionHandlers: [new winston.transports.Console()],
+  exitOnError: false,
 });
