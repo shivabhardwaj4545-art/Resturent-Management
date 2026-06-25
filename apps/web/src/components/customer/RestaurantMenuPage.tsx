@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
-import { Search, Filter, ShoppingCart, Clock, MapPin, Star, Heart, Bot, X, ChevronUp, QrCode } from 'lucide-react';
+import { Search, Filter, ShoppingCart, Clock, MapPin, Star, Heart, Bot, X, ChevronUp, QrCode, ChevronRight } from 'lucide-react';
 import api from '@/lib/api';
 import { useCartStore } from '@/store/cart.store';
 import { useAuthStore } from '@/store/auth.store';
@@ -40,6 +40,87 @@ export function RestaurantMenuPage({ slug, tableNumber }: RestaurantMenuPageProp
   }, [rawUser, loginRestaurantSlug, slug]);
 
   const [showHours, setShowHours] = useState(false);
+
+  const [recentOrders, setRecentOrders] = useState<Array<{ orderId: string; restaurantSlug: string; createdAt: number }>>([]);
+  
+  useEffect(() => {
+    const orders = localStorage.getItem('qr_restaurant_recent_orders');
+    if (orders) {
+      try {
+        const parsed = JSON.parse(orders);
+        if (Array.isArray(parsed)) {
+          const now = Date.now();
+          const filtered = parsed.filter(
+            (o: any) =>
+              o.restaurantSlug === slug &&
+              o.orderId &&
+              now - o.createdAt < 24 * 60 * 60 * 1000 // 24 hours
+          );
+          setRecentOrders(filtered);
+        }
+      } catch (e) {
+        console.error('Failed to parse recent orders', e);
+      }
+    }
+  }, [slug]);
+
+  const { data: activeOrdersDetails } = useQuery({
+    queryKey: ['active-orders', slug, recentOrders.map(o => o.orderId).join(',')],
+    queryFn: async () => {
+      if (recentOrders.length === 0) return [];
+      const promises = recentOrders.map(async (o) => {
+        try {
+          const res = await api.get(`/orders/${o.orderId}`);
+          return res.data.data.order;
+        } catch (err) {
+          console.error(`Failed to fetch order ${o.orderId}`, err);
+          return null;
+        }
+      });
+      const results = await Promise.all(promises);
+      return results.filter(Boolean);
+    },
+    enabled: recentOrders.length > 0,
+    refetchInterval: 10000,
+  });
+
+  const handleDismissOrder = (orderId: string) => {
+    try {
+      const orders = localStorage.getItem('qr_restaurant_recent_orders');
+      if (orders) {
+        let parsed = JSON.parse(orders);
+        if (Array.isArray(parsed)) {
+          parsed = parsed.filter((o: any) => o.orderId !== orderId);
+          localStorage.setItem('qr_restaurant_recent_orders', JSON.stringify(parsed));
+          setRecentOrders(parsed.filter((o: any) => o.restaurantSlug === slug));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to dismiss order', e);
+    }
+  };
+
+  const getOrderStatusDetails = (status: string) => {
+    switch (status) {
+      case 'PENDING':
+        return { label: 'Order Placed', color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20', progress: 20 };
+      case 'CONFIRMED':
+        return { label: 'Confirmed', color: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20', progress: 40 };
+      case 'PREPARING':
+      case 'BAKING':
+        return { label: 'Preparing', color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20', progress: 60 };
+      case 'READY':
+        return { label: 'Ready', color: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20', progress: 80 };
+      case 'ON_THE_WAY':
+        return { label: 'Out for Delivery', color: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20', progress: 90 };
+      case 'DELIVERED':
+        return { label: 'Served/Delivered', color: 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20', progress: 100 };
+      case 'CANCELLED':
+        return { label: 'Cancelled', color: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20', progress: 100 };
+      default:
+        return { label: 'Pending', color: 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20', progress: 10 };
+    }
+  };
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['menu', slug],
@@ -322,6 +403,102 @@ export function RestaurantMenuPage({ slug, tableNumber }: RestaurantMenuPageProp
           <span className="flex items-center gap-1"><Star className="w-3 h-3 fill-yellow-400 text-yellow-400" /> 4.5</span>
         </div>
       </div>
+
+      {/* Active/Recent Orders Section */}
+      {activeOrdersDetails && activeOrdersDetails.length > 0 && (
+        <div className="px-4 md:px-8 mb-6 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="font-display font-bold text-sm tracking-tight text-foreground flex items-center gap-1.5">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+              </span>
+              Active Orders ({activeOrdersDetails.length})
+            </h3>
+            <span className="text-[10px] text-muted-foreground animate-pulse">Auto-updating...</span>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {activeOrdersDetails.map((order: any) => {
+              if (!order) return null;
+              const statusDetails = getOrderStatusDetails(order.status);
+
+              return (
+                <div
+                  key={order.id}
+                  className="relative group bg-card hover:bg-card/85 border border-border rounded-2xl p-4 shadow-sm transition-all duration-200"
+                >
+                  {/* Close / Dismiss Button */}
+                  <button
+                    onClick={() => handleDismissOrder(order.id)}
+                    className="absolute top-3 right-3 p-1 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    title="Dismiss"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+
+                  <Link href={`/r/${slug}/order/${order.id}`} className="block space-y-3">
+                    <div className="flex items-center justify-between pr-6">
+                      <div className="space-y-0.5">
+                        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                          Order #{order.id.slice(-8).toUpperCase()}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${statusDetails.color}`}>
+                        {statusDetails.label}
+                      </span>
+                    </div>
+
+                    {/* Order Details Preview */}
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-foreground truncate">
+                        {order.items?.map((item: any) => `${item.menuItem.name} × ${item.quantity}`).join(', ')}
+                      </p>
+                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <span>₹{order.total.toFixed(0)}</span>
+                        <span>•</span>
+                        <span>{order.paymentMethod === 'RAZORPAY' ? 'Paid Online' : order.paymentMethod === 'COD' ? 'Cash/COD' : 'Wallet'}</span>
+                        {order.tableNumber ? (
+                          <>
+                            <span>•</span>
+                            <span className="font-semibold text-primary">Table {order.tableNumber}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>•</span>
+                            <span>Delivery</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="space-y-1">
+                      <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-500 ease-out"
+                          style={{
+                            width: `${statusDetails.progress}%`,
+                            backgroundColor: order.status === 'CANCELLED' ? '#ef4444' : themeColor,
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 text-[11px] font-bold text-primary group-hover:translate-x-0.5 transition-transform">
+                      <span>Track Live Status</span>
+                      <ChevronRight className="w-3.5 h-3.5" style={{ color: themeColor }} />
+                    </div>
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* AI Recommendations (logged-in only) */}
       {activeUser && activeUser.role === 'CUSTOMER' && (

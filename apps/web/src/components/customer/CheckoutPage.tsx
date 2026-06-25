@@ -60,6 +60,28 @@ interface CheckoutPageProps {
   tableNumber?: string;
 }
 
+const saveOrderToRecent = (orderId: string, restaurantSlug: string) => {
+  try {
+    const orders = localStorage.getItem('qr_restaurant_recent_orders');
+    let parsed = [];
+    if (orders) {
+      parsed = JSON.parse(orders);
+      if (!Array.isArray(parsed)) parsed = [];
+    }
+    parsed = parsed.filter((o: any) => o.orderId !== orderId);
+    parsed.unshift({
+      orderId,
+      restaurantSlug,
+      createdAt: Date.now(),
+    });
+    parsed = parsed.slice(0, 10);
+    localStorage.setItem('qr_restaurant_recent_orders', JSON.stringify(parsed));
+  } catch (e) {
+    console.error('Failed to save order to recent orders list', e);
+  }
+};
+
+
 export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps) {
   const router = useRouter();
   const { user: rawUser, loginRestaurantSlug, logout } = useAuthStore();
@@ -261,6 +283,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
             razorpayPaymentId: response.razorpay_payment_id,
             razorpaySignature: response.razorpay_signature,
           });
+          saveOrderToRecent(orderId, restaurantSlug);
           clearCart();
           toast.success('Payment successful! 🎉');
           router.push(`/r/${restaurantSlug}/order/${orderId}`);
@@ -289,6 +312,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
         razorpayPaymentId: `pay_mock_${Math.random().toString(36).substring(2, 15)}`,
         razorpaySignature: 'mock_signature',
       });
+      saveOrderToRecent(mockPaymentData.orderId, restaurantSlug);
       clearCart();
       toast.success('Payment successful! 🎉 (Simulated)');
       setShowMockPaymentModal(false);
@@ -330,6 +354,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
       if (selectedPayment === 'RAZORPAY' && order.razorpayOrderId) {
         await handleRazorpayPayment(order.id, order.razorpayOrderId, order.total, formData.guestName, formData.guestPhone);
       } else {
+        saveOrderToRecent(order.id, restaurantSlug);
         clearCart();
         toast.success('Order placed successfully! 🎉');
         router.push(`/r/${restaurantSlug}/order/${order.id}`);
@@ -371,6 +396,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
       if (selectedPayment === 'RAZORPAY' && order.razorpayOrderId) {
         await handleRazorpayPayment(order.id, order.razorpayOrderId, order.total, activeUser!.name, activeUser!.phone ?? '');
       } else {
+        saveOrderToRecent(order.id, restaurantSlug);
         clearCart();
         toast.success('Order placed! 🎉');
         router.push(`/r/${restaurantSlug}/order/${order.id}`);
