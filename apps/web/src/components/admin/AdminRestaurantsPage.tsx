@@ -134,14 +134,14 @@ export function AdminRestaurantsPage() {
   });
 
   const suspendMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await api.patch(`/admin/restaurants/${id}/suspend`);
+    mutationFn: async ({ id, suspend }: { id: string; suspend: boolean }) => {
+      await api.patch(`/admin/restaurants/${id}/suspend`, { isSuspended: suspend });
     },
-    onSuccess: () => {
-      toast.success('Restaurant suspended');
+    onSuccess: (_, { suspend }) => {
+      toast.success(suspend ? 'Restaurant suspended' : 'Restaurant reactivated');
       qc.invalidateQueries({ queryKey: ['admin-restaurants'] });
     },
-    onError: () => toast.error('Failed to suspend restaurant'),
+    onError: () => toast.error('Action failed to update status'),
   });
 
   const handleLogout = async () => {
@@ -296,9 +296,14 @@ export function AdminRestaurantsPage() {
                               <p className="text-sm text-muted-foreground">{r.city ?? '—'}</p>
                             </td>
                             <td className="px-4 py-3">
-                              <span className={`text-xs px-2 py-1 rounded-full font-medium ${badge.cls}`}>
-                                {badge.label}
-                              </span>
+                              <div className="flex flex-col gap-1 items-start">
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${badge.cls}`}>
+                                  {badge.label}
+                                </span>
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium border ${r.isOpen ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-rose-500/10 text-rose-500 border-rose-500/20'}`}>
+                                  {r.isOpen ? '🟢 Open' : '🔴 Closed'}
+                                </span>
+                              </div>
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center justify-end gap-2">
@@ -320,13 +325,13 @@ export function AdminRestaurantsPage() {
                                     </button>
                                   </>
                                 )}
-                                {r.isApproved && !r.isSuspended && (
+                                {r.isApproved && (
                                   <button
-                                    onClick={() => suspendMutation.mutate(r.id)}
-                                    className="p-1.5 text-orange-500 hover:bg-orange-100 dark:hover:bg-orange-900/20 rounded-lg transition-colors"
-                                    title="Suspend"
+                                    onClick={() => suspendMutation.mutate({ id: r.id, suspend: !r.isSuspended })}
+                                    className={`p-1.5 rounded-lg transition-colors ${r.isSuspended ? 'text-green-600 hover:bg-green-100 dark:hover:bg-green-900/20' : 'text-orange-500 hover:bg-orange-100 dark:hover:bg-orange-900/20'}`}
+                                    title={r.isSuspended ? "Reactivate" : "Suspend"}
                                   >
-                                    <AlertTriangle className="w-4 h-4" />
+                                    {r.isSuspended ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
                                   </button>
                                 )}
                                 <Link
