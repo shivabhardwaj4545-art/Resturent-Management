@@ -12,6 +12,7 @@ import api from '@/lib/api';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
+import QRCode from 'qrcode';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
@@ -57,6 +58,8 @@ export function OwnerSettingsPage() {
   const [form, setForm] = useState<Partial<Restaurant>>({});
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
+  const [tableNumber, setTableNumber] = useState('');
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
   const [operatingHours, setOperatingHours] = useState<OperatingHours>({
     monday: { open: '11:00', close: '23:00', closed: false },
     tuesday: { open: '11:00', close: '23:00', closed: false },
@@ -133,7 +136,24 @@ export function OwnerSettingsPage() {
     try { await api.post('/auth/logout'); } finally { logout(); router.push('/login'); }
   };
 
-  const qrUrl = data ? `${typeof window !== 'undefined' ? window.location.origin : ''}/r/${data.slug}` : '';
+  const qrUrl = data
+    ? `${typeof window !== 'undefined' ? window.location.origin : ''}/r/${data.slug}${tableNumber.trim() ? `?table=${encodeURIComponent(tableNumber.trim())}` : ''}`
+    : '';
+
+  useEffect(() => {
+    if (qrUrl) {
+      QRCode.toDataURL(qrUrl, {
+        width: 512,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF',
+        },
+      })
+        .then((url) => setQrCodeDataUrl(url))
+        .catch((err) => console.error('Failed to generate QR code:', err));
+    }
+  }, [qrUrl]);
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -368,29 +388,141 @@ export function OwnerSettingsPage() {
             </div>
           </motion.div>
 
-          {/* QR Code */}
+          {/* QR Code Builder */}
           {data && (
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="bg-card border border-border rounded-2xl p-6">
-              <h2 className="font-display font-semibold mb-4 flex items-center gap-2"><QrCode className="w-5 h-5" />QR Code</h2>
-              <div className="flex items-start gap-6">
-                <div className="bg-white p-4 rounded-xl border border-border">
-                  <img src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(qrUrl)}`}
-                    alt="Restaurant QR Code" className="w-40 h-40" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm text-muted-foreground mb-2">Share this QR code with your customers to let them order directly from their phones.</p>
-                  <p className="text-xs font-mono bg-muted/30 border border-border rounded-lg px-3 py-2 mb-3 break-all">{qrUrl}</p>
-                  <div className="flex gap-3">
-                    <Link href={`/r/${data.slug}`} target="_blank"
-                      className="flex items-center gap-2 px-3 py-2 bg-muted hover:bg-muted/70 rounded-xl text-sm transition-colors">
-                      <Globe className="w-3.5 h-3.5" /> Preview Menu
-                    </Link>
-                    <a href={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qrUrl)}`}
-                      download="restaurant-qr.png"
-                      className="flex items-center gap-2 px-3 py-2 bg-primary/10 text-primary hover:bg-primary/20 rounded-xl text-sm transition-colors">
-                      <Download className="w-3.5 h-3.5" /> Download QR
-                    </a>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="bg-card border border-border rounded-2xl p-6"
+            >
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="font-display font-semibold flex items-center gap-2">
+                  <QrCode className="w-5 h-5 text-primary" />
+                  QR Code Generator
+                </h2>
+                <span className="text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-lg">
+                  Local Generator
+                </span>
+              </div>
+
+              <div className="grid md:grid-cols-5 gap-6 items-start">
+                {/* Customizer Panel */}
+                <div className="md:col-span-3 space-y-4">
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    Generate table-specific QR codes to automatically pre-fill table numbers for your customers during checkout.
+                  </p>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-muted-foreground block">
+                      Table Number (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 5, 12, A4 (leave empty for general menu)"
+                      value={tableNumber}
+                      onChange={(e) => setTableNumber(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground font-medium"
+                    />
                   </div>
+
+                  {/* Quick Presets */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-muted-foreground block">
+                      Quick Table Presets
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setTableNumber('')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                          tableNumber === ''
+                            ? 'bg-primary border-primary text-white shadow-sm'
+                            : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
+                        }`}
+                      >
+                        General
+                      </button>
+                      {['1', '2', '3', '4', '5', '10'].map((num) => (
+                        <button
+                          key={num}
+                          onClick={() => setTableNumber(num)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                            tableNumber === num
+                              ? 'bg-primary border-primary text-white shadow-sm'
+                              : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
+                          }`}
+                        >
+                          Table {num}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* QR Target Link */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground block">
+                      Target Link
+                    </label>
+                    <p className="text-[11px] font-mono bg-muted/50 border border-border/80 rounded-xl px-3 py-2.5 break-all text-foreground select-all">
+                      {qrUrl}
+                    </p>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex flex-wrap gap-3 pt-2">
+                    <Link
+                      href={qrUrl ? `/r/${data.slug}${tableNumber.trim() ? `?table=${encodeURIComponent(tableNumber.trim())}` : ''}` : '#'}
+                      target="_blank"
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-muted hover:bg-muted/70 rounded-xl text-sm font-semibold transition-colors text-foreground"
+                    >
+                      <Globe className="w-4 h-4" /> Preview Menu
+                    </Link>
+
+                    {qrCodeDataUrl && (
+                      <a
+                        href={qrCodeDataUrl}
+                        download={`${data.slug}${tableNumber.trim() ? `-table-${tableNumber.trim()}` : ''}-qr.png`}
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-white hover:bg-primary/95 rounded-xl text-sm font-semibold shadow-md transition-colors"
+                      >
+                        <Download className="w-4 h-4" /> Download QR Code
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {/* Placard Preview Panel */}
+                <div className="md:col-span-2 flex flex-col items-center justify-center">
+                  <div className="flex flex-col items-center p-5 bg-zinc-950 dark:bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-[210px] shadow-2xl text-center text-white relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-b from-orange-500/5 via-transparent to-transparent pointer-events-none" />
+                    
+                    <span className="text-[10px] uppercase font-bold tracking-widest text-zinc-500 mb-1">
+                      Scan & Order
+                    </span>
+                    <h4 className="text-sm font-bold text-orange-500 truncate max-w-[170px] mb-4">
+                      {data.name}
+                    </h4>
+
+                    <div className="bg-white p-3 rounded-xl shadow-inner mb-4 flex items-center justify-center">
+                      {qrCodeDataUrl ? (
+                        <img
+                          src={qrCodeDataUrl}
+                          alt="Restaurant QR Code"
+                          className="w-36 h-36"
+                        />
+                      ) : (
+                        <div className="w-36 h-36 flex items-center justify-center bg-zinc-100 text-zinc-400 text-xs">
+                          Generating...
+                        </div>
+                      )}
+                    </div>
+
+                    <span className="text-xs font-bold bg-orange-500/10 text-orange-400 border border-orange-500/20 px-3 py-1 rounded-full">
+                      {tableNumber.trim() ? `Table ${tableNumber.trim()}` : 'General Menu'}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground mt-3 text-center">
+                    Table placards preview mockup
+                  </span>
                 </div>
               </div>
             </motion.div>
