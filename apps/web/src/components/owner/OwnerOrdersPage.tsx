@@ -10,7 +10,7 @@ import {
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
 
 const NAV_ITEMS = [
@@ -50,6 +50,7 @@ type Order = {
 };
 
 export function OwnerOrdersPage() {
+  const pathname = usePathname();
   const { user, logout } = useAuthStore();
   const router = useRouter();
   const qc = useQueryClient();
@@ -102,7 +103,7 @@ export function OwnerOrdersPage() {
         <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
-            const isActive = typeof window !== 'undefined' && window.location.pathname === item.href;
+            const isActive = pathname === item.href;
             return (
               <Link key={item.href} href={item.href} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
                 <Icon className="w-4 h-4" />{item.label}

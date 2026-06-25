@@ -11,7 +11,7 @@ import {
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -27,6 +27,7 @@ const NAV_ITEMS = [
 ];
 
 export function OwnerDashboard() {
+  const pathname = usePathname();
   const { user, logout } = useAuthStore();
   const router = useRouter();
   const qc = useQueryClient();
@@ -108,7 +109,7 @@ export function OwnerDashboard() {
         <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
-            const isActive = typeof window !== 'undefined' && window.location.pathname === item.href;
+            const isActive = pathname === item.href;
             return (
               <Link
                 key={item.href}
