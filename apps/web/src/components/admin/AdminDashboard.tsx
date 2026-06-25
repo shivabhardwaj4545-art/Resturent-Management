@@ -110,7 +110,6 @@ export function AdminDashboard() {
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
-            const Icon = item.icon;
             return (
               <Link
                 key={item.href}
