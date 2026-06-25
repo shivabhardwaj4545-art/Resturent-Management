@@ -6,7 +6,8 @@ import { motion } from 'framer-motion';
 import {
   Store, Search, CheckCircle2, XCircle, Clock, Filter,
   LayoutDashboard, Users, BarChart3, Settings, LogOut,
-  Menu, Shield, ChevronRight, Eye, AlertTriangle, RefreshCw
+  Menu, Shield, ChevronRight, Eye, AlertTriangle, RefreshCw,
+  Plus, X, Loader2
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -47,6 +48,59 @@ export function AdminRestaurantsPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState(searchParams.get('status') ?? 'all');
   const [page, setPage] = useState(1);
+
+  // Create Restaurant State
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createName, setCreateName] = useState('');
+  const [createSlug, setCreateSlug] = useState('');
+  const [createCuisine, setCreateCuisine] = useState('');
+  const [createCity, setCreateCity] = useState('');
+  const [createPhone, setCreatePhone] = useState('');
+  const [createAddress, setCreateAddress] = useState('');
+  const [createOwnerName, setCreateOwnerName] = useState('');
+  const [createOwnerEmail, setCreateOwnerEmail] = useState('');
+  const [createOwnerPhone, setCreateOwnerPhone] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  const handleCreateRestaurant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!createName || !createOwnerName || !createOwnerEmail) {
+      toast.error('Name, Owner Name, and Owner Email are required.');
+      return;
+    }
+    setCreating(true);
+    try {
+      await api.post('/admin/restaurants', {
+        name: createName,
+        slug: createSlug || undefined,
+        cuisineType: createCuisine || undefined,
+        city: createCity || undefined,
+        phone: createPhone || undefined,
+        address: createAddress || undefined,
+        ownerName: createOwnerName,
+        ownerEmail: createOwnerEmail,
+        ownerPhone: createOwnerPhone || undefined,
+      });
+      toast.success('Restaurant created successfully! 🎉');
+      setShowCreateModal(false);
+      // Reset form
+      setCreateName('');
+      setCreateSlug('');
+      setCreateCuisine('');
+      setCreateCity('');
+      setCreatePhone('');
+      setCreateAddress('');
+      setCreateOwnerName('');
+      setCreateOwnerEmail('');
+      setCreateOwnerPhone('');
+      qc.invalidateQueries({ queryKey: ['admin-restaurants'] });
+    } catch (err: any) {
+      const errMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to create restaurant';
+      toast.error(errMsg);
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['admin-restaurants', status, search, page],
@@ -154,9 +208,17 @@ export function AdminRestaurantsPage() {
             </button>
             <h1 className="font-display font-bold text-xl">Restaurant Management</h1>
           </div>
-          <button onClick={() => refetch()} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground">
-            <RefreshCw className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground hover:bg-primary/95 text-xs font-semibold rounded-xl transition-all shadow-md shadow-primary/10"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add Restaurant
+            </button>
+            <button onClick={() => refetch()} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground">
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
@@ -321,6 +383,158 @@ export function AdminRestaurantsPage() {
             </>
           )}
         </div>
+      {/* Create Restaurant Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-card border border-border w-full max-w-lg rounded-2xl shadow-2xl relative my-8"
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <h3 className="font-display font-bold text-base text-foreground">Add New Restaurant</h3>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="p-1.5 rounded-xl hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateRestaurant} className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Restaurant Details</h4>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Restaurant Name *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Burger Point"
+                      value={createName}
+                      onChange={(e) => setCreateName(e.target.value)}
+                      required
+                      className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Custom URL Slug (Optional)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. burger-point"
+                      value={createSlug}
+                      onChange={(e) => setCreateSlug(e.target.value)}
+                      className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                    />
+                  </div>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Cuisine Type (Optional)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Fast Food, Italian"
+                      value={createCuisine}
+                      onChange={(e) => setCreateCuisine(e.target.value)}
+                      className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">City (Optional)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Mumbai"
+                      value={createCity}
+                      onChange={(e) => setCreateCity(e.target.value)}
+                      className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                    />
+                  </div>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Phone (Optional)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 9876543210"
+                      value={createPhone}
+                      onChange={(e) => setCreatePhone(e.target.value)}
+                      className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Full Address (Optional)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 12, MG Road"
+                      value={createAddress}
+                      onChange={(e) => setCreateAddress(e.target.value)}
+                      className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 border-t border-border pt-4">
+                <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Owner Account Details</h4>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Owner Full Name *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Rajan Sharma"
+                      value={createOwnerName}
+                      onChange={(e) => setCreateOwnerName(e.target.value)}
+                      required
+                      className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Owner Email Address *</label>
+                    <input
+                      type="email"
+                      placeholder="e.g. owner@example.com"
+                      value={createOwnerEmail}
+                      onChange={(e) => setCreateOwnerEmail(e.target.value)}
+                      required
+                      className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Owner Phone Number (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 9876543211"
+                    value={createOwnerPhone}
+                    onChange={(e) => setCreateOwnerPhone(e.target.value)}
+                    className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    ℹ️ If a user with this email does not exist, a new Owner account will be created with default password: <code className="bg-muted px-1.5 py-0.5 rounded text-red-500 font-mono">Owner@123456</code>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-2 justify-end border-t border-border pt-4 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="px-4 py-2 rounded-xl border border-border text-xs font-semibold hover:bg-muted text-foreground transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creating}
+                  className="px-5 py-2 rounded-xl text-white bg-primary hover:bg-primary/95 text-xs font-semibold disabled:opacity-60 flex items-center gap-1.5 transition-all shadow-md shadow-primary/10"
+                >
+                  {creating && <Loader2 className="w-3 animate-spin" />}
+                  Create Restaurant
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
       </main>
     </div>
   );

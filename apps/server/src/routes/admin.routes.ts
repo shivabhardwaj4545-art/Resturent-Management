@@ -5,6 +5,7 @@ import {
   getAllRestaurants,
   approveRestaurant,
   suspendRestaurant,
+  createRestaurant,
   getAllUsers,
   suspendUser,
   getGlobalAnalytics,
@@ -20,6 +21,7 @@ router.use(authenticate, requireAdmin);
 
 // Restaurant management
 router.get('/restaurants', getAllRestaurants);
+router.post('/restaurants', createRestaurant);
 router.patch('/restaurants/:id/approve', approveRestaurant);
 router.patch('/restaurants/:id/suspend', suspendRestaurant);
 

@@ -1,4 +1,5 @@
 import { Response, NextFunction } from 'express';
+import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { cacheGet, cacheSet } from '../services/redis.service';
@@ -264,4 +265,95 @@ export async function createSubscriptionPlan(req: AuthenticatedRequest, res: Res
     const plan = await prisma.subscriptionPlan.create({ data: { name, price, features: features as any } });
     res.status(201).json({ success: true, data: { plan }, message: 'Subscription plan created' });
   } catch (error) { next(error); }
+}
+
+export async function createRestaurant(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const {
+      name,
+      slug: customSlug,
+      cuisineType,
+      address,
+      city,
+      pincode,
+      phone,
+      ownerName,
+      ownerEmail,
+      ownerPhone,
+    } = req.body as {
+      name: string;
+      slug?: string;
+      cuisineType?: string;
+      address?: string;
+      city?: string;
+      pincode?: string;
+      phone?: string;
+      ownerName: string;
+      ownerEmail: string;
+      ownerPhone?: string;
+    };
+
+    if (!name || !ownerName || !ownerEmail) {
+      throw new AppError('Restaurant name, owner name, and owner email are required.', 400, 'BAD_REQUEST');
+    }
+
+    // 1. Find or create owner user
+    let owner = await prisma.user.findFirst({
+      where: { email: ownerEmail, deletedAt: null },
+    });
+
+    if (!owner) {
+      const passwordHash = await bcrypt.hash('Owner@123456', 12);
+      owner = await prisma.user.create({
+        data: {
+          name: ownerName,
+          email: ownerEmail,
+          phone: ownerPhone || null,
+          role: 'RESTAURANT_OWNER',
+          passwordHash,
+          isVerified: true,
+        },
+      });
+    }
+
+    // 2. Generate slug
+    const slug =
+      customSlug?.trim() ||
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
+
+    // Check if slug is unique
+    const existingRestaurant = await prisma.restaurant.findUnique({
+      where: { slug },
+    });
+    if (existingRestaurant) {
+      throw new AppError('A restaurant with this slug/URL already exists.', 400, 'SLUG_EXISTS');
+    }
+
+    // 3. Create restaurant (approved by default since admin creates it)
+    const restaurant = await prisma.restaurant.create({
+      data: {
+        name,
+        slug,
+        cuisineType: cuisineType || 'General',
+        address: address || null,
+        city: city || null,
+        pincode: pincode || null,
+        phone: phone || null,
+        ownerId: owner.id,
+        isApproved: true,
+        isOpen: true,
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      data: { restaurant },
+      message: 'Restaurant created successfully!',
+    });
+  } catch (error) {
+    next(error);
+  }
 }
