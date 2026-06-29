@@ -1,9 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
-import { getAIRecommendations } from '../services/ai.groq.service';
-import { getAIChatResponse, ChatMessage as GroqChatMessage } from '../services/ai.groq.service';
-import { getSmartCouponSuggestion, getAIDemandForecast } from '../services/ai.gemini.service';
+import {
+  getAIRecommendations,
+  getAIChatResponse,
+  ChatMessage as GeminiChatMessage,
+  getSmartCouponSuggestion,
+  getAIDemandForecast,
+} from '../services/ai.gemini.service';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { cacheGet, cacheSet } from '../services/redis.service';
 
@@ -146,7 +150,7 @@ export async function chatWithBot(
       take: 10,
     });
 
-    const groqHistory: GroqChatMessage[] = conversationHistory.map((m) => ({
+    const geminiHistory: GeminiChatMessage[] = conversationHistory.map((m) => ({
       role: m.role === 'USER' ? 'user' : 'assistant',
       content: m.content,
     }));
@@ -154,7 +158,7 @@ export async function chatWithBot(
     const response = await getAIChatResponse({
       restaurantName: restaurant.name,
       menuContext,
-      conversationHistory: groqHistory,
+      conversationHistory: geminiHistory,
       userMessage: message,
     });
 
@@ -225,7 +229,19 @@ export async function getCouponSuggestion(
       })),
     });
 
-    res.json({ success: true, data: suggestion });
+    res.json({
+      success: true,
+      data: {
+        suggestion,
+        coupons: coupons.map((c) => ({
+          code: c.code,
+          type: c.type,
+          value: c.value,
+          minOrderAmount: c.minOrderAmount,
+          maxDiscount: c.maxDiscount,
+        })),
+      },
+    });
   } catch (error) {
     next(error);
   }

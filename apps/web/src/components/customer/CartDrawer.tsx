@@ -52,21 +52,30 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, themeCo
         cartTotal: subtotalAmount,
       });
       return response.data.data as {
-        couponCode: string | null;
-        reason: string;
-        savingsAmount: number;
+        suggestion: {
+          couponCode: string | null;
+          reason: string;
+          savingsAmount: number;
+        };
+        coupons: Array<{
+          code: string;
+          type: 'FLAT' | 'PERCENT';
+          value: number;
+          minOrderAmount: number;
+          maxDiscount?: number | null;
+        }>;
       };
     },
     enabled: open && items.length > 0,
     staleTime: 60 * 1000,
   });
 
-  const handleApplyCoupon = async () => {
-    if (!couponInput.trim()) return;
+  const handleApplyCouponDirectly = async (code: string) => {
+    if (!code.trim()) return;
     setCouponLoading(true);
     try {
       const response = await api.post('/cart/coupon', {
-        code: couponInput,
+        code: code.toUpperCase(),
         restaurantSlug,
         cartTotal: subtotalAmount,
       });
@@ -83,6 +92,10 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, themeCo
     } finally {
       setCouponLoading(false);
     }
+  };
+
+  const handleApplyCoupon = () => {
+    handleApplyCouponDirectly(couponInput);
   };
 
   const handleCheckout = () => {
@@ -186,19 +199,88 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, themeCo
             {items.length > 0 && (
               <div className="border-t border-border p-4 space-y-4">
                 {/* AI Coupon Suggestion */}
-                {couponSuggestion?.couponCode && !couponCode && (
+                {couponSuggestion?.suggestion?.couponCode && !couponCode && (
                   <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3">
                     <div className="flex items-center gap-2 mb-1">
                       <Sparkles className="w-3.5 h-3.5 text-amber-600" />
                       <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">AI Suggestion</span>
                     </div>
-                    <p className="text-xs text-amber-600 dark:text-amber-300 mb-2">{couponSuggestion.reason}</p>
+                    <p className="text-xs text-amber-600 dark:text-amber-300 mb-2">{couponSuggestion.suggestion.reason}</p>
                     <button
-                      onClick={() => setCouponInput(couponSuggestion.couponCode!)}
+                      onClick={() => handleApplyCouponDirectly(couponSuggestion.suggestion.couponCode!)}
                       className="text-xs font-bold text-amber-700 dark:text-amber-400 underline"
                     >
-                      Apply {couponSuggestion.couponCode}
+                      Apply {couponSuggestion.suggestion.couponCode}
                     </button>
+                  </div>
+                )}
+
+                {/* Available Coupons List */}
+                {couponSuggestion?.coupons && couponSuggestion.coupons.length > 0 && !couponCode && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1.5 px-1">
+                      <Tag className="w-4 h-4 text-primary" />
+                      <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Available Coupons</span>
+                    </div>
+                    <div className="grid gap-2 max-h-[160px] overflow-y-auto pr-1 scrollbar-thin">
+                      {couponSuggestion.coupons.map((c) => {
+                        const isUnlocked = subtotalAmount >= c.minOrderAmount;
+                        const diff = c.minOrderAmount - subtotalAmount;
+                        
+                        return (
+                          <div 
+                            key={c.code}
+                            className={`flex items-center justify-between border rounded-xl p-3 transition-all duration-300 ${
+                              isUnlocked 
+                                ? 'bg-primary/5 hover:bg-primary/10 border-primary/20 hover:border-primary/45' 
+                                : 'bg-muted/10 border-border opacity-75'
+                            }`}
+                          >
+                            <div className="flex-1 min-w-0 pr-3">
+                              <div className="flex items-center gap-2">
+                                <span className={`text-xs font-extrabold font-mono tracking-wider px-2 py-0.5 rounded ${
+                                  isUnlocked 
+                                    ? 'bg-primary/20 text-primary border border-primary/30' 
+                                    : 'bg-muted text-muted-foreground border border-muted-foreground/20'
+                                }`}>
+                                  {c.code}
+                                </span>
+                                {c.type === 'PERCENT' ? (
+                                  <span className="text-xs font-bold text-green-600 dark:text-green-400">
+                                    {c.value}% OFF
+                                  </span>
+                                ) : (
+                                  <span className="text-xs font-bold text-green-600 dark:text-green-400">
+                                    ₹{c.value} OFF
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs font-medium text-muted-foreground mt-1.5 leading-snug">
+                                {c.type === 'PERCENT' 
+                                  ? `${c.value}% discount${c.maxDiscount ? ` up to ₹${c.maxDiscount}` : ''}.` 
+                                  : `Flat ₹${c.value} discount.`} Min. order ₹{c.minOrderAmount}.
+                              </p>
+                              {!isUnlocked && (
+                                <p className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 mt-1">
+                                  Add ₹{diff.toFixed(0)} more to unlock!
+                                </p>
+                              )}
+                            </div>
+                            <button
+                              disabled={!isUnlocked}
+                              onClick={() => handleApplyCouponDirectly(c.code)}
+                              className={`text-xs font-extrabold px-3 py-1.5 rounded-lg transition-all duration-300 ${
+                                isUnlocked
+                                  ? 'bg-primary text-primary-foreground hover:scale-105 active:scale-95 shadow-sm hover:shadow'
+                                  : 'bg-muted text-muted-foreground/50 cursor-not-allowed'
+                              }`}
+                            >
+                              Apply
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
