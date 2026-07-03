@@ -45,6 +45,15 @@ export function OwnerMenuPage() {
     name: '', description: '', price: '', categoryId: '', isVeg: true, isAvailable: true,
     image: null as File | null,
   });
+  const [previewVersion, setPreviewVersion] = useState(0);
+
+  const { data: restaurantData } = useQuery({
+    queryKey: ['owner-restaurant'],
+    queryFn: async () => {
+      const res = await api.get('/owner/restaurant');
+      return res.data.data.restaurant as { slug: string; themeColor: string | null };
+    },
+  });
 
   const { data: catData } = useQuery({
     queryKey: ['owner-categories'],
@@ -64,25 +73,42 @@ export function OwnerMenuPage() {
 
   const createCategoryMutation = useMutation({
     mutationFn: async () => { await api.post('/owner/menu/categories', { name: newCategory }); },
-    onSuccess: () => { toast.success('Category created'); setNewCategory(''); setShowAddCategory(false); qc.invalidateQueries({ queryKey: ['owner-categories'] }); },
+    onSuccess: () => {
+      toast.success('Category created');
+      setNewCategory('');
+      setShowAddCategory(false);
+      qc.invalidateQueries({ queryKey: ['owner-categories'] });
+      setPreviewVersion(v => v + 1);
+    },
     onError: () => toast.error('Failed to create category'),
   });
 
   const deleteCategoryMutation = useMutation({
     mutationFn: async (id: string) => { await api.delete(`/owner/menu/categories/${id}`); },
-    onSuccess: () => { toast.success('Category deleted'); qc.invalidateQueries({ queryKey: ['owner-categories'] }); },
+    onSuccess: () => {
+      toast.success('Category deleted');
+      qc.invalidateQueries({ queryKey: ['owner-categories'] });
+      setPreviewVersion(v => v + 1);
+    },
     onError: () => toast.error('Failed to delete category'),
   });
 
   const toggleItemMutation = useMutation({
     mutationFn: async (id: string) => { await api.patch(`/owner/menu/items/${id}/availability`); },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['owner-menu-items'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['owner-menu-items'] });
+      setPreviewVersion(v => v + 1);
+    },
     onError: () => toast.error('Failed to toggle item'),
   });
 
   const deleteItemMutation = useMutation({
     mutationFn: async (id: string) => { await api.delete(`/owner/menu/items/${id}`); },
-    onSuccess: () => { toast.success('Item deleted'); qc.invalidateQueries({ queryKey: ['owner-menu-items'] }); },
+    onSuccess: () => {
+      toast.success('Item deleted');
+      qc.invalidateQueries({ queryKey: ['owner-menu-items'] });
+      setPreviewVersion(v => v + 1);
+    },
     onError: () => toast.error('Failed to delete item'),
   });
 
@@ -112,6 +138,7 @@ export function OwnerMenuPage() {
       setEditItem(null);
       setForm({ name: '', description: '', price: '', categoryId: '', isVeg: true, isAvailable: true, image: null });
       qc.invalidateQueries({ queryKey: ['owner-menu-items'] });
+      setPreviewVersion(v => v + 1);
     } catch {
       toast.error('Failed to save item');
     }
@@ -122,6 +149,7 @@ export function OwnerMenuPage() {
   };
 
   const filteredItems = activeCategory ? itemsData?.filter(i => i.categoryId === activeCategory) : itemsData;
+  const iframeUrl = restaurantData?.slug ? `/r/${restaurantData.slug}` : '';
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -356,6 +384,35 @@ export function OwnerMenuPage() {
                 )}
               </div>
             )}
+          </div>
+
+          {/* Live Mobile Preview (Right Side) */}
+          <div className="w-[340px] border-l border-border bg-card/20 p-4 hidden xl:flex flex-col items-center justify-start overflow-y-auto">
+            <div className="w-full flex items-center justify-between mb-4 pb-2 border-b border-border">
+              <h3 className="font-semibold text-sm flex items-center gap-1.5">
+                Live Customer Menu Preview
+              </h3>
+              <span className="text-[10px] text-muted-foreground bg-muted px-2.5 py-1 rounded-lg">
+                Real-time
+              </span>
+            </div>
+
+            <div className="relative w-[280px] h-[560px] rounded-[3rem] border-[10px] border-zinc-950 bg-zinc-950 shadow-2xl overflow-hidden">
+              {/* Speaker Notch */}
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 h-4 w-32 bg-zinc-950 rounded-b-2xl z-45 flex items-center justify-center">
+                <div className="w-10 h-1 bg-zinc-800 rounded-full" />
+              </div>
+              
+              {/* Iframe */}
+              {iframeUrl && (
+                <iframe
+                  key={previewVersion}
+                  src={`${iframeUrl}?v=${previewVersion}`}
+                  className="w-full h-full border-0 select-none bg-background"
+                  title="Menu Preview"
+                />
+              )}
+            </div>
           </div>
         </div>
       </main>
