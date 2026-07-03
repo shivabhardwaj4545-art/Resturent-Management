@@ -86,6 +86,38 @@ async function main() {
   });
   console.log(`✅ Sample customer created: ${customer.email}`);
 
+  const customer2 = await prisma.user.upsert({
+    where: { email: 'customer2@example.com' },
+    update: {},
+    create: {
+      name: 'Amit Patel',
+      email: 'customer2@example.com',
+      passwordHash: customerPasswordHash,
+      phone: '9876543212',
+      role: UserRole.CUSTOMER,
+      isVerified: true,
+      loyaltyPoints: 50,
+      walletBalance: 100,
+    },
+  });
+  console.log(`✅ Sample customer 2 created: ${customer2.email}`);
+
+  const customer3 = await prisma.user.upsert({
+    where: { email: 'customer3@example.com' },
+    update: {},
+    create: {
+      name: 'Sneha Reddy',
+      email: 'customer3@example.com',
+      passwordHash: customerPasswordHash,
+      phone: '9876543213',
+      role: UserRole.CUSTOMER,
+      isVerified: true,
+      loyaltyPoints: 300,
+      walletBalance: 500,
+    },
+  });
+  console.log(`✅ Sample customer 3 created: ${customer3.email}`);
+
   // ── 4. Restaurant ───────────────────────────────────────────
   const restaurant = await prisma.restaurant.upsert({
     where: { slug: 'upstates' },
@@ -154,6 +186,178 @@ async function main() {
     },
   });
   console.log(`✅ Restaurant 2 created: ${restaurant2.name}`);
+
+  // Seeding Pizza Palace Menu Categories and Items
+  const pizzaCategories = await Promise.all([
+    prisma.menuCategory.create({
+      data: { name: 'Pizzas', restaurantId: restaurant2.id, sortOrder: 1 },
+    }),
+    prisma.menuCategory.create({
+      data: { name: 'Sides', restaurantId: restaurant2.id, sortOrder: 2 },
+    }),
+    prisma.menuCategory.create({
+      data: { name: 'Beverages', restaurantId: restaurant2.id, sortOrder: 3 },
+    }),
+  ]);
+
+  const [pizzasCat, pizzaSidesCat, pizzaBevsCat] = pizzaCategories;
+  console.log(`✅ Pizza Palace categories created`);
+
+  await Promise.all([
+    prisma.menuItem.create({
+      data: {
+        name: 'Margherita Pizza',
+        description: 'Classic mozzarella, tomato sauce, and fresh basil on a wood-fired crust.',
+        price: 280,
+        categoryId: pizzasCat.id,
+        restaurantId: restaurant2.id,
+        isVeg: true,
+        isVegan: false,
+        isAvailable: true,
+        badges: [ItemBadge.BEST_SELLER, ItemBadge.POPULAR],
+        variants: {
+          create: [
+            { name: 'Regular 7"', price: 180 },
+            { name: 'Medium 10"', price: 280 },
+            { name: 'Large 12"', price: 450 },
+          ],
+        },
+      },
+    }),
+    prisma.menuItem.create({
+      data: {
+        name: 'Peppy Paneer Pizza',
+        description: 'Flavorful paneer, capsicum, red paprika, and spicy sauce.',
+        price: 340,
+        categoryId: pizzasCat.id,
+        restaurantId: restaurant2.id,
+        isVeg: true,
+        isVegan: false,
+        isAvailable: true,
+        badges: [ItemBadge.TRENDING],
+      },
+    }),
+    prisma.menuItem.create({
+      data: {
+        name: 'Garlic Breadsticks',
+        description: 'Baked to a golden brown, garlic-buttered, and served with cheese dip.',
+        price: 130,
+        categoryId: pizzaSidesCat.id,
+        restaurantId: restaurant2.id,
+        isVeg: true,
+        isAvailable: true,
+      },
+    }),
+    prisma.menuItem.create({
+      data: {
+        name: 'Coca Cola',
+        description: 'Chilled soft drink (330ml).',
+        price: 50,
+        categoryId: pizzaBevsCat.id,
+        restaurantId: restaurant2.id,
+        isVeg: true,
+        isAvailable: true,
+      },
+    }),
+  ]);
+  console.log(`✅ Pizza Palace menu items created`);
+
+  // ── 5.1 Third Restaurant (Burger Bistro) ──────────────────────
+  const restaurant3 = await prisma.restaurant.upsert({
+    where: { slug: 'burger-bistro' },
+    update: {},
+    create: {
+      name: 'Burger Bistro',
+      slug: 'burger-bistro',
+      description: 'Gourmet burgers with hand-cut fries and rich milkshakes.',
+      cuisineType: 'Fast Food, Burgers',
+      address: '22, Park Lane',
+      city: 'Mumbai',
+      pincode: '400001',
+      phone: '9876543213',
+      isOpen: true,
+      isApproved: true,
+      minOrderValue: 150,
+      commissionRate: 5,
+      themeColor: '#F59E0B',
+      operatingHours: {
+        monday: { open: '11:00', close: '23:00', closed: false },
+        tuesday: { open: '11:00', close: '23:00', closed: false },
+        wednesday: { open: '11:00', close: '23:00', closed: false },
+        thursday: { open: '11:00', close: '23:00', closed: false },
+        friday: { open: '11:00', close: '00:00', closed: false },
+        saturday: { open: '11:00', close: '00:00', closed: false },
+        sunday: { open: '11:00', close: '22:00', closed: false },
+      },
+      ownerId: owner.id,
+    },
+  });
+  console.log(`✅ Restaurant 3 created: ${restaurant3.name}`);
+
+  const burgerCategories = await Promise.all([
+    prisma.menuCategory.create({
+      data: { name: 'Gourmet Burgers', restaurantId: restaurant3.id, sortOrder: 1 },
+    }),
+    prisma.menuCategory.create({
+      data: { name: 'Sides & Fries', restaurantId: restaurant3.id, sortOrder: 2 },
+    }),
+    prisma.menuCategory.create({
+      data: { name: 'Shakes', restaurantId: restaurant3.id, sortOrder: 3 },
+    }),
+  ]);
+
+  const [burgersCat, burgerSidesCat, shakesCat] = burgerCategories;
+  console.log(`✅ Burger Bistro categories created`);
+
+  await Promise.all([
+    prisma.menuItem.create({
+      data: {
+        name: 'The Big Cheese Burger',
+        description: 'Juicy prime beef patty, cheddar, lettuce, tomato, and secret bistro sauce.',
+        price: 240,
+        categoryId: burgersCat.id,
+        restaurantId: restaurant3.id,
+        isVeg: false,
+        isAvailable: true,
+        badges: [ItemBadge.BEST_SELLER, ItemBadge.POPULAR],
+      },
+    }),
+    prisma.menuItem.create({
+      data: {
+        name: 'Spicy Veggie Delight Burger',
+        description: 'Crispy vegetable patty, jalapenos, cheese slice, and spicy chipotle mayo.',
+        price: 190,
+        categoryId: burgersCat.id,
+        restaurantId: restaurant3.id,
+        isVeg: true,
+        isAvailable: true,
+        badges: [ItemBadge.TRENDING],
+      },
+    }),
+    prisma.menuItem.create({
+      data: {
+        name: 'Loaded Cheesy Fries',
+        description: 'Crispy golden fries smothered in warm cheese sauce and spring onions.',
+        price: 140,
+        categoryId: burgerSidesCat.id,
+        restaurantId: restaurant3.id,
+        isVeg: true,
+        isAvailable: true,
+      },
+    }),
+    prisma.menuItem.create({
+      data: {
+        name: 'Double Chocolate Shake',
+        description: 'Rich chocolate milkshake topped with whipped cream and chocolate fudge.',
+        price: 160,
+        categoryId: shakesCat.id,
+        restaurantId: restaurant3.id,
+        isVeg: true,
+        isAvailable: true,
+      },
+    }),
+  ]);
+  console.log(`✅ Burger Bistro menu items created`);
 
   // ── 6. Menu Categories ──────────────────────────────────────
   const categories = await Promise.all([
