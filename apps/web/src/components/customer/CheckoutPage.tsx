@@ -16,7 +16,10 @@ import { useQuery } from '@tanstack/react-query';
 
 declare global {
   interface Window {
-    Razorpay: new (options: RazorpayOptions) => { open: () => void };
+    Razorpay: new (options: RazorpayOptions) => {
+      open: () => void;
+      on: (event: string, handler: (response: any) => void) => void;
+    };
   }
 }
 
@@ -30,6 +33,9 @@ interface RazorpayOptions {
   handler: (response: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => void;
   prefill: { name: string; email: string; contact: string };
   theme: { color: string };
+  modal?: {
+    ondismiss?: () => void;
+  };
 }
 
 const guestSchema = z.object({
@@ -297,9 +303,18 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
         contact: customerPhone,
       },
       theme: { color: '#E85D04' },
+      modal: {
+        ondismiss: () => {
+          toast.error('Payment cancelled by user.');
+        },
+      },
     };
 
-    new window.Razorpay(options).open();
+    const rzp = new window.Razorpay(options);
+    rzp.on('payment.failed', (response: any) => {
+      toast.error(response.error?.description || 'Payment failed. Please try again.');
+    });
+    rzp.open();
   };
 
   const handleConfirmMockPayment = async () => {

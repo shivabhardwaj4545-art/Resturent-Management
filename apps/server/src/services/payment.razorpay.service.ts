@@ -25,6 +25,10 @@ export async function createRazorpayOrder(
   currency: string;
   receipt: string;
 }> {
+  if (Math.round(amount * 100) < 100) {
+    throw new AppError('Minimum amount for order creation is 100 paise (₹1.00).', 400, 'MIN_AMOUNT_NOT_MET');
+  }
+
   try {
     const keyId = process.env.RAZORPAY_KEY_ID ?? '';
     const keySecret = process.env.RAZORPAY_KEY_SECRET ?? '';
@@ -56,7 +60,11 @@ export async function createRazorpayOrder(
       receipt: order.receipt ?? receipt,
     };
   } catch (err: any) {
-    if (process.env.NODE_ENV === 'development') {
+    const keyId = process.env.RAZORPAY_KEY_ID ?? '';
+    const keySecret = process.env.RAZORPAY_KEY_SECRET ?? '';
+    const hasKeys = keyId && !keyId.includes('your_key_id') && keySecret && !keySecret.includes('your_razorpay_key_secret');
+
+    if (!hasKeys && process.env.NODE_ENV === 'development') {
       console.warn('⚠️ Razorpay order creation failed. Falling back to mock Razorpay order in development:', err.message);
       return {
         id: `order_mock_${Math.random().toString(36).substring(2, 15)}`,
@@ -65,7 +73,20 @@ export async function createRazorpayOrder(
         receipt,
       };
     }
-    throw err;
+
+    // Handle auth failures (return 401)
+    if (
+      err.statusCode === 401 ||
+      err.status === 401 ||
+      err.message?.toLowerCase().includes('auth') ||
+      err.message?.toLowerCase().includes('key') ||
+      err.message?.toLowerCase().includes('credential')
+    ) {
+      throw new AppError('Razorpay authentication failed. Please check API keys.', 401, 'PAYMENT_AUTH_FAILURE');
+    }
+
+    // Handle Razorpay API errors (return 500)
+    throw new AppError(err.message || 'Razorpay API error', 500, 'PAYMENT_GATEWAY_ERROR');
   }
 }
 

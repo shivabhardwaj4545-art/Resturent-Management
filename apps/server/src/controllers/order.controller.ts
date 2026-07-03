@@ -657,3 +657,41 @@ export async function reorder(
     next(error);
   }
 }
+
+// ── Create Direct Order (Razorpay Standard Web Checkout) ───────
+
+export async function createDirectOrder(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { amount, currency = 'INR', receipt } = req.body as {
+      amount: number; // in paise
+      currency?: string;
+      receipt?: string;
+    };
+
+    if (amount === undefined || amount === null) {
+      throw new AppError('Amount is required.', 400, 'INVALID_AMOUNT');
+    }
+
+    if (amount < 100) {
+      throw new AppError('Amount must be at least 100 paise.', 400, 'INVALID_AMOUNT');
+    }
+
+    const receiptId = receipt || `rcpt_${Date.now()}`;
+
+    // createRazorpayOrder takes amount in Rupees, but the endpoint receives amount in paise.
+    // So we pass amount / 100.
+    const rzOrder = await createRazorpayOrder(amount / 100, currency, receiptId);
+
+    res.status(200).json({
+      order_id: rzOrder.id,
+      amount: rzOrder.amount, // returned in paise
+      currency: rzOrder.currency,
+    });
+  } catch (error) {
+    next(error);
+  }
+}

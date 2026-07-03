@@ -9,6 +9,7 @@ import {
   getUserOrders,
   verifyPayment,
   reorder,
+  createDirectOrder,
 } from '../controllers/order.controller';
 
 const router = Router();
@@ -18,6 +19,7 @@ router.post('/', authenticate, validate(userCheckoutSchema), placeOrder);
 router.get('/', authenticate, getUserOrders);
 router.get('/:orderId', optionalAuth, getOrderById);
 router.post('/verify-payment', optionalAuth, validate(razorpayVerifySchema), verifyPayment);
+router.post('/create-order', optionalAuth, createDirectOrder);
 router.post('/:orderId/reorder', authenticate, reorder);
 
 export default router;

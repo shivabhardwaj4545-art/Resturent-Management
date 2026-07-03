@@ -13,10 +13,12 @@ import authRoutes from './routes/auth.routes';
 import menuRoutes from './routes/menu.routes';
 import cartRoutes from './routes/cart.routes';
 import orderRoutes from './routes/order.routes';
+import { createDirectOrder, verifyPayment } from './controllers/order.controller';
 import profileRoutes from './routes/profile.routes';
 import aiRoutes from './routes/ai.routes';
 import ownerRoutes from './routes/owner.routes';
 import adminRoutes from './routes/admin.routes';
+import webhookRoutes from './routes/webhook.routes';
 
 const app = express();
 
@@ -61,7 +63,14 @@ app.use(
 );
 
 // ── Body Parsers ──────────────────────────────────────────────
-app.use(express.json({ limit: '10mb' }));
+app.use(
+  express.json({
+    limit: '10mb',
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
@@ -88,6 +97,10 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 // ── API Routes ────────────────────────────────────────────────
 const API = '/api/v1';
 
+// Direct Razorpay Endpoints
+app.post('/api/create-order', createDirectOrder);
+app.post('/api/verify-payment', verifyPayment);
+
 app.use(`${API}/auth`, authRoutes);
 app.use(`${API}/menu`, menuRoutes);
 app.use(`${API}/cart`, cartRoutes);
@@ -96,6 +109,7 @@ app.use(`${API}/profile`, profileRoutes);
 app.use(`${API}/ai`, aiRoutes);
 app.use(`${API}/owner`, ownerRoutes);
 app.use(`${API}/admin`, adminRoutes);
+app.use(`${API}/webhooks`, webhookRoutes);
 
 // ── 404 Handler ───────────────────────────────────────────────
 app.use((_req, res) => {

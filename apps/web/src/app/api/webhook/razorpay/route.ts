@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyRazorpayWebhookSignature } from '@/lib/razorpay';
+import crypto from 'crypto';
+
+function verifyRazorpayWebhookSignature(body: string, signature: string): boolean {
+  const secret = process.env.RAZORPAY_WEBHOOK_SECRET ?? '';
+  const expected = crypto.createHmac('sha256', secret).update(body).digest('hex');
+  return expected === signature;
+}
 
 // This route handles Razorpay webhook events
 export async function POST(request: NextRequest) {
