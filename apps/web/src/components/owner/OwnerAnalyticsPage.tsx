@@ -48,6 +48,15 @@ export function OwnerAnalyticsPage() {
     try { await api.post('/auth/logout'); } finally { logout(); router.push('/login'); }
   };
 
+  const { data: restaurantData } = useQuery({
+    queryKey: ['owner-restaurant-layout'],
+    queryFn: async () => {
+      const res = await api.get('/owner/restaurant');
+      return res.data.data.restaurant as { themeColor: string | null };
+    },
+  });
+  const themeColor = restaurantData?.themeColor ?? '#E85D04';
+
   const totalRevenue = data?.revenueData.reduce((sum, d) => sum + d.revenue, 0) ?? 0;
   const totalOrders = data?.revenueData.reduce((sum, d) => sum + d.orders, 0) ?? 0;
 
@@ -139,15 +148,15 @@ export function OwnerAnalyticsPage() {
                 <AreaChart data={data.revenueData}>
                   <defs>
                     <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#E85D04" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#E85D04" stopOpacity={0} />
+                      <stop offset="5%" stopColor={themeColor} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={themeColor} stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
                   <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v: number) => `₹${v}`} />
                   <Tooltip formatter={(v: number) => [`₹${v}`, 'Revenue']} />
-                  <Area type="monotone" dataKey="revenue" stroke="#E85D04" strokeWidth={2} fill="url(#revGrad)" />
+                  <Area type="monotone" dataKey="revenue" stroke={themeColor} strokeWidth={2} fill="url(#revGrad)" />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
@@ -165,7 +174,7 @@ export function OwnerAnalyticsPage() {
                   <XAxis type="number" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
                   <YAxis dataKey="name" type="category" tick={{ fontSize: 10 }} width={100} tickLine={false} axisLine={false} />
                   <Tooltip formatter={(v: number) => [v, 'Quantity']} />
-                  <Bar dataKey="quantity" fill="#E85D04" radius={[0, 6, 6, 0]} />
+                  <Bar dataKey="quantity" fill={themeColor} radius={[0, 6, 6, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (

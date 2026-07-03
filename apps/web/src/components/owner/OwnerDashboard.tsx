@@ -249,26 +249,29 @@ export function OwnerDashboard() {
               </div>
 
               {/* Revenue Chart */}
-              {data?.last7DaysRevenue && data.last7DaysRevenue.length > 0 && (
-                <div className="bg-card border border-border rounded-2xl p-5">
-                  <h2 className="font-display font-semibold mb-4">Revenue (Last 7 Days)</h2>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <AreaChart data={data.last7DaysRevenue}>
-                      <defs>
-                        <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#E85D04" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="#E85D04" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                      <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                      <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v: number) => `₹${v}`} />
-                      <Tooltip formatter={(value: number) => [`₹${value}`, 'Revenue']} />
-                      <Area type="monotone" dataKey="revenue" stroke="#E85D04" strokeWidth={2} fill="url(#revenueGradient)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
+              {data?.last7DaysRevenue && data.last7DaysRevenue.length > 0 && (() => {
+                const themeColor = data.restaurant.themeColor ?? '#E85D04';
+                return (
+                  <div className="bg-card border border-border rounded-2xl p-5">
+                    <h2 className="font-display font-semibold mb-4">Revenue (Last 7 Days)</h2>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <AreaChart data={data.last7DaysRevenue}>
+                        <defs>
+                          <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={themeColor} stopOpacity={0.3} />
+                            <stop offset="95%" stopColor={themeColor} stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                        <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                        <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v: number) => `₹${v}`} />
+                        <Tooltip formatter={(value: number) => [`₹${value}`, 'Revenue']} />
+                        <Area type="monotone" dataKey="revenue" stroke={themeColor} strokeWidth={2} fill="url(#revenueGradient)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                );
+              })()}
 
               {/* Recent Orders */}
               <div className="bg-card border border-border rounded-2xl p-5">
