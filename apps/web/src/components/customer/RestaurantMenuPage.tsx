@@ -19,9 +19,17 @@ import { getDetailedStatus, formatTime12h } from '@/utils/operatingHours';
 interface RestaurantMenuPageProps {
   slug: string;
   tableNumber?: string;
+  searchParams?: {
+    preview?: string;
+    themeColor?: string;
+    name?: string;
+    description?: string;
+    logo?: string;
+    banner?: string;
+  };
 }
 
-export function RestaurantMenuPage({ slug, tableNumber }: RestaurantMenuPageProps) {
+export function RestaurantMenuPage({ slug, tableNumber, searchParams }: RestaurantMenuPageProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'VEG' | 'NON_VEG' | 'VEGAN'>('ALL');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -225,7 +233,13 @@ export function RestaurantMenuPage({ slug, tableNumber }: RestaurantMenuPageProp
   }
 
   const { restaurant, categories } = data!;
-  const themeColor = restaurant.themeColor ?? '#E85D04';
+  
+  const isPreview = searchParams?.preview === 'true';
+  const themeColor = isPreview && searchParams?.themeColor ? searchParams.themeColor : (restaurant.themeColor ?? '#E85D04');
+  const restaurantName = isPreview && searchParams?.name !== undefined ? searchParams.name : restaurant.name;
+  const restaurantDesc = isPreview && searchParams?.description !== undefined ? searchParams.description : restaurant.description;
+  const restaurantLogo = isPreview && searchParams?.logo !== undefined ? (searchParams.logo || null) : restaurant.logo;
+  const restaurantBanner = isPreview && searchParams?.banner !== undefined ? (searchParams.banner || null) : restaurant.banner;
 
   return (
     <div className="min-h-screen bg-background pb-24 relative">
@@ -281,10 +295,10 @@ export function RestaurantMenuPage({ slug, tableNumber }: RestaurantMenuPageProp
       </div>
       {/* Banner */}
       <div className="relative h-48 md:h-64 w-full overflow-hidden">
-        {restaurant.banner ? (
+        {restaurantBanner ? (
           <Image
-            src={restaurant.banner}
-            alt={restaurant.name}
+            src={restaurantBanner}
+            alt={restaurantName}
             fill
             className="object-cover"
           />
@@ -297,9 +311,9 @@ export function RestaurantMenuPage({ slug, tableNumber }: RestaurantMenuPageProp
       {/* Restaurant Header */}
       <div className="relative -mt-16 px-4 md:px-8">
         <div className="flex items-end gap-4 mb-4">
-          {restaurant.logo ? (
+          {restaurantLogo ? (
             <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl overflow-hidden border-4 border-background shadow-xl flex-shrink-0">
-              <Image src={restaurant.logo} alt={restaurant.name} width={96} height={96} className="object-cover" />
+              <Image src={restaurantLogo} alt={restaurantName} width={96} height={96} className="object-cover" />
             </div>
           ) : (
             <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl border-4 border-background shadow-xl flex-shrink-0 flex items-center justify-center text-3xl"
@@ -309,7 +323,7 @@ export function RestaurantMenuPage({ slug, tableNumber }: RestaurantMenuPageProp
           )}
           <div className="flex-1 pb-2">
             <div className="flex items-center gap-2 flex-wrap relative">
-              <h1 className="font-display text-2xl md:text-3xl font-bold">{restaurant.name}</h1>
+              <h1 className="font-display text-2xl md:text-3xl font-bold">{restaurantName}</h1>
               
               {/* Interactive Status Badge & Weekly Hours Dropdown */}
               <div className="relative">
@@ -641,7 +655,7 @@ export function RestaurantMenuPage({ slug, tableNumber }: RestaurantMenuPageProp
         {chatOpen && (
           <AIChatbot
             restaurantId={restaurant.id}
-            restaurantName={restaurant.name}
+            restaurantName={restaurantName}
             themeColor={themeColor}
             onClose={() => setChatOpen(false)}
           />

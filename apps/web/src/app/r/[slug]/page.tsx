@@ -3,7 +3,15 @@ import { RestaurantMenuPage } from '@/components/customer/RestaurantMenuPage';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ table?: string }>;
+  searchParams: Promise<{
+    table?: string;
+    preview?: string;
+    themeColor?: string;
+    name?: string;
+    description?: string;
+    logo?: string;
+    banner?: string;
+  }>;
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -16,7 +24,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function MenuPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
-  const { table } = await searchParams;
+  const resolvedSearchParams = await searchParams;
 
-  return <RestaurantMenuPage slug={slug} tableNumber={table} />;
+  return (
+    <RestaurantMenuPage
+      slug={slug}
+      tableNumber={resolvedSearchParams.table}
+      searchParams={resolvedSearchParams}
+    />
+  );
 }
