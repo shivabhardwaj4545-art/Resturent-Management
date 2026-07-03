@@ -236,6 +236,19 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
   const { items, couponCode, couponDiscount, clearCart, subtotal, total } = useCartStore();
   const [loading, setLoading] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<'RAZORPAY' | 'COD' | 'WALLET'>('RAZORPAY');
+  const [razorpayKeyId, setRazorpayKeyId] = useState<string>('');
+
+  useEffect(() => {
+    api.get('/orders/razorpay-key')
+      .then(res => {
+        if (res.data?.data?.keyId) {
+          setRazorpayKeyId(res.data.data.keyId);
+        }
+      })
+      .catch(err => {
+        console.error('Failed to fetch Razorpay key ID:', err);
+      });
+  }, []);
 
   const subtotalAmount = subtotal();
   const gst = subtotalAmount * GST_RATE;
@@ -259,7 +272,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
   };
 
   const handleRazorpayPayment = async (orderId: string, razorpayOrderId: string, amount: number, customerName: string, customerPhone: string) => {
-    const key = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ?? '';
+    const key = razorpayKeyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
 
     // Handle mock payment simulation for development/unconfigured environments
     if (razorpayOrderId.startsWith('order_mock_') || !key || key.includes('your_key_id')) {
