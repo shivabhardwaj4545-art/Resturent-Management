@@ -233,7 +233,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
     }
   };
 
-  const { items, couponCode, couponDiscount, clearCart, subtotal, total } = useCartStore();
+  const { items, couponCode, couponDiscount, clearCart, subtotal, total, removeItem } = useCartStore();
   const [loading, setLoading] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<'RAZORPAY' | 'COD' | 'WALLET'>('RAZORPAY');
   const [razorpayKeyId, setRazorpayKeyId] = useState<string>('');
@@ -342,7 +342,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
       });
       saveOrderToRecent(mockPaymentData.orderId, restaurantSlug);
       clearCart();
-      toast.success('Payment successful! 🎉 (Simulated)');
+      toast.success('Payment simulated successfully! 🎉');
       setShowMockPaymentModal(false);
       setMockPaymentData(null);
       router.push(`/r/${restaurantSlug}/order/${mockPaymentData.orderId}`);
@@ -388,6 +388,16 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
         router.push(`/r/${restaurantSlug}/order/${order.id}`);
       }
     } catch (err: any) {
+      const responseCode = err.response?.data?.code;
+      if (responseCode === 'ITEM_NOT_FOUND') {
+        const errorText = err.response?.data?.error || '';
+        const missingItem = items.find((item) => errorText.includes(item.menuItemId));
+        if (missingItem) {
+          removeItem(missingItem.id);
+          toast.error(`"${missingItem.name}" is no longer available and has been removed from your cart.`);
+          return;
+        }
+      }
       const errMsg = err.response?.data?.error ?? err.response?.data?.message ?? 'Failed to place order. Please try again.';
       toast.error(errMsg);
     } finally {
@@ -430,6 +440,16 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
         router.push(`/r/${restaurantSlug}/order/${order.id}`);
       }
     } catch (err: any) {
+      const responseCode = err.response?.data?.code;
+      if (responseCode === 'ITEM_NOT_FOUND') {
+        const errorText = err.response?.data?.error || '';
+        const missingItem = items.find((item) => errorText.includes(item.menuItemId));
+        if (missingItem) {
+          removeItem(missingItem.id);
+          toast.error(`"${missingItem.name}" is no longer available and has been removed from your cart.`);
+          return;
+        }
+      }
       const errMsg = err.response?.data?.error ?? err.response?.data?.message ?? 'Failed to place order. Please try again.';
       toast.error(errMsg);
     } finally {
