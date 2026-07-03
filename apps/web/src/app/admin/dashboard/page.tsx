@@ -1,7 +1,11 @@
-import { AdminDashboard } from '@/components/admin/AdminDashboard';
-import type { Metadata } from 'next';
+'use client';
 
-export const metadata: Metadata = { title: 'Super Admin Dashboard' };
+import dynamic from 'next/dynamic';
+
+const AdminDashboard = dynamic(
+  () => import('@/components/admin/AdminDashboard').then((mod) => mod.AdminDashboard),
+  { ssr: false }
+);
 
 export default function AdminDashboardPage() {
   return <AdminDashboard />;

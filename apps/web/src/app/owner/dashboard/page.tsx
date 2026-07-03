@@ -1,9 +1,11 @@
-import { OwnerDashboard } from '@/components/owner/OwnerDashboard';
-import type { Metadata } from 'next';
+'use client';
 
-export const metadata: Metadata = {
-  title: 'Owner Dashboard',
-};
+import dynamic from 'next/dynamic';
+
+const OwnerDashboard = dynamic(
+  () => import('@/components/owner/OwnerDashboard').then((mod) => mod.OwnerDashboard),
+  { ssr: false }
+);
 
 export default function OwnerDashboardPage() {
   return <OwnerDashboard />;
