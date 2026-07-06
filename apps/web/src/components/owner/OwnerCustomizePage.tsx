@@ -6,7 +6,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Palette, GripVertical, Plus, Trash2, Save, Sparkles, LayoutDashboard,
   UtensilsCrossed, ShoppingBag, Tag, BarChart3, Settings, LogOut, Menu,
-  Check, Eye, RefreshCw, Layers, ArrowUp, ArrowDown, Info, Smartphone, Loader2
+  Check, Eye, RefreshCw, Layers, ArrowUp, ArrowDown, Info, Smartphone, Loader2,
+  LayoutGrid, Grid, List, Sparkle, Utensils
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -37,6 +38,41 @@ const PRESET_THEMES = [
   { name: 'Mint Refresh', color: '#14B8A6', bg: 'from-teal-400 to-emerald-600', desc: 'Clean, light & refreshing smoothies/salads' },
   { name: 'Deep Violet', color: '#7C3AED', bg: 'from-purple-600 to-indigo-800', desc: 'Premium nightlife & lounge aesthetic' },
   { name: 'Classic Gold', color: '#D97706', bg: 'from-yellow-600 to-amber-700', desc: 'Luxury fine dining & heritage cuisine' },
+];
+
+const MENU_DESIGN_TEMPLATES = [
+  {
+    id: 'modern',
+    name: 'Modern Cards',
+    icon: Grid,
+    desc: 'Clean, rounded card design with floating imagery & badges.',
+    badge: 'Popular',
+    previewBg: 'bg-gradient-to-br from-orange-500/10 to-amber-500/10',
+  },
+  {
+    id: 'compact',
+    name: 'Compact List',
+    icon: List,
+    desc: 'High-density row layout for quick scanning & fast ordering.',
+    badge: 'Fast Scan',
+    previewBg: 'bg-gradient-to-br from-slate-800 to-slate-900',
+  },
+  {
+    id: 'bistro',
+    name: 'Bistro Fine-Dining',
+    icon: Utensils,
+    desc: 'Classic elegance with leader dots, serif typography & gold accents.',
+    badge: 'Luxury',
+    previewBg: 'bg-gradient-to-br from-amber-900/20 to-stone-900',
+  },
+  {
+    id: 'showcase',
+    name: 'Visual Showcase',
+    icon: LayoutGrid,
+    desc: 'Full-bleed imagery focus with dark gradient overlays.',
+    badge: 'Photo Focus',
+    previewBg: 'bg-gradient-to-br from-purple-900/20 to-pink-900/20',
+  },
 ];
 
 type CustomField = {
@@ -70,10 +106,11 @@ export function OwnerCustomizePage() {
   const qc = useQueryClient();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'THEME' | 'DRAG_MENU' | 'CUSTOM_FIELDS'>('THEME');
+  const [activeTab, setActiveTab] = useState<'THEME' | 'DESIGN_TEMPLATES' | 'DRAG_MENU' | 'CUSTOM_FIELDS'>('DESIGN_TEMPLATES');
 
   // Theme State
   const [selectedThemeColor, setSelectedThemeColor] = useState('#E85D04');
+  const [selectedLayout, setSelectedLayout] = useState<'modern' | 'compact' | 'bistro' | 'showcase'>('modern');
   
   // Custom Fields State
   const [customFields, setCustomFields] = useState<CustomField[]>([
@@ -213,6 +250,7 @@ export function OwnerCustomizePage() {
   const iframeUrl = restaurant?.slug
     ? `/r/${restaurant.slug}?preview=true` +
       `&themeColor=${encodeURIComponent(selectedThemeColor)}` +
+      `&layout=${selectedLayout}` +
       `&name=${encodeURIComponent(restaurant.name ?? '')}` +
       `&description=${encodeURIComponent(restaurant.description ?? '')}`
     : '';
@@ -273,13 +311,21 @@ export function OwnerCustomizePage() {
                 <Sparkles className="w-5 h-5 text-primary animate-pulse" />
                 Restaurant Studio & Customization
               </h1>
-              <p className="text-xs text-muted-foreground">Customize branding, section order, themes & fields</p>
+              <p className="text-xs text-muted-foreground">Customize branding, menu templates, section order & fields</p>
             </div>
           </div>
         </header>
 
         {/* Studio Sub-header Navigation */}
         <div className="border-b border-border px-5 py-2.5 bg-muted/20 flex gap-2 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('DESIGN_TEMPLATES')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+              activeTab === 'DESIGN_TEMPLATES' ? 'bg-primary text-white shadow-md' : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+            }`}
+          >
+            <LayoutGrid className="w-4 h-4" /> Menu Design Templates
+          </button>
           <button
             onClick={() => setActiveTab('THEME')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
@@ -311,6 +357,66 @@ export function OwnerCustomizePage() {
             
             {/* Left Column — Studio Controls */}
             <div className="lg:col-span-7 space-y-6">
+
+              {/* TAB 0: MENU DESIGN TEMPLATES */}
+              {activeTab === 'DESIGN_TEMPLATES' && (
+                <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+                  <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h2 className="font-display font-bold text-lg text-foreground">Menu Layout & Design Templates</h2>
+                        <p className="text-xs text-muted-foreground">Select your favorite layout template style to instantly transform your restaurant's digital menu appearance.</p>
+                      </div>
+                    </div>
+
+                    {/* Template Selection Grid */}
+                    <div className="grid sm:grid-cols-2 gap-4 mb-4">
+                      {MENU_DESIGN_TEMPLATES.map((tmpl) => {
+                        const Icon = tmpl.icon;
+                        const isSelected = selectedLayout === tmpl.id;
+                        return (
+                          <div
+                            key={tmpl.id}
+                            onClick={() => {
+                              setSelectedLayout(tmpl.id as any);
+                              toast.success(`Activated "${tmpl.name}" layout! Preview updated. ✨`);
+                            }}
+                            className={`relative cursor-pointer p-5 rounded-2xl border transition-all duration-200 ${
+                              isSelected
+                                ? 'border-primary ring-2 ring-primary/20 bg-primary/5 shadow-lg scale-[1.01]'
+                                : 'border-border hover:border-primary/40 bg-card hover:bg-muted/30'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                                  <Icon className="w-5 h-5" />
+                                </div>
+                                <div>
+                                  <h3 className="font-bold text-sm text-foreground">{tmpl.name}</h3>
+                                  <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-semibold">
+                                    {tmpl.badge}
+                                  </span>
+                                </div>
+                              </div>
+                              {isSelected && (
+                                <span className="w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center text-xs">
+                                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground leading-relaxed mb-3">{tmpl.desc}</p>
+                            <div className={`h-12 rounded-xl ${tmpl.previewBg} border border-border/40 p-2 flex items-center justify-between`}>
+                              <div className="w-16 h-3 bg-white/20 rounded" />
+                              <div className="w-8 h-3 bg-primary/40 rounded" />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
 
               {/* TAB 1: THEME & COLOR BUILDER */}
               {activeTab === 'THEME' && (
@@ -571,7 +677,7 @@ export function OwnerCustomizePage() {
                     </div>
                   ) : restaurant?.slug ? (
                     <iframe
-                      key={`${restaurant.slug}-${selectedThemeColor}`}
+                      key={`${restaurant.slug}-${selectedThemeColor}-${selectedLayout}`}
                       src={iframeUrl}
                       className="w-full h-full border-0 select-none bg-background"
                       title="Menu Preview"

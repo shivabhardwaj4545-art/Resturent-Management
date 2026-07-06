@@ -26,6 +26,7 @@ interface RestaurantMenuPageProps {
     description?: string;
     logo?: string;
     banner?: string;
+    layout?: string;
   };
 }
 
@@ -598,6 +599,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                     themeColor={themeColor}
                     restaurantId={restaurant.id}
                     restaurantSlug={slug}
+                    layoutStyle={(searchParams?.layout as any) || 'modern'}
                   />
                 ))}
               </div>
