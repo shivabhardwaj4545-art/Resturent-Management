@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { motion } from 'framer-motion';
 import {
   LayoutDashboard, UtensilsCrossed, ShoppingBag, Tag, BarChart3, Settings,
   LogOut, Menu, X, TrendingUp, Users, DollarSign, Clock, Bell, ChevronRight,
