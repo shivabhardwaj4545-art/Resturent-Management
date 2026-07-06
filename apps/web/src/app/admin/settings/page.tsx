@@ -1,7 +1,12 @@
 import type { Metadata } from 'next';
-import { AdminSettingsPage } from '@/components/admin/AdminSettingsPage';
+import dynamic from 'next/dynamic';
 
 export const metadata: Metadata = { title: 'Platform Settings' };
+
+const AdminSettingsPage = dynamic(
+  () => import('@/components/admin/AdminSettingsPage').then((mod) => mod.AdminSettingsPage),
+  { ssr: false }
+);
 
 export default function AdminSettings() {
   return <AdminSettingsPage />;

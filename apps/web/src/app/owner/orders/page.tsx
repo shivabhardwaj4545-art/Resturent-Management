@@ -1,7 +1,12 @@
 import type { Metadata } from 'next';
-import { OwnerOrdersPage } from '@/components/owner/OwnerOrdersPage';
+import dynamic from 'next/dynamic';
 
 export const metadata: Metadata = { title: 'Orders' };
+
+const OwnerOrdersPage = dynamic(
+  () => import('@/components/owner/OwnerOrdersPage').then((mod) => mod.OwnerOrdersPage),
+  { ssr: false }
+);
 
 export default function OwnerOrders() {
   return <OwnerOrdersPage />;
