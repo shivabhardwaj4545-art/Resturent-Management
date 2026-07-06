@@ -4,8 +4,7 @@ import dynamic from 'next/dynamic';
 export const metadata: Metadata = { title: 'Analytics' };
 
 const OwnerAnalyticsPage = dynamic(
-  () => import('@/components/owner/OwnerAnalyticsPage').then((mod) => mod.OwnerAnalyticsPage),
-  { ssr: false }
+  () => import('@/components/owner/OwnerAnalyticsPage').then((mod) => mod.OwnerAnalyticsPage)
 );
 
 export default function OwnerAnalytics() {

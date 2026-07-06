@@ -4,8 +4,7 @@ import dynamic from 'next/dynamic';
 export const metadata: Metadata = { title: 'Coupon Management' };
 
 const OwnerCouponsPage = dynamic(
-  () => import('@/components/owner/OwnerCouponsPage').then((mod) => mod.OwnerCouponsPage),
-  { ssr: false }
+  () => import('@/components/owner/OwnerCouponsPage').then((mod) => mod.OwnerCouponsPage)
 );
 
 export default function OwnerCoupons() {

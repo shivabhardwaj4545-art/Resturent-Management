@@ -4,8 +4,7 @@ import dynamic from 'next/dynamic';
 export const metadata: Metadata = { title: 'Menu Management' };
 
 const OwnerMenuPage = dynamic(
-  () => import('@/components/owner/OwnerMenuPage').then((mod) => mod.OwnerMenuPage),
-  { ssr: false }
+  () => import('@/components/owner/OwnerMenuPage').then((mod) => mod.OwnerMenuPage)
 );
 
 export default function OwnerMenu() {

@@ -4,8 +4,7 @@ import dynamic from 'next/dynamic';
 export const metadata: Metadata = { title: 'Restaurant Settings' };
 
 const OwnerSettingsPage = dynamic(
-  () => import('@/components/owner/OwnerSettingsPage').then((mod) => mod.OwnerSettingsPage),
-  { ssr: false }
+  () => import('@/components/owner/OwnerSettingsPage').then((mod) => mod.OwnerSettingsPage)
 );
 
 export default function OwnerSettings() {

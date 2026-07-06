@@ -4,8 +4,7 @@ import dynamic from 'next/dynamic';
 export const metadata: Metadata = { title: 'Dashboard' };
 
 const OwnerDashboard = dynamic(
-  () => import('@/components/owner/OwnerDashboard').then((mod) => mod.OwnerDashboard),
-  { ssr: false }
+  () => import('@/components/owner/OwnerDashboard').then((mod) => mod.OwnerDashboard)
 );
 
 export default function OwnerDashboardPage() {
