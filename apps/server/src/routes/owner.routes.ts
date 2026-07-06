@@ -28,6 +28,7 @@ import {
   updateMenuItem,
   deleteMenuItem,
   toggleMenuItemAvailability,
+  seedDemoMenu,
   getCoupons,
   createCoupon,
   updateCoupon,
@@ -68,6 +69,7 @@ router.post('/menu/items', upload.single('image'), createMenuItem);
 router.put('/menu/items/:id', upload.single('image'), updateMenuItem);
 router.delete('/menu/items/:id', deleteMenuItem);
 router.patch('/menu/items/:id/availability', toggleMenuItemAvailability);
+router.post('/menu/seed-demo', seedDemoMenu);
 
 // Coupons
 router.get('/coupons', getCoupons);

@@ -588,3 +588,86 @@ export async function getAnalytics(req: AuthenticatedRequest, res: Response, nex
     });
   } catch (error) { next(error); }
 }
+
+export async function seedDemoMenu(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+
+    const sampleCategories = [
+      {
+        name: 'Starters',
+        sortOrder: 0,
+        items: [
+          { name: 'Paneer Tikka', description: 'Soft paneer cubes marinated in spiced yogurt and grilled to perfection.', price: 240, isVeg: true, badges: ['POPULAR', 'BEST_SELLER'] },
+          { name: 'Crispy Corn', description: 'Crunchy sweet corn kernels tossed with Indian spices and fresh lime.', price: 180, isVeg: true, badges: ['TRENDING'] },
+          { name: 'Chicken 65', description: 'Spicy, deep-fried chicken bites tossed with curry leaves and green chilies.', price: 280, isVeg: false, badges: ['POPULAR'] },
+        ],
+      },
+      {
+        name: 'Main Course',
+        sortOrder: 1,
+        items: [
+          { name: 'Butter Chicken', description: 'Tender chicken pieces cooked in a rich, creamy tomato butter gravy.', price: 350, isVeg: false, badges: ['BEST_SELLER'] },
+          { name: 'Dal Makhani', description: 'Slow-cooked black lentils simmered overnight with butter and fresh cream.', price: 260, isVeg: true, badges: ['POPULAR'] },
+          { name: 'Paneer Butter Masala', description: 'Cottage cheese cubes cooked in a aromatic, spiced tomato cream sauce.', price: 320, isVeg: true, badges: ['NEW'] },
+        ],
+      },
+      {
+        name: 'Breads & Rice',
+        sortOrder: 2,
+        items: [
+          { name: 'Butter Naan', description: 'Soft, fluffy tandoori flatbread brushed with fresh butter.', price: 50, isVeg: true, badges: [] },
+          { name: 'Garlic Naan', description: 'Leavened Indian flatbread topped with minced garlic and herbs.', price: 65, isVeg: true, badges: ['POPULAR'] },
+          { name: 'Hyderabadi Chicken Biryani', description: 'Fragrant basmati rice layered with marinated chicken and aromatic spices.', price: 340, isVeg: false, badges: ['BEST_SELLER'] },
+        ],
+      },
+      {
+        name: 'Desserts & Drinks',
+        sortOrder: 3,
+        items: [
+          { name: 'Gulab Jamun', description: 'Warm milk-solid dumplings soaked in cardamom sugar syrup.', price: 120, isVeg: true, badges: ['BEST_SELLER'] },
+          { name: 'Mango Lassi', description: 'Creamy yogurt drink blended with sweet Alphonso mangoes.', price: 110, isVeg: true, badges: ['POPULAR'] },
+        ],
+      },
+    ];
+
+    for (const cat of sampleCategories) {
+      let existingCat = await prisma.menuCategory.findFirst({
+        where: { restaurantId: restaurant.id, name: cat.name },
+      });
+
+      if (!existingCat) {
+        existingCat = await prisma.menuCategory.create({
+          data: { name: cat.name, restaurantId: restaurant.id, sortOrder: cat.sortOrder },
+        });
+      }
+
+      for (const item of cat.items) {
+        const itemExists = await prisma.menuItem.findFirst({
+          where: { restaurantId: restaurant.id, name: item.name, deletedAt: null },
+        });
+
+        if (!itemExists) {
+          await prisma.menuItem.create({
+            data: {
+              name: item.name,
+              description: item.description,
+              price: item.price,
+              categoryId: existingCat.id,
+              restaurantId: restaurant.id,
+              isVeg: item.isVeg,
+              isAvailable: true,
+              badges: item.badges as any,
+            },
+          });
+        }
+      }
+    }
+
+    await cacheDelPattern(`menu:${restaurant.slug}*`);
+    res.json({ success: true, message: 'Sample demo menu loaded successfully!' });
+  } catch (error) {
+    next(error);
+  }
+}
+

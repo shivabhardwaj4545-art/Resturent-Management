@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   UtensilsCrossed, LayoutDashboard, ShoppingBag, Tag, BarChart3, Settings, LogOut,
-  Menu, Plus, Trash2, Edit2, Eye, EyeOff, Image, Leaf, X, Check, ChevronDown, Palette
+  Menu, Plus, Trash2, Edit2, Eye, EyeOff, Image, Leaf, X, Check, ChevronDown, Palette, Sparkles
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -111,6 +111,19 @@ export function OwnerMenuPage() {
       setPreviewVersion(v => v + 1);
     },
     onError: () => toast.error('Failed to delete item'),
+  });
+
+  const seedDemoMutation = useMutation({
+    mutationFn: async () => {
+      await api.post('/owner/menu/seed-demo');
+    },
+    onSuccess: () => {
+      toast.success('Sample demo menu loaded! 🎉');
+      qc.invalidateQueries({ queryKey: ['owner-categories'] });
+      qc.invalidateQueries({ queryKey: ['owner-menu-items'] });
+      setPreviewVersion((v) => v + 1);
+    },
+    onError: () => toast.error('Failed to load sample menu'),
   });
 
   const submitItem = async () => {
@@ -276,10 +289,20 @@ export function OwnerMenuPage() {
             </button>
             <h1 className="font-display font-bold text-xl">Menu Management</h1>
           </div>
-          <button onClick={() => { setEditItem(null); setForm({ name: '', description: '', price: '', categoryId: activeCategory ?? '', isVeg: true, isAvailable: true, image: null }); setShowAddItem(true); }}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl font-medium text-sm hover:bg-primary/90 transition-colors">
-            <Plus className="w-4 h-4" /> Add Item
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => seedDemoMutation.mutate()}
+              disabled={seedDemoMutation.isPending}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl font-semibold text-xs shadow-sm transition-all disabled:opacity-60"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              {seedDemoMutation.isPending ? 'Loading...' : 'Load Sample Menu'}
+            </button>
+            <button onClick={() => { setEditItem(null); setForm({ name: '', description: '', price: '', categoryId: activeCategory ?? '', isVeg: true, isAvailable: true, image: null }); setShowAddItem(true); }}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl font-medium text-sm hover:bg-primary/90 transition-colors">
+              <Plus className="w-4 h-4" /> Add Item
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 overflow-hidden flex">
@@ -377,10 +400,32 @@ export function OwnerMenuPage() {
                   </motion.div>
                 ))}
                 {filteredItems?.length === 0 && (
-                  <div className="col-span-3 text-center py-20 text-muted-foreground">
-                    <UtensilsCrossed className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                    <p className="font-medium">No items yet</p>
-                    <p className="text-sm">Add your first menu item to get started</p>
+                  <div className="col-span-3 text-center py-16 px-4 text-muted-foreground bg-card/40 border border-dashed border-border rounded-3xl space-y-4">
+                    <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto text-2xl">
+                      🍽️
+                    </div>
+                    <div className="space-y-1">
+                      <h3 className="font-display font-bold text-lg text-foreground">No items in your menu yet</h3>
+                      <p className="text-sm max-w-md mx-auto">
+                        Start by creating items manually or load a pre-filled sample menu with popular dishes to test, update, and manage right away.
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-center gap-3 pt-2 flex-wrap">
+                      <button
+                        onClick={() => seedDemoMutation.mutate()}
+                        disabled={seedDemoMutation.isPending}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl font-semibold text-sm shadow-md transition-all disabled:opacity-60"
+                      >
+                        <Sparkles className="w-4 h-4 animate-pulse" />
+                        {seedDemoMutation.isPending ? 'Loading Sample Menu...' : '🌱 Load Sample Demo Menu'}
+                      </button>
+                      <button
+                        onClick={() => { setEditItem(null); setForm({ name: '', description: '', price: '', categoryId: activeCategory ?? '', isVeg: true, isAvailable: true, image: null }); setShowAddItem(true); }}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-muted hover:bg-muted/70 text-foreground rounded-xl font-medium text-sm transition-colors"
+                      >
+                        <Plus className="w-4 h-4" /> Create First Item
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
