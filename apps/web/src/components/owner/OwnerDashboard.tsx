@@ -2,7 +2,20 @@
 
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
+import {
+  LayoutDashboard, UtensilsCrossed, ShoppingBag, Tag, BarChart3, Settings,
+  LogOut, Menu, X, TrendingUp, Users, DollarSign, Clock, Bell, ChevronRight,
+  Power, Star, Palette
+} from 'lucide-react';
+import { useAuthStore } from '@/store/auth.store';
+import api from '@/lib/api';
+import Link from 'next/link';
+import { useRouter, usePathname } from 'next/navigation';
+import { toast } from 'sonner';
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+} from 'recharts';
+
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
   { label: 'Menu', icon: UtensilsCrossed, href: '/owner/menu' },
