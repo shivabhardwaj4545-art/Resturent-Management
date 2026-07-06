@@ -23,6 +23,7 @@ export default function LoginClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const restaurantSlug = searchParams.get('restaurant');
+  const isPartner = searchParams.get('partner') === 'true';
   const { setUser } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -94,10 +95,14 @@ export default function LoginClient() {
               <span className="font-display font-bold text-xl text-white">QR Restaurant</span>
             </Link>
             <h1 className="font-display text-3xl font-bold text-white mb-2">
-              {restaurantSlug ? 'Customer Login' : 'Welcome back'}
+              {restaurantSlug ? 'Customer Login' : isPartner ? 'Partner & Owner Login' : 'Welcome back'}
             </h1>
             <p className="text-slate-400">
-              {restaurantSlug ? `Sign in to order from ${restaurantSlug.toUpperCase()}` : 'Sign in to your account'}
+              {restaurantSlug
+                ? `Sign in to order from ${restaurantSlug.toUpperCase()}`
+                : isPartner
+                ? 'Sign in to manage your restaurant'
+                : 'Sign in to your account'}
             </p>
           </div>
 
@@ -184,82 +189,147 @@ export default function LoginClient() {
           </div>
         </div>
 
-        {/* Right Column: Demo Accounts */}
+        {/* Right Column: Partner Info or Demo Accounts */}
         <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl flex flex-col justify-between">
-          <div>
-            <h2 className="font-display text-xl font-bold text-white mb-2 flex items-center gap-2">
-              <Zap className="w-5 h-5 text-orange-400" />
-              Quick Demo Login
-            </h2>
-            <p className="text-slate-400 text-sm mb-6">
-              Click the button below to prefill credentials and sign in instantly.
-            </p>
+          {isPartner ? (
+            /* Partner Login - Info Panel */
+            <div className="flex flex-col h-full">
+              <div className="mb-6">
+                <h2 className="font-display text-xl font-bold text-white mb-2 flex items-center gap-2">
+                  <Store className="w-5 h-5 text-amber-400" />
+                  Restaurant Partner Portal
+                </h2>
+                <p className="text-slate-400 text-sm">
+                  Sign in with your partner account to manage your restaurant.
+                </p>
+              </div>
 
-            <div className="space-y-4">
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('customer@example.com', 'Customer@123')}
-                className="w-full text-left p-4 rounded-xl bg-white/5 border border-white/10 hover:border-green-500/50 hover:bg-white/10 transition-all group flex items-start gap-4"
-              >
-                <div className="w-10 h-10 rounded-lg bg-green-500/10 border border-green-500/20 flex items-center justify-center text-green-400 group-hover:scale-110 transition-transform">
-                  <User className="w-5 h-5" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-white text-sm">Demo Customer</span>
-                    <span className="text-[10px] text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full font-medium">Standard User</span>
+              <div className="space-y-4 flex-1">
+                {/* Owner Access */}
+                <div className="p-4 rounded-xl bg-amber-500/5 border border-amber-500/20">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-9 h-9 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                      <Store className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-white text-sm">Restaurant Owner</p>
+                      <p className="text-[10px] text-amber-400">Full dashboard access</p>
+                    </div>
                   </div>
-                  <p className="text-xs text-slate-400 mt-1">Browse menus, add items to cart, order, and earn loyalty points.</p>
-                  <div className="text-[11px] text-slate-500 mt-2 font-mono flex flex-col">
-                    <span>Email: customer@example.com</span>
-                    <span>Pass: Customer@123</span>
-                  </div>
+                  <ul className="text-xs text-slate-400 space-y-1 pl-1">
+                    <li>• Manage your menu & categories</li>
+                    <li>• View and manage orders in real-time</li>
+                    <li>• Customize branding & settings</li>
+                    <li>• Track analytics & revenue</li>
+                  </ul>
                 </div>
-              </button>
 
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('owner@upstates.com', 'Owner@123456')}
-                className="w-full text-left p-4 rounded-xl bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group flex items-start gap-4"
-              >
-                <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-110 transition-transform">
-                  <Store className="w-5 h-5" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-white text-sm">Demo Owner</span>
-                    <span className="text-[10px] text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full font-medium">Restaurant Owner</span>
+                {/* Admin Access */}
+                <div className="p-4 rounded-xl bg-purple-500/5 border border-purple-500/20">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-9 h-9 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+                      <Shield className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-white text-sm">Super Admin</p>
+                      <p className="text-[10px] text-purple-400">Platform management</p>
+                    </div>
                   </div>
-                  <p className="text-xs text-slate-400 mt-1">Manage menus, customize branding, view orders, and manage settings.</p>
-                  <div className="text-[11px] text-slate-500 mt-2 font-mono flex flex-col">
-                    <span>Email: owner@upstates.com</span>
-                    <span>Pass: Owner@123456</span>
-                  </div>
+                  <ul className="text-xs text-slate-400 space-y-1 pl-1">
+                    <li>• Approve & manage restaurants</li>
+                    <li>• View system-wide statistics</li>
+                    <li>• Manage platform users</li>
+                  </ul>
                 </div>
-              </button>
 
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('admin@qrrestaurant.com', 'Admin@123456')}
-                className="w-full text-left p-4 rounded-xl bg-white/5 border border-white/10 hover:border-purple-500/50 hover:bg-white/10 transition-all group flex items-start gap-4"
-              >
-                <div className="w-10 h-10 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 group-hover:scale-110 transition-transform">
-                  <Shield className="w-5 h-5" />
+                <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-center mt-auto">
+                  <p className="text-xs text-slate-400">
+                    Not a partner yet?{' '}
+                    <a href="mailto:support@qrrestaurant.com" className="text-orange-400 hover:text-orange-300 font-medium">
+                      Contact us
+                    </a>
+                    {' '}to get onboarded.
+                  </p>
                 </div>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-white text-sm">Demo Admin</span>
-                    <span className="text-[10px] text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded-full font-medium">Super Admin</span>
-                  </div>
-                  <p className="text-xs text-slate-400 mt-1">Manage global platform state, approve/revoke owners, and view system stats.</p>
-                  <div className="text-[11px] text-slate-500 mt-2 font-mono flex flex-col">
-                    <span>Email: admin@qrrestaurant.com</span>
-                    <span>Pass: Admin@123456</span>
-                  </div>
-                </div>
-              </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            /* Default - Demo Quick Login */
+            <div>
+              <h2 className="font-display text-xl font-bold text-white mb-2 flex items-center gap-2">
+                <Zap className="w-5 h-5 text-orange-400" />
+                Quick Demo Login
+              </h2>
+              <p className="text-slate-400 text-sm mb-6">
+                Click the button below to prefill credentials and sign in instantly.
+              </p>
+
+              <div className="space-y-4">
+                <button
+                  type="button"
+                  onClick={() => handleQuickLogin('customer@example.com', 'Customer@123')}
+                  className="w-full text-left p-4 rounded-xl bg-white/5 border border-white/10 hover:border-green-500/50 hover:bg-white/10 transition-all group flex items-start gap-4"
+                >
+                  <div className="w-10 h-10 rounded-lg bg-green-500/10 border border-green-500/20 flex items-center justify-center text-green-400 group-hover:scale-110 transition-transform">
+                    <User className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-white text-sm">Demo Customer</span>
+                      <span className="text-[10px] text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full font-medium">Standard User</span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">Browse menus, add items to cart, order, and earn loyalty points.</p>
+                    <div className="text-[11px] text-slate-500 mt-2 font-mono flex flex-col">
+                      <span>Email: customer@example.com</span>
+                      <span>Pass: Customer@123</span>
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleQuickLogin('owner@upstates.com', 'Owner@123456')}
+                  className="w-full text-left p-4 rounded-xl bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group flex items-start gap-4"
+                >
+                  <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-110 transition-transform">
+                    <Store className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-white text-sm">Demo Owner</span>
+                      <span className="text-[10px] text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full font-medium">Restaurant Owner</span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">Manage menus, customize branding, view orders, and manage settings.</p>
+                    <div className="text-[11px] text-slate-500 mt-2 font-mono flex flex-col">
+                      <span>Email: owner@upstates.com</span>
+                      <span>Pass: Owner@123456</span>
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleQuickLogin('admin@qrrestaurant.com', 'Admin@123456')}
+                  className="w-full text-left p-4 rounded-xl bg-white/5 border border-white/10 hover:border-purple-500/50 hover:bg-white/10 transition-all group flex items-start gap-4"
+                >
+                  <div className="w-10 h-10 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 group-hover:scale-110 transition-transform">
+                    <Shield className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-white text-sm">Demo Admin</span>
+                      <span className="text-[10px] text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded-full font-medium">Super Admin</span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">Manage global platform state, approve/revoke owners, and view system stats.</p>
+                    <div className="text-[11px] text-slate-500 mt-2 font-mono flex flex-col">
+                      <span>Email: admin@qrrestaurant.com</span>
+                      <span>Pass: Admin@123456</span>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </motion.div>
     </div>

@@ -284,7 +284,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                 Login
               </Link>
               <Link
-                href="/login"
+                href="/login?partner=true"
                 className="text-xs bg-white/10 hover:bg-white/20 border border-white/20 backdrop-blur-md px-3 py-1.5 rounded-lg text-white font-semibold shadow-sm transition-all"
               >
                 Partner Login
