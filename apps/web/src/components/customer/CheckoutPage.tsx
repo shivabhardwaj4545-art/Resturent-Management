@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -237,13 +237,15 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
   const [loading, setLoading] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<'RAZORPAY' | 'COD' | 'WALLET'>('RAZORPAY');
   const [razorpayKeyId, setRazorpayKeyId] = useState<string>('');
+  // Use a ref so handleRazorpayPayment always reads the latest key (avoids stale closure race condition)
+  const razorpayKeyRef = useRef<string>('');
 
   useEffect(() => {
     api.get('/orders/razorpay-key')
       .then(res => {
-        if (res.data?.data?.keyId) {
-          setRazorpayKeyId(res.data.data.keyId);
-        }
+        const key = res.data?.data?.keyId ?? '';
+        setRazorpayKeyId(key);
+        razorpayKeyRef.current = key;
       })
       .catch(err => {
         console.error('Failed to fetch Razorpay key ID:', err);
@@ -272,12 +274,25 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
   };
 
   const handleRazorpayPayment = async (orderId: string, razorpayOrderId: string, amount: number, customerName: string, customerPhone: string) => {
-    const key = razorpayKeyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
+    // Always read from the ref to get the latest key (avoids stale closure)
+    const key = razorpayKeyRef.current || razorpayKeyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
 
-    // Handle mock payment simulation for development/unconfigured environments
-    if (razorpayOrderId.startsWith('order_mock_') || !key || key.includes('your_key_id')) {
-      setMockPaymentData({ orderId, razorpayOrderId, amount, customerName, customerPhone });
-      setShowMockPaymentModal(true);
+    // If server returned a mock order ID, it means Razorpay keys are not configured on the server
+    if (razorpayOrderId.startsWith('order_mock_')) {
+      if (process.env.NODE_ENV === 'development') {
+        // Allow mock simulation only in development
+        setMockPaymentData({ orderId, razorpayOrderId, amount, customerName, customerPhone });
+        setShowMockPaymentModal(true);
+      } else {
+        toast.error('Payment gateway is not configured. Please contact support.');
+      }
+      return;
+    }
+
+    // If no Razorpay key is available, show an actionable error
+    if (!key || key.includes('your_key_id')) {
+      toast.error('Payment gateway configuration error. Please contact support.');
+      console.error('Razorpay key is missing. Set RAZORPAY_KEY_ID in server environment variables.');
       return;
     }
 
