@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   ShoppingBag, UtensilsCrossed, LayoutDashboard, Tag, BarChart3, Settings, LogOut,
-  Menu, Search, Clock, ChevronDown, RefreshCw, User, MapPin
+  Menu, Search, Clock, ChevronDown, RefreshCw, User, MapPin, Palette
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { label: 'Orders', icon: ShoppingBag, href: '/owner/orders' },
   { label: 'Coupons', icon: Tag, href: '/owner/coupons' },
   { label: 'Analytics', icon: BarChart3, href: '/owner/analytics' },
+  { label: 'Customize', icon: Palette, href: '/owner/customize' },
   { label: 'Settings', icon: Settings, href: '/owner/settings' },
 ];
 

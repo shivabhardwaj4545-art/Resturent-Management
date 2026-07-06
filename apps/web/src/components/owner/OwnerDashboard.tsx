@@ -3,26 +3,13 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import {
-  LayoutDashboard, UtensilsCrossed, ShoppingBag, Tag, BarChart3, Settings,
-  LogOut, Menu, X, TrendingUp, Users, DollarSign, Clock, Bell, ChevronRight,
-  Power, Star
-} from 'lucide-react';
-import { useAuthStore } from '@/store/auth.store';
-import api from '@/lib/api';
-import Link from 'next/link';
-import { useRouter, usePathname } from 'next/navigation';
-import { toast } from 'sonner';
-import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
-} from 'recharts';
-
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
   { label: 'Menu', icon: UtensilsCrossed, href: '/owner/menu' },
   { label: 'Orders', icon: ShoppingBag, href: '/owner/orders' },
   { label: 'Coupons', icon: Tag, href: '/owner/coupons' },
   { label: 'Analytics', icon: BarChart3, href: '/owner/analytics' },
+  { label: 'Customize', icon: Palette, href: '/owner/customize' },
   { label: 'Settings', icon: Settings, href: '/owner/settings' },
 ];
 

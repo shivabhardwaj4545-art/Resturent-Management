@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { label: 'Orders', icon: ShoppingBag, href: '/owner/orders' },
   { label: 'Coupons', icon: Tag, href: '/owner/coupons' },
   { label: 'Analytics', icon: BarChart3, href: '/owner/analytics' },
+  { label: 'Customize', icon: Palette, href: '/owner/customize' },
   { label: 'Settings', icon: Settings, href: '/owner/settings' },
 ];
 

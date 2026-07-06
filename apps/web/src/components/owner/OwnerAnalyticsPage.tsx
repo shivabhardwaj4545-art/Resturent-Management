@@ -4,13 +4,14 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
-  BarChart3, UtensilsCrossed, LayoutDashboard, ShoppingBag, Tag, Settings, LogOut,
-  Menu, TrendingUp, Star, DollarSign
+  BarChart3, LayoutDashboard, UtensilsCrossed, ShoppingBag, Tag, Settings, LogOut,
+  Menu, TrendingUp, DollarSign, Users, Calendar, Star, Palette
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
+import { toast } from 'sonner';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { label: 'Orders', icon: ShoppingBag, href: '/owner/orders' },
   { label: 'Coupons', icon: Tag, href: '/owner/coupons' },
   { label: 'Analytics', icon: BarChart3, href: '/owner/analytics' },
+  { label: 'Customize', icon: Palette, href: '/owner/customize' },
   { label: 'Settings', icon: Settings, href: '/owner/settings' },
 ];
 
