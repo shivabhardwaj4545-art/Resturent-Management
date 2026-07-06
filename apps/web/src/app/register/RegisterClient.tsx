@@ -16,7 +16,6 @@ const registerSchema = z.object({
   email: z.string().email('Enter a valid email'),
   phone: z.string().min(10, 'Enter a valid 10-digit phone number').max(15, 'Phone number too long').optional().or(z.literal('')),
   password: z.string().min(6, 'Password must be at least 6 characters'),
-  role: z.enum(['CUSTOMER', 'RESTAURANT_OWNER']),
 });
 
 type RegisterForm = z.infer<typeof registerSchema>;
@@ -37,9 +36,10 @@ export default function RegisterClient() {
 
   const onSubmit = async (data: RegisterForm) => {
     setLoading(true);
-    // Sanitize optional empty phone and append restaurantSlug for customer registration
+    // Sanitize optional empty phone and set role to CUSTOMER
     const payload = {
       ...data,
+      role: 'CUSTOMER',
       phone: data.phone === '' ? undefined : data.phone,
       restaurantSlug: restaurantSlug || undefined,
     };
@@ -147,36 +147,7 @@ export default function RegisterClient() {
               {errors.password && <p className="text-red-400 text-xs mt-1">{errors.password.message}</p>}
             </div>
 
-            <div>
-              <label className="text-sm font-medium text-slate-300 mb-1.5 block">I want to</label>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="flex items-center gap-2 p-3 bg-white/5 border border-white/10 rounded-xl cursor-pointer hover:bg-white/10 transition-colors">
-                  <input
-                    {...register('role')}
-                    type="radio"
-                    value="CUSTOMER"
-                    className="accent-orange-500 text-orange-500"
-                  />
-                  <div className="flex flex-col">
-                    <span className="text-white text-xs font-semibold">Order Food</span>
-                    <span className="text-[10px] text-slate-400">Customer</span>
-                  </div>
-                </label>
-                <label className="flex items-center gap-2 p-3 bg-white/5 border border-white/10 rounded-xl cursor-pointer hover:bg-white/10 transition-colors">
-                  <input
-                    {...register('role')}
-                    type="radio"
-                    value="RESTAURANT_OWNER"
-                    className="accent-orange-500 text-orange-500"
-                  />
-                  <div className="flex flex-col">
-                    <span className="text-white text-xs font-semibold">Sell Food</span>
-                    <span className="text-[10px] text-slate-400">Owner</span>
-                  </div>
-                </label>
-              </div>
-              {errors.role && <p className="text-red-400 text-xs mt-1">{errors.role.message}</p>}
-            </div>
+
 
             <button
               type="submit"
