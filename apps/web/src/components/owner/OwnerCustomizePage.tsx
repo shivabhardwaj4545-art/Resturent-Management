@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Palette, GripVertical, Plus, Trash2, Save, Sparkles, LayoutDashboard,
   UtensilsCrossed, ShoppingBag, Tag, BarChart3, Settings, LogOut, Menu,
-  Check, Eye, RefreshCw, Layers, ArrowUp, ArrowDown, Info, Smartphone
+  Check, Eye, RefreshCw, Layers, ArrowUp, ArrowDown, Info, Smartphone, Loader2
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -33,6 +33,10 @@ const PRESET_THEMES = [
   { name: 'Golden Amber', color: '#F59E0B', bg: 'from-amber-500 to-yellow-600', desc: 'Rich, bakery & cafe vibes' },
   { name: 'Midnight Dark', color: '#3B82F6', bg: 'from-blue-600 to-slate-900', desc: 'Sleek dark lounge layout' },
   { name: 'Berry Grape', color: '#8B5CF6', bg: 'from-violet-500 to-fuchsia-600', desc: 'Trendy dessert & cocktail bar' },
+  { name: 'Sunset Coral', color: '#FF6B6B', bg: 'from-red-400 to-amber-500', desc: 'Warm sunset glow for lounge & diner' },
+  { name: 'Mint Refresh', color: '#14B8A6', bg: 'from-teal-400 to-emerald-600', desc: 'Clean, light & refreshing smoothies/salads' },
+  { name: 'Deep Violet', color: '#7C3AED', bg: 'from-purple-600 to-indigo-800', desc: 'Premium nightlife & lounge aesthetic' },
+  { name: 'Classic Gold', color: '#D97706', bg: 'from-yellow-600 to-amber-700', desc: 'Luxury fine dining & heritage cuisine' },
 ];
 
 type CustomField = {
@@ -94,11 +98,11 @@ export function OwnerCustomizePage() {
     },
   });
 
-  // Fetch categories
+  // Fetch categories (correct route: /owner/menu/categories)
   const { data: categoriesData, isLoading: isCatLoading } = useQuery({
     queryKey: ['owner-categories'],
     queryFn: async () => {
-      const res = await api.get('/owner/categories');
+      const res = await api.get('/owner/menu/categories');
       return res.data.data.categories as Category[];
     },
   });
@@ -314,7 +318,7 @@ export function OwnerCustomizePage() {
                   <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
                     <div className="flex items-center justify-between mb-4">
                       <div>
-                        <h2 className="font-display font-bold text-lg text-foreground">Color Palettes & Branding</h2>
+                        <h2 className="font-display font-bold text-lg text-foreground">Color Palettes & Branding Themes</h2>
                         <p className="text-xs text-muted-foreground">Pick a theme preset to automatically style your customer-facing QR menu page.</p>
                       </div>
                     </div>
@@ -405,7 +409,9 @@ export function OwnerCustomizePage() {
                     </div>
 
                     {isCatLoading ? (
-                      <div className="py-12 text-center text-sm text-muted-foreground">Loading categories...</div>
+                      <div className="py-12 text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin text-primary" /> Loading categories...
+                      </div>
                     ) : categoriesList.length === 0 ? (
                       <div className="py-12 text-center text-sm text-muted-foreground border border-dashed border-border rounded-2xl">
                         No categories found. Create categories in Menu Management first!
@@ -551,19 +557,29 @@ export function OwnerCustomizePage() {
                   </span>
                 </div>
                 
-                <div className="relative mx-auto w-[290px] h-[580px] rounded-[3rem] border-[10px] border-zinc-950 bg-zinc-950 shadow-2xl overflow-hidden">
+                <div className="relative mx-auto w-[290px] h-[580px] rounded-[3rem] border-[10px] border-zinc-950 bg-zinc-950 shadow-2xl overflow-hidden flex flex-col items-center justify-center">
                   {/* Speaker Notch */}
                   <div className="absolute top-0 left-1/2 -translate-x-1/2 h-4 w-32 bg-zinc-950 rounded-b-2xl z-45 flex items-center justify-center">
                     <div className="w-10 h-1 bg-zinc-800 rounded-full" />
                   </div>
                   
-                  {/* Dynamic Iframe */}
-                  {restaurant?.slug && (
+                  {/* Dynamic Iframe with Loader */}
+                  {isRestLoading ? (
+                    <div className="flex flex-col items-center gap-2 text-zinc-400">
+                      <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                      <span className="text-xs">Loading live preview...</span>
+                    </div>
+                  ) : restaurant?.slug ? (
                     <iframe
+                      key={`${restaurant.slug}-${selectedThemeColor}`}
                       src={iframeUrl}
                       className="w-full h-full border-0 select-none bg-background"
                       title="Menu Preview"
                     />
+                  ) : (
+                    <div className="p-4 text-center text-xs text-zinc-400">
+                      No restaurant slug found. Please setup your restaurant in settings.
+                    </div>
                   )}
                 </div>
               </div>
