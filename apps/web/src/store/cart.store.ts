@@ -39,7 +39,7 @@ interface CartState {
   itemCount: () => number;
   subtotal: () => number;
   gstAmount: () => number;
-  total: () => number;
+  total: (isDineIn?: boolean) => number;
 }
 
 const GST_RATE = 0.18;
@@ -124,11 +124,12 @@ export const useCartStore = create<CartState>()(
 
       gstAmount: () => get().subtotal() * GST_RATE,
 
-      total: () => {
+      total: (isDineIn = false) => {
         const subtotal = get().subtotal();
         const gst = subtotal * GST_RATE;
         const discount = get().couponDiscount;
-        return Math.max(subtotal + gst + DELIVERY_FEE + PACKAGING_FEE - discount, 0);
+        const fees = isDineIn ? 0 : (DELIVERY_FEE + PACKAGING_FEE);
+        return Math.max(subtotal + gst + fees - discount, 0);
       },
     }),
     {

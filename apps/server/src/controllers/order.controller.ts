@@ -142,7 +142,7 @@ export async function placeGuestOrder(
       throw new AppError('Restaurant is currently closed or outside operating hours.', 400, 'RESTAURANT_CLOSED');
     }
 
-    const isDineIn = !!tableNumber;
+    const isDineIn = true; // Guest orders are always at the restaurant (dine-in/takeaway)
     const { items, subtotal, gstAmount, deliveryFee, packagingFee, discount, total, couponId } =
       await calculateOrderTotal(cartItems, couponCode, restaurant.id, undefined, isDineIn);
 
@@ -311,7 +311,7 @@ export async function placeOrder(
       throw new AppError('Your cart is empty.', 400, 'EMPTY_CART');
     }
 
-    const isDineIn = !!tableNumber;
+    const isDineIn = !addressId && !newAddress; // If no delivery address is specified, it is dine-in/takeaway
     const { items, subtotal, gstAmount, deliveryFee, packagingFee, discount, total, couponId } =
       await calculateOrderTotal(
         cartItems,

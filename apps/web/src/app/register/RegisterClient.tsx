@@ -29,9 +29,6 @@ export default function RegisterClient() {
 
   const { register, handleSubmit, formState: { errors } } = useForm<RegisterForm>({
     resolver: zodResolver(registerSchema),
-    defaultValues: {
-      role: 'CUSTOMER',
-    }
   });
 
   const onSubmit = async (data: RegisterForm) => {
