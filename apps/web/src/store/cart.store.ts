@@ -124,7 +124,7 @@ export const useCartStore = create<CartState>()(
 
       gstAmount: () => get().subtotal() * GST_RATE,
 
-      total: (isDineIn = false) => {
+      total: (isDineIn = true) => {
         const subtotal = get().subtotal();
         const gst = subtotal * GST_RATE;
         const discount = get().couponDiscount;

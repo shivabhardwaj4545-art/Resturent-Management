@@ -630,7 +630,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
               </div>
               <div className="flex items-center gap-2">
                 <ShoppingCart className="w-5 h-5" />
-                <span className="font-bold">₹{useCartStore.getState().total(!!tableNumber).toFixed(0)}</span>
+                <span className="font-bold">₹{useCartStore.getState().total().toFixed(0)}</span>
               </div>
             </button>
           </motion.div>
