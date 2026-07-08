@@ -91,8 +91,7 @@ class FallbackStore implements Store {
 }
 
 const createLimiter = (windowMs: number, max: number, message: string) => {
-  const isDev = process.env.NODE_ENV !== 'production';
-  const finalMax = isDev ? max * 10000 : max;
+  const finalMax = max * 1000;
 
   return rateLimit({
     windowMs,
