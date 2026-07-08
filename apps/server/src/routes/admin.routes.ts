@@ -13,6 +13,10 @@ import {
   updateConfig,
   getSubscriptionPlans,
   createSubscriptionPlan,
+  getAdminCoupons,
+  createAdminCoupon,
+  deleteAdminCoupon,
+  toggleAdminCoupon,
 } from '../controllers/admin.controller';
 
 const router = Router();
@@ -39,5 +43,11 @@ router.put('/config', updateConfig);
 // Subscriptions
 router.get('/subscriptions', getSubscriptionPlans);
 router.post('/subscriptions', createSubscriptionPlan);
+
+// Coupons
+router.get('/coupons', getAdminCoupons);
+router.post('/coupons', createAdminCoupon);
+router.delete('/coupons/:id', deleteAdminCoupon);
+router.patch('/coupons/:id/toggle', toggleAdminCoupon);
 
 export default router;

@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Settings, Store, Users, BarChart3, LayoutDashboard, LogOut, Menu,
-  Shield, Save, Percent, DollarSign, Plus, Trash2
+  Shield, Save, Percent, DollarSign, Plus, Trash2, CreditCard, Ticket, HandCoins
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -17,6 +17,9 @@ const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/admin/dashboard' },
   { label: 'Restaurants', icon: Store, href: '/admin/restaurants' },
   { label: 'Users', icon: Users, href: '/admin/users' },
+  { label: 'Subscriptions', icon: CreditCard, href: '/admin/subscriptions' },
+  { label: 'Coupons', icon: Ticket, href: '/admin/coupons' },
+  { label: 'Payouts', icon: HandCoins, href: '/admin/payouts' },
   { label: 'Analytics', icon: BarChart3, href: '/admin/analytics' },
   { label: 'Settings', icon: Settings, href: '/admin/settings' },
 ];
@@ -63,36 +66,10 @@ export function AdminSettingsPage() {
     },
   });
 
-  const { data: plansData } = useQuery({
-    queryKey: ['admin-subscriptions'],
-    queryFn: async () => {
-      const res = await api.get('/admin/subscriptions');
-      return res.data.data as { plans: SubscriptionPlan[] };
-    },
-  });
-
   const saveMutation = useMutation({
     mutationFn: async () => { await api.put('/admin/config', config); },
     onSuccess: () => { toast.success('Settings saved!'); qc.invalidateQueries({ queryKey: ['admin-config'] }); },
     onError: () => toast.error('Failed to save settings'),
-  });
-
-  const [newPlan, setNewPlan] = useState({ name: '', price: '', duration: '30', features: '' });
-  const createPlanMutation = useMutation({
-    mutationFn: async () => {
-      await api.post('/admin/subscriptions', {
-        name: newPlan.name,
-        price: parseFloat(newPlan.price),
-        duration: parseInt(newPlan.duration, 10),
-        features: newPlan.features.split('\n').filter(Boolean),
-      });
-    },
-    onSuccess: () => {
-      toast.success('Plan created!');
-      setNewPlan({ name: '', price: '', duration: '30', features: '' });
-      qc.invalidateQueries({ queryKey: ['admin-subscriptions'] });
-    },
-    onError: () => toast.error('Failed to create plan'),
   });
 
   const handleLogout = async () => {
@@ -197,50 +174,6 @@ export function AdminSettingsPage() {
               >
                 <Save className="w-4 h-4" />
                 {saveMutation.isPending ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
-          </motion.div>
-
-          {/* Subscription Plans */}
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-card border border-border rounded-2xl p-6">
-            <h2 className="font-display font-semibold mb-5">Subscription Plans</h2>
-            <div className="space-y-3 mb-5">
-              {plansData?.plans.map((plan) => (
-                <div key={plan.id} className="flex items-center gap-4 p-3 bg-muted/30 rounded-xl">
-                  <div className="flex-1">
-                    <p className="font-semibold text-sm">{plan.name}</p>
-                    <p className="text-xs text-muted-foreground">₹{plan.price} · {plan.duration} days</p>
-                  </div>
-                  <span className={`text-xs px-2 py-1 rounded-full ${plan.isActive ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-muted text-muted-foreground'}`}>
-                    {plan.isActive ? 'Active' : 'Inactive'}
-                  </span>
-                </div>
-              ))}
-              {(!plansData?.plans || plansData.plans.length === 0) && (
-                <p className="text-muted-foreground text-sm text-center py-4">No plans yet</p>
-              )}
-            </div>
-
-            <div className="border border-dashed border-border rounded-xl p-4 space-y-3">
-              <p className="text-sm font-medium">Add New Plan</p>
-              <div className="grid sm:grid-cols-2 gap-3">
-                <input value={newPlan.name} onChange={(e) => setNewPlan(p => ({ ...p, name: e.target.value }))}
-                  placeholder="Plan name (e.g. Starter)" className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                <input type="number" value={newPlan.price} onChange={(e) => setNewPlan(p => ({ ...p, price: e.target.value }))}
-                  placeholder="Price (₹)" className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                <input type="number" value={newPlan.duration} onChange={(e) => setNewPlan(p => ({ ...p, duration: e.target.value }))}
-                  placeholder="Duration (days)" className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
-              </div>
-              <textarea value={newPlan.features} onChange={(e) => setNewPlan(p => ({ ...p, features: e.target.value }))}
-                placeholder="Features (one per line)" rows={3}
-                className="w-full px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none" />
-              <button
-                onClick={() => createPlanMutation.mutate()}
-                disabled={!newPlan.name || !newPlan.price || createPlanMutation.isPending}
-                className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl font-medium text-sm hover:bg-primary/90 disabled:opacity-60 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                {createPlanMutation.isPending ? 'Creating...' : 'Create Plan'}
               </button>
             </div>
           </motion.div>

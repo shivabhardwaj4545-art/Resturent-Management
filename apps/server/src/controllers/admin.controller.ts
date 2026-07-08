@@ -357,3 +357,58 @@ export async function createRestaurant(req: AuthenticatedRequest, res: Response,
     next(error);
   }
 }
+
+export async function getAdminCoupons(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const coupons = await prisma.coupon.findMany({
+      where: { restaurantId: null },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json({ success: true, data: { coupons } });
+  } catch (error) { next(error); }
+}
+
+export async function createAdminCoupon(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { code, type, value, minOrderAmount, maxDiscount, maxUses, expiresAt } = req.body as {
+      code: string; type: 'FLAT' | 'PERCENT'; value: number;
+      minOrderAmount?: number; maxDiscount?: number; maxUses?: number; expiresAt?: string;
+    };
+    const coupon = await prisma.coupon.create({
+      data: {
+        code: code.toUpperCase(),
+        type,
+        value,
+        minOrderAmount: minOrderAmount || 0,
+        maxDiscount: maxDiscount || null,
+        maxUses: maxUses || null,
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
+        restaurantId: null,
+      },
+    });
+    res.status(201).json({ success: true, data: { coupon } });
+  } catch (error) { next(error); }
+}
+
+export async function deleteAdminCoupon(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    const coupon = await prisma.coupon.findFirst({ where: { id, restaurantId: null } });
+    if (!coupon) throw new AppError('Coupon not found.', 404, 'COUPON_NOT_FOUND');
+    await prisma.coupon.delete({ where: { id } });
+    res.json({ success: true, message: 'Coupon deleted' });
+  } catch (error) { next(error); }
+}
+
+export async function toggleAdminCoupon(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    const coupon = await prisma.coupon.findFirst({ where: { id, restaurantId: null } });
+    if (!coupon) throw new AppError('Coupon not found.', 404, 'COUPON_NOT_FOUND');
+    const updated = await prisma.coupon.update({
+      where: { id },
+      data: { isActive: !coupon.isActive },
+    });
+    res.json({ success: true, data: { isActive: updated.isActive } });
+  } catch (error) { next(error); }
+}
