@@ -418,7 +418,7 @@ export async function getOrders(req: AuthenticatedRequest, res: Response, next: 
         skip,
         take: parseInt(limit, 10),
         include: {
-          user: { select: { name: true, phone: true } },
+          user: { select: { name: true, phone: true, email: true } },
           items: { include: { menuItem: { select: { name: true } } } },
           address: true,
         },
@@ -473,9 +473,27 @@ export async function updateOrderStatus(req: AuthenticatedRequest, res: Response
 
     if (!order) throw new AppError('Order not found.', 404, 'ORDER_NOT_FOUND');
 
+    const statusDateFields: Record<string, string> = {
+      CONFIRMED: 'confirmedAt',
+      PREPARING: 'preparingAt',
+      BAKING: 'bakingAt',
+      READY: 'readyAt',
+      ON_THE_WAY: 'onTheWayAt',
+      DELIVERED: 'deliveredAt',
+      CANCELLED: 'cancelledAt',
+    };
+
+    const updateData: Record<string, any> = {
+      status: status as 'CONFIRMED' | 'PREPARING' | 'BAKING' | 'READY' | 'ON_THE_WAY' | 'DELIVERED' | 'CANCELLED',
+    };
+    const dateField = statusDateFields[status];
+    if (dateField) {
+      updateData[dateField] = new Date();
+    }
+
     const updatedOrder = await prisma.order.update({
       where: { id },
-      data: { status: status as 'CONFIRMED' | 'PREPARING' | 'BAKING' | 'READY' | 'ON_THE_WAY' | 'DELIVERED' | 'CANCELLED' },
+      data: updateData,
     });
 
     // Emit real-time update via Socket.io

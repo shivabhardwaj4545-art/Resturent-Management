@@ -48,6 +48,7 @@ app.use(
       if (
         allowedOrigins.includes(normalizedOrigin) ||
         normalizedOrigin.endsWith('.up.railway.app') ||
+        normalizedOrigin.endsWith('.onrender.com') ||
         process.env.NODE_ENV !== 'production'
       ) {
         return callback(null, true);

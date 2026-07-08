@@ -321,6 +321,15 @@ model Order {
   updatedAt         DateTime      @updatedAt
   deletedAt         DateTime?
 
+  // Transition Timestamps
+  confirmedAt       DateTime?
+  preparingAt       DateTime?
+  bakingAt          DateTime?
+  readyAt           DateTime?
+  onTheWayAt        DateTime?
+  deliveredAt       DateTime?
+  cancelledAt       DateTime?
+
   // Relations
   restaurant  Restaurant    @relation(fields: [restaurantId], references: [id])
   user        User?         @relation(fields: [userId], references: [id])

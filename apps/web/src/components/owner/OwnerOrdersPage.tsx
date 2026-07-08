@@ -5,7 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   ShoppingBag, UtensilsCrossed, LayoutDashboard, Tag, BarChart3, Settings, LogOut,
-  Menu, Search, Clock, ChevronDown, RefreshCw, User, MapPin, Palette
+  Menu, Search, Clock, ChevronDown, RefreshCw, User, MapPin, Palette,
+  Mail, Phone, CreditCard, Receipt, Check
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -44,10 +45,44 @@ const NEXT_STATUS: Record<string, string[]> = {
 };
 
 type Order = {
-  id: string; status: string; total: number; createdAt: string;
-  tableNumber: string | null; guestName: string | null;
-  user: { name: string } | null;
-  items: Array<{ quantity: number; menuItem: { name: string }; subtotal: number }>;
+  id: string;
+  status: string;
+  paymentMethod: string;
+  paymentStatus: string;
+  subtotal: number;
+  gstAmount: number;
+  deliveryFee: number;
+  packagingFee: number;
+  discount: number;
+  total: number;
+  addressId: string | null;
+  tableNumber: string | null;
+  guestName: string | null;
+  guestPhone: string | null;
+  createdAt: string;
+  updatedAt: string;
+  confirmedAt: string | null;
+  preparingAt: string | null;
+  bakingAt: string | null;
+  readyAt: string | null;
+  onTheWayAt: string | null;
+  deliveredAt: string | null;
+  cancelledAt: string | null;
+  user: { name: string; phone: string | null; email: string | null } | null;
+  address: { flat: string; street: string; area: string; city: string; pincode: string } | null;
+  items: Array<{ quantity: number; menuItem: { name: string }; subtotal: number; unitPrice: number }>;
+};
+
+const formatTime = (timeStr: string | null | undefined) => {
+  if (!timeStr) return 'Pending';
+  const date = new Date(timeStr);
+  const isToday = new Date().toDateString() === date.toDateString();
+  const timeOpt: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' };
+  if (isToday) {
+    return date.toLocaleTimeString('en-IN', timeOpt);
+  } else {
+    return `${date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} ${date.toLocaleTimeString('en-IN', timeOpt)}`;
+  }
 };
 
 export function OwnerOrdersPage() {
@@ -198,26 +233,253 @@ export function OwnerOrdersPage() {
                   </div>
 
                   {expandedOrder === order.id && (
-                    <div className="px-4 pb-4 border-t border-border pt-3 space-y-3">
-                      <div className="space-y-1.5">
-                        {order.items.map((item, idx) => (
-                          <div key={idx} className="flex items-center justify-between text-sm">
-                            <span className="text-muted-foreground">{item.quantity}× {item.menuItem.name}</span>
-                            <span>₹{item.subtotal.toFixed(0)}</span>
+                    <div className="px-5 pb-5 border-t border-border pt-4 bg-muted/10">
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                        
+                        {/* Left Pane - Items and Billing Details (spans 2 columns on large screens) */}
+                        <div className="lg:col-span-2 space-y-5">
+                          
+                          {/* Order Items Table */}
+                          <div className="space-y-2">
+                            <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Order Items</p>
+                            <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border">
+                              {order.items.map((item, idx) => (
+                                <div key={idx} className="flex items-center justify-between p-3 text-sm">
+                                  <div className="flex-1">
+                                    <span className="font-medium text-foreground">{item.menuItem.name}</span>
+                                    <span className="text-xs text-muted-foreground ml-2">
+                                      ({item.quantity} × ₹{item.unitPrice || (item.subtotal / item.quantity).toFixed(0)})
+                                    </span>
+                                  </div>
+                                  <span className="font-semibold text-foreground">₹{item.subtotal.toFixed(0)}</span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                        ))}
-                      </div>
-                      {NEXT_STATUS[order.status]?.length > 0 && (
-                        <div className="flex gap-2 flex-wrap pt-2">
-                          {NEXT_STATUS[order.status].map((next) => (
-                            <button key={next} onClick={() => updateStatusMutation.mutate({ id: order.id, status: next })}
-                              disabled={updateStatusMutation.isPending}
-                              className={`px-3 py-1.5 text-xs font-medium rounded-xl transition-colors disabled:opacity-50 ${next === 'CANCELLED' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}>
-                              Mark as {next}
-                            </button>
-                          ))}
+
+                          {/* Sub-grid: Customer info and Receipt Billing */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            
+                            {/* Customer & Address Details */}
+                            <div className="space-y-3 bg-card border border-border p-4 rounded-xl flex flex-col justify-between">
+                              <div>
+                                <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-2.5">
+                                  <User className="w-3.5 h-3.5" /> Customer Details
+                                </p>
+                                <div className="space-y-2 text-sm">
+                                  <p className="font-semibold text-foreground">
+                                    {order.guestName ?? order.user?.name ?? 'Guest Customer'}
+                                  </p>
+                                  {(order.guestPhone || order.user?.phone) && (
+                                    <p className="text-muted-foreground flex items-center gap-2">
+                                      <Phone className="w-3.5 h-3.5 flex-shrink-0" />
+                                      <a href={`tel:${order.guestPhone ?? order.user?.phone}`} className="hover:text-primary transition-colors">
+                                        {order.guestPhone ?? order.user?.phone}
+                                      </a>
+                                    </p>
+                                  )}
+                                  {order.user?.email && (
+                                    <p className="text-muted-foreground flex items-center gap-2 truncate">
+                                      <Mail className="w-3.5 h-3.5 flex-shrink-0" />
+                                      <a href={`mailto:${order.user.email}`} className="hover:text-primary transition-colors truncate">
+                                        {order.user.email}
+                                      </a>
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              <div className="border-t border-border pt-3 mt-3">
+                                {order.address ? (
+                                  <div className="space-y-1">
+                                    <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-1">
+                                      <MapPin className="w-3.5 h-3.5 flex-shrink-0" /> Delivery Address
+                                    </p>
+                                    <p className="text-muted-foreground text-xs leading-relaxed">
+                                      {order.address.flat}, {order.address.street}, {order.address.area}, {order.address.city} - {order.address.pincode}
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-1.5">
+                                    <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Order Mode</p>
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                                      Dine-In {order.tableNumber ? `(Table ${order.tableNumber})` : ''}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Billing details / Receipt Summary */}
+                            <div className="space-y-3 bg-card border border-border p-4 rounded-xl">
+                              <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                                <Receipt className="w-3.5 h-3.5" /> Receipt Summary
+                              </p>
+                              <div className="space-y-2 text-xs text-muted-foreground">
+                                <div className="flex justify-between">
+                                  <span>Subtotal</span>
+                                  <span className="text-foreground font-medium">₹{order.subtotal?.toFixed(2) ?? '0.00'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>GST ({process.env.NEXT_PUBLIC_GST_RATE ?? '18'}%)</span>
+                                  <span className="text-foreground font-medium">₹{order.gstAmount?.toFixed(2) ?? '0.00'}</span>
+                                </div>
+                                {order.deliveryFee > 0 && (
+                                  <div className="flex justify-between">
+                                    <span>Delivery Fee</span>
+                                    <span className="text-foreground font-medium">₹{order.deliveryFee.toFixed(2)}</span>
+                                  </div>
+                                )}
+                                {order.packagingFee > 0 && (
+                                  <div className="flex justify-between">
+                                    <span>Packaging Fee</span>
+                                    <span className="text-foreground font-medium">₹{order.packagingFee.toFixed(2)}</span>
+                                  </div>
+                                )}
+                                {order.discount > 0 && (
+                                  <div className="flex justify-between text-green-600 dark:text-green-400 font-medium">
+                                    <span>Discount</span>
+                                    <span>-₹{order.discount.toFixed(2)}</span>
+                                  </div>
+                                )}
+                                <div className="flex justify-between text-foreground text-sm font-bold border-t border-border pt-2 mt-2">
+                                  <span>Grand Total</span>
+                                  <span className="text-primary text-base font-extrabold">₹{order.total?.toFixed(2) ?? '0.00'}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                          </div>
                         </div>
-                      )}
+
+                        {/* Right Pane - Timeline & Payment Information & Actions */}
+                        <div className="space-y-5">
+                          
+                          {/* Payment status, type and Action buttons */}
+                          <div className="bg-card border border-border p-4 rounded-xl space-y-4">
+                            <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                              <CreditCard className="w-3.5 h-3.5" /> Payment Details
+                            </p>
+                            <div className="flex gap-2 flex-wrap">
+                              {/* Payment Method Badge */}
+                              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
+                                order.paymentMethod === 'RAZORPAY' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300' :
+                                order.paymentMethod === 'WALLET' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' :
+                                'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
+                              }`}>
+                                <CreditCard className="w-3 h-3" />
+                                {order.paymentMethod === 'RAZORPAY' ? 'Razorpay' : order.paymentMethod === 'WALLET' ? 'Wallet' : 'COD'}
+                              </span>
+                              
+                              {/* Payment Status Badge */}
+                              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
+                                order.paymentStatus === 'PAID' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
+                                order.paymentStatus === 'FAILED' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' :
+                                order.paymentStatus === 'REFUNDED' ? 'bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-300' :
+                                'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                              }`}>
+                                {order.paymentStatus}
+                              </span>
+                            </div>
+
+                            {/* Action Buttons */}
+                            {NEXT_STATUS[order.status]?.length > 0 && (
+                              <div className="flex gap-2 flex-wrap pt-2 border-t border-border">
+                                {NEXT_STATUS[order.status].map((next) => (
+                                  <button key={next} onClick={() => updateStatusMutation.mutate({ id: order.id, status: next })}
+                                    disabled={updateStatusMutation.isPending}
+                                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all disabled:opacity-50 flex items-center gap-1 shadow-sm ${
+                                      next === 'CANCELLED' 
+                                        ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200' 
+                                        : 'bg-primary text-primary-foreground hover:bg-primary/95 hover:shadow-md'
+                                    }`}>
+                                    {next !== 'CANCELLED' && <Check className="w-3 h-3" />}
+                                    Mark as {next}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Visual Progress Timeline */}
+                          <div className="bg-card border border-border p-4 rounded-xl space-y-4">
+                            <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5" /> Lifecycle Timeline
+                            </p>
+                            
+                            <div className="relative pl-3 space-y-4 before:absolute before:left-[5px] before:top-2 before:bottom-2 before:w-[2px] before:bg-border">
+                              
+                              {/* Placed Step */}
+                              <div className="relative pl-5">
+                                <span className="absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full bg-primary ring-4 ring-primary/20" />
+                                <div className="text-xs">
+                                  <p className="font-semibold text-foreground">Placed</p>
+                                  <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.createdAt)}</p>
+                                </div>
+                              </div>
+
+                              {/* Confirmed Step */}
+                              <div className="relative pl-5">
+                                <span className={`absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full transition-all ${
+                                  order.confirmedAt ? 'bg-primary ring-4 ring-primary/20' : 'bg-card border-2 border-muted-foreground/35'
+                                }`} />
+                                <div className="text-xs">
+                                  <p className={`font-semibold ${order.confirmedAt ? 'text-foreground' : 'text-muted-foreground'}`}>Confirmed</p>
+                                  <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.confirmedAt)}</p>
+                                </div>
+                              </div>
+
+                              {/* Kitchen (Preparing / Baking) Step */}
+                              <div className="relative pl-5">
+                                <span className={`absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full transition-all ${
+                                  (order.preparingAt || order.bakingAt) ? 'bg-primary ring-4 ring-primary/20' : 'bg-card border-2 border-muted-foreground/35'
+                                }`} />
+                                <div className="text-xs">
+                                  <p className={`font-semibold ${(order.preparingAt || order.bakingAt) ? 'text-foreground' : 'text-muted-foreground'}`}>Preparing</p>
+                                  <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.preparingAt || order.bakingAt)}</p>
+                                </div>
+                              </div>
+
+                              {/* Ready Step */}
+                              <div className="relative pl-5">
+                                <span className={`absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full transition-all ${
+                                  order.readyAt ? 'bg-primary ring-4 ring-primary/20' : 'bg-card border-2 border-muted-foreground/35'
+                                }`} />
+                                <div className="text-xs">
+                                  <p className={`font-semibold ${order.readyAt ? 'text-foreground' : 'text-muted-foreground'}`}>Ready</p>
+                                  <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.readyAt)}</p>
+                                </div>
+                              </div>
+
+                              {/* Delivered / Served Step */}
+                              {order.status !== 'CANCELLED' ? (
+                                <div className="relative pl-5">
+                                  <span className={`absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full transition-all ${
+                                    order.deliveredAt ? 'bg-green-500 ring-4 ring-green-500/20' : 'bg-card border-2 border-muted-foreground/35'
+                                  }`} />
+                                  <div className="text-xs">
+                                    <p className={`font-semibold ${order.deliveredAt ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                      {order.addressId || order.address ? 'Delivered' : 'Served'}
+                                    </p>
+                                    <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.deliveredAt)}</p>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="relative pl-5">
+                                  <span className="absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full bg-red-500 ring-4 ring-red-500/20" />
+                                  <div className="text-xs">
+                                    <p className="font-semibold text-red-500">Cancelled</p>
+                                    <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.cancelledAt)}</p>
+                                  </div>
+                                </div>
+                              )}
+
+                            </div>
+                          </div>
+
+                        </div>
+
+                      </div>
                     </div>
                   )}
                 </motion.div>
