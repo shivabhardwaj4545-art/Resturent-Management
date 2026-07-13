@@ -98,6 +98,8 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, themeCo
     onClose();
     const params = new URLSearchParams();
     if (tableNumber) params.set('table', tableNumber);
+    const token = localStorage.getItem(`table_token_${restaurantSlug}`);
+    if (token) params.set('token', token);
     router.push(`/r/${restaurantSlug}/checkout?${params.toString()}`);
   };
 

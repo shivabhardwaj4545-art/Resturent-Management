@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ArrowRight, QrCode, Zap, BarChart3, Shield, Star, ChefHat, Clock, Smartphone } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { useState, useEffect } from 'react';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export default function HomePage() {
   const { user } = useAuthStore();
@@ -14,43 +15,44 @@ export default function HomePage() {
     setMounted(true);
   }, []);
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white overflow-hidden">
+    <div className="min-h-screen bg-background text-foreground overflow-hidden">
       {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 bg-slate-950/80 backdrop-blur-xl border-b border-white/5">
+      <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 bg-background/80 backdrop-blur-xl border-b border-border">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center">
             <QrCode className="w-4 h-4 text-white" />
           </div>
-          <span className="font-display font-bold text-xl">QR Restaurant</span>
+          <span className="font-display font-bold text-xl text-foreground">QR Restaurant</span>
         </div>
-        <div className="hidden md:flex items-center gap-8 text-sm text-slate-400">
-          <a href="#features" className="hover:text-white transition-colors">Features</a>
-          <a href="#how-it-works" className="hover:text-white transition-colors">How It Works</a>
-          <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
+        <div className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
+          <a href="#features" className="hover:text-foreground transition-colors">Features</a>
+          <a href="#how-it-works" className="hover:text-foreground transition-colors">How It Works</a>
+          <a href="#pricing" className="hover:text-foreground transition-colors">Pricing</a>
         </div>
         <div className="flex items-center gap-3">
+          <ThemeToggle />
           {!mounted ? (
-            <div className="h-9 w-20 skeleton rounded-lg bg-white/10" />
+            <div className="h-9 w-20 skeleton rounded-lg" />
           ) : user ? (
             <div className="flex items-center gap-3">
               {user.role === 'SUPER_ADMIN' && (
-                <Link href="/admin/dashboard" className="text-sm bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 rounded-lg transition-all font-medium text-white">
+                <Link href="/admin/dashboard" className="text-sm bg-muted hover:bg-accent border border-border px-4 py-2 rounded-lg transition-all font-medium text-foreground">
                   Admin Dashboard
                 </Link>
               )}
               {user.role === 'RESTAURANT_OWNER' && (
-                <Link href="/owner/dashboard" className="text-sm bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 rounded-lg transition-all font-medium text-white">
+                <Link href="/owner/dashboard" className="text-sm bg-muted hover:bg-accent border border-border px-4 py-2 rounded-lg transition-all font-medium text-foreground">
                   Restaurant Dashboard
                 </Link>
               )}
               {user.role === 'CUSTOMER' && (
-                <Link href="/r/upstates" className="text-sm bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 rounded-lg transition-all font-medium text-white">
+                <Link href="/r/upstates" className="text-sm bg-muted hover:bg-accent border border-border px-4 py-2 rounded-lg transition-all font-medium text-foreground">
                   Browse Menu
                 </Link>
               )}
             </div>
           ) : (
-            <Link href="/login" className="text-sm bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 rounded-lg transition-all text-white font-medium">
+            <Link href="/login" className="text-sm bg-muted hover:bg-accent border border-border px-4 py-2 rounded-lg transition-all text-foreground font-medium">
               Login
             </Link>
           )}
@@ -85,7 +87,7 @@ export default function HomePage() {
               </span>
             </h1>
 
-            <p className="text-slate-400 text-lg md:text-xl max-w-2xl mx-auto mb-10 leading-relaxed">
+            <p className="text-muted-foreground text-lg md:text-xl max-w-2xl mx-auto mb-10 leading-relaxed">
               The complete QR-based restaurant ordering platform. Customers scan, browse, order, and track — 
               all without downloading an app. You get real-time orders, AI insights, and powerful analytics.
             </p>
@@ -97,16 +99,16 @@ export default function HomePage() {
               </Link>
               {mounted && user ? (
                 user.role === 'SUPER_ADMIN' ? (
-                  <Link href="/admin/dashboard" className="flex items-center gap-2 justify-center bg-white/5 hover:bg-white/10 border border-white/10 px-6 py-3 rounded-xl font-semibold transition-all text-base">
+                  <Link href="/admin/dashboard" className="flex items-center gap-2 justify-center bg-muted hover:bg-accent border border-border px-6 py-3 rounded-xl font-semibold transition-all text-base text-foreground">
                     Admin Dashboard
                   </Link>
                 ) : user.role === 'RESTAURANT_OWNER' ? (
-                  <Link href="/owner/dashboard" className="flex items-center gap-2 justify-center bg-white/5 hover:bg-white/10 border border-white/10 px-6 py-3 rounded-xl font-semibold transition-all text-base">
+                  <Link href="/owner/dashboard" className="flex items-center gap-2 justify-center bg-muted hover:bg-accent border border-border px-6 py-3 rounded-xl font-semibold transition-all text-base text-foreground">
                     Restaurant Dashboard
                   </Link>
                 ) : null
               ) : (
-                <Link href="/login" className="flex items-center gap-2 justify-center bg-white/5 hover:bg-white/10 border border-white/10 px-6 py-3 rounded-xl font-semibold transition-all text-base">
+                <Link href="/login" className="flex items-center gap-2 justify-center bg-muted hover:bg-accent border border-border px-6 py-3 rounded-xl font-semibold transition-all text-base text-foreground">
                   Restaurant Dashboard
                 </Link>
               )}
@@ -120,30 +122,30 @@ export default function HomePage() {
             transition={{ duration: 0.8, delay: 0.3 }}
             className="mt-20 relative"
           >
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-sm max-w-4xl mx-auto">
+            <div className="bg-card border border-border rounded-2xl p-6 backdrop-blur-sm max-w-4xl mx-auto">
               <div className="grid grid-cols-3 gap-4">
                 {/* QR Panel */}
                 <div className="bg-gradient-to-br from-orange-500/20 to-amber-500/20 border border-orange-500/20 rounded-xl p-4 flex flex-col items-center gap-3">
                   <QrCode className="w-12 h-12 text-orange-400" />
                   <div className="text-center">
-                    <p className="font-semibold text-sm">Scan QR</p>
-                    <p className="text-xs text-slate-400">Table 5</p>
+                    <p className="font-semibold text-sm text-foreground">Scan QR</p>
+                    <p className="text-xs text-muted-foreground">Table 5</p>
                   </div>
                 </div>
 
                 {/* Menu panel */}
-                <div className="bg-white/5 border border-white/10 rounded-xl p-4 col-span-2">
+                <div className="bg-muted border border-border rounded-xl p-4 col-span-2">
                   <div className="flex items-center gap-2 mb-3">
                     <ChefHat className="w-4 h-4 text-orange-400" />
-                    <span className="text-sm font-semibold">Upstates</span>
+                    <span className="text-sm font-semibold text-foreground">Upstates</span>
                     <span className="ml-auto text-xs text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full">● Open</span>
                   </div>
                   <div className="space-y-2">
                     {['Butter Chicken', 'Dal Makhani', 'Garlic Naan'].map((item, i) => (
-                      <div key={item} className="flex items-center justify-between bg-white/5 rounded-lg px-3 py-2">
+                      <div key={item} className="flex items-center justify-between bg-background rounded-lg px-3 py-2">
                         <div className="flex items-center gap-2">
                           <div className={`w-3 h-3 rounded-full border-2 ${i === 0 ? 'border-red-500' : 'border-green-500'}`} />
-                          <span className="text-xs">{item}</span>
+                          <span className="text-xs text-foreground">{item}</span>
                         </div>
                         <span className="text-xs text-orange-400 font-semibold">
                           ₹{[420, 280, 80][i]}
@@ -161,15 +163,15 @@ export default function HomePage() {
                     <Clock className="w-4 h-4 text-green-400" />
                     <span className="text-sm font-semibold text-green-400">Order Tracking</span>
                   </div>
-                  <span className="text-xs text-slate-400">Est. 25 min</span>
+                  <span className="text-xs text-muted-foreground">Est. 25 min</span>
                 </div>
                 <div className="mt-3 flex items-center gap-1">
                   {['Confirmed', 'Preparing', 'Ready', 'Delivered'].map((step, i) => (
                     <div key={step} className="flex items-center gap-1 flex-1">
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${i <= 1 ? 'bg-green-500 text-white' : 'bg-white/10 text-slate-400'}`}>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${i <= 1 ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground'}`}>
                         {i + 1}
                       </div>
-                      {i < 3 && <div className={`flex-1 h-0.5 ${i < 1 ? 'bg-green-500' : 'bg-white/10'}`} />}
+                      {i < 3 && <div className={`flex-1 h-0.5 ${i < 1 ? 'bg-green-500' : 'bg-border'}`} />}
                     </div>
                   ))}
                 </div>
@@ -180,7 +182,7 @@ export default function HomePage() {
       </section>
 
       {/* Stats */}
-      <section className="py-16 px-6 border-y border-white/5">
+      <section className="py-16 px-6 border-y border-border">
         <div className="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
           {[
             { value: '500+', label: 'Restaurants' },
@@ -190,7 +192,7 @@ export default function HomePage() {
           ].map((stat) => (
             <div key={stat.label}>
               <div className="font-display text-3xl font-black gradient-text">{stat.value}</div>
-              <div className="text-slate-400 text-sm mt-1">{stat.label}</div>
+              <div className="text-muted-foreground text-sm mt-1">{stat.label}</div>
             </div>
           ))}
         </div>
@@ -200,11 +202,11 @@ export default function HomePage() {
       <section id="features" className="py-24 px-6">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="font-display text-4xl font-bold mb-4">
+            <h2 className="font-display text-4xl font-bold mb-4 text-foreground">
               Everything you need to{' '}
               <span className="gradient-text">run a modern restaurant</span>
             </h2>
-            <p className="text-slate-400 text-lg max-w-2xl mx-auto">
+            <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
               From QR ordering to AI-powered insights — one platform handles everything.
             </p>
           </div>
@@ -262,11 +264,11 @@ export default function HomePage() {
                 viewport={{ once: true }}
                 className={`bg-gradient-to-br ${feature.color} border ${feature.border} rounded-2xl p-6 card-hover`}
               >
-                <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center mb-4 text-white">
+                <div className="w-12 h-12 rounded-xl bg-white/10 dark:bg-white/10 flex items-center justify-center mb-4 text-foreground">
                   {feature.icon}
                 </div>
-                <h3 className="font-display font-semibold text-lg mb-2">{feature.title}</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">{feature.description}</p>
+                <h3 className="font-display font-semibold text-lg mb-2 text-foreground">{feature.title}</h3>
+                <p className="text-muted-foreground text-sm leading-relaxed">{feature.description}</p>
               </motion.div>
             ))}
           </div>
@@ -277,17 +279,17 @@ export default function HomePage() {
       <section className="py-24 px-6">
         <div className="max-w-3xl mx-auto text-center">
           <div className="bg-gradient-to-br from-orange-500/10 to-amber-500/10 border border-orange-500/20 rounded-3xl p-12">
-            <h2 className="font-display text-4xl font-bold mb-4">
+            <h2 className="font-display text-4xl font-bold mb-4 text-foreground">
               Ready to transform your restaurant?
             </h2>
-            <p className="text-slate-400 mb-8">
+            <p className="text-muted-foreground mb-8">
               Join 500+ restaurants already using QR Restaurant to deliver better dining experiences.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link href="/register" className="btn-premium text-center">
                 Get Started Free
               </Link>
-              <Link href="/r/upstates" className="flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 px-6 py-3 rounded-xl font-semibold transition-all">
+              <Link href="/r/upstates" className="flex items-center justify-center gap-2 bg-muted hover:bg-accent border border-border px-6 py-3 rounded-xl font-semibold transition-all text-foreground">
                 <QrCode className="w-4 h-4" />
                 Try Demo Menu
               </Link>
@@ -297,27 +299,27 @@ export default function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-white/5 py-12 px-6">
+      <footer className="border-t border-border py-12 px-6">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center">
               <QrCode className="w-3 h-3 text-white" />
             </div>
-            <span className="font-display font-bold">QR Restaurant</span>
+            <span className="font-display font-bold text-foreground">QR Restaurant</span>
           </div>
-          <p className="text-slate-500 text-sm">© 2024 QR Restaurant SaaS. Built with ❤️ in India.</p>
-          <div className="flex gap-6 text-sm text-slate-400">
+          <p className="text-muted-foreground text-sm">© 2024 QR Restaurant SaaS. Built with ❤️ in India.</p>
+          <div className="flex gap-6 text-sm text-muted-foreground">
             {(!mounted || !user) && (
               <>
-                <Link href="/login" className="hover:text-white transition-colors">For Restaurants</Link>
-                <Link href="/login" className="hover:text-white transition-colors">Admin</Link>
+                <Link href="/login" className="hover:text-foreground transition-colors">For Restaurants</Link>
+                <Link href="/login" className="hover:text-foreground transition-colors">Admin</Link>
               </>
             )}
             {mounted && user && user.role === 'SUPER_ADMIN' && (
-              <Link href="/admin/dashboard" className="hover:text-white transition-colors">Admin Dashboard</Link>
+              <Link href="/admin/dashboard" className="hover:text-foreground transition-colors">Admin Dashboard</Link>
             )}
             {mounted && user && user.role === 'RESTAURANT_OWNER' && (
-              <Link href="/owner/dashboard" className="hover:text-white transition-colors">Restaurant Dashboard</Link>
+              <Link href="/owner/dashboard" className="hover:text-foreground transition-colors">Restaurant Dashboard</Link>
             )}
           </div>
         </div>

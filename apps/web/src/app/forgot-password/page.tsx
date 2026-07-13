@@ -31,7 +31,7 @@ export default function ForgotPasswordPage() {
       toast.success('Reset link sent successfully!');
       setSubmitted(true);
     } catch (error: any) {
-      const errMsg = error.response?.data?.message || 'Failed to send reset link. Please try again.';
+      const errMsg = error.response?.data?.error || error.response?.data?.message || 'Failed to send reset link. Please try again.';
       toast.error(errMsg);
     } finally {
       setLoading(false);

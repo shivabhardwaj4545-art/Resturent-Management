@@ -52,6 +52,17 @@ export function initializeSocketService(socketServer: SocketIOServer): void {
       void socket.leave(`order:${orderId}`);
     });
 
+    // Customer calls for waiter — re-emit to restaurant owner room
+    socket.on('waiter:call', (data: { restaurantId: string; tableNumber: string }) => {
+      const { restaurantId, tableNumber } = data;
+      logger.info(`Waiter called for restaurant ${restaurantId}, table ${tableNumber}`);
+      io.to(`restaurant:${restaurantId}`).emit('waiter:called', {
+        tableNumber,
+        restaurantId,
+        calledAt: new Date().toISOString(),
+      });
+    });
+
     socket.on('disconnect', () => {
       logger.info(`Socket disconnected: ${socket.id}`);
     });
@@ -61,7 +72,8 @@ export function initializeSocketService(socketServer: SocketIOServer): void {
 // Emit order status update to all listeners of this order
 export function emitOrderStatusUpdate(orderId: string, restaurantId: string, data: {
   orderId: string;
-  status: string;
+  status?: string;
+  paymentStatus?: string;
   updatedAt: string;
   estimatedTime?: number;
 }): void {
@@ -80,6 +92,16 @@ export function emitNewOrder(restaurantId: string, order: unknown): void {
 export function emitNotification(userId: string, notification: unknown): void {
   if (!io) return;
   io.to(`user:${userId}`).emit('notification:new', notification);
+}
+
+// Emit waiter call notification to restaurant
+export function emitWaiterCall(restaurantId: string, tableNumber: string): void {
+  if (!io) return;
+  io.to(`restaurant:${restaurantId}`).emit('waiter:called', {
+    tableNumber,
+    restaurantId,
+    calledAt: new Date().toISOString(),
+  });
 }
 
 export function getSocketIO(): SocketIOServer {

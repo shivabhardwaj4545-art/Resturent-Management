@@ -6,6 +6,7 @@ import { createRazorpayOrder, verifyRazorpaySignature } from '../services/paymen
 import { emitNewOrder, emitNotification } from '../services/socket.service';
 import { sendOrderConfirmationEmail } from '../services/email.service';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
+import { verifyTableSignature } from '../utils/tableSignature';
 
 const GST_RATE = parseFloat(process.env.GST_RATE ?? '18') / 100;
 const DELIVERY_FEE = 40;
@@ -123,11 +124,12 @@ export async function placeGuestOrder(
   next: NextFunction
 ): Promise<void> {
   try {
-    const { guestName, guestPhone, tableNumber, paymentMethod, couponCode, restaurantSlug, cartItems } = req.body as {
+    const { guestName, guestPhone, tableNumber, tableToken, paymentMethod, couponCode, restaurantSlug, cartItems } = req.body as {
       guestName: string;
       guestPhone: string;
       tableNumber?: string;
-      paymentMethod: 'RAZORPAY' | 'COD';
+      tableToken?: string;
+      paymentMethod: 'RAZORPAY' | 'COD' | 'PAY_TO_WAITER';
       couponCode?: string;
       restaurantSlug: string;
       cartItems: Array<{ menuItemId: string; variantId?: string; quantity: number; addOns?: Array<{ id: string; name: string; price: number }> }>;
@@ -140,6 +142,13 @@ export async function placeGuestOrder(
     if (!restaurant) throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
     if (!restaurant.isOpen || !isRestaurantOpen(restaurant.operatingHours, restaurant.isOpen)) {
       throw new AppError('Restaurant is currently closed or outside operating hours.', 400, 'RESTAURANT_CLOSED');
+    }
+
+    // Verify table number signature to prevent table spoofing
+    if (tableNumber && tableNumber.trim() !== '') {
+      if (!tableToken || typeof tableToken !== 'string' || !verifyTableSignature(restaurant.id, tableNumber.trim(), tableToken)) {
+        throw new AppError('Invalid table QR code signature. Please scan the QR code on your table.', 403, 'INVALID_TABLE_TOKEN');
+      }
     }
 
     const isDineIn = true; // Guest orders are always at the restaurant (dine-in/takeaway)
@@ -259,14 +268,16 @@ export async function placeOrder(
     if (req.user!.role !== 'CUSTOMER') {
       throw new AppError('Restaurant owners and administrators are not allowed to place orders.', 403, 'ORDER_RESTRICTED');
     }
-    const { addressId, newAddress, tableNumber, paymentMethod, couponCode, restaurantSlug, useWallet, cartItems: reqCartItems } = req.body as {
+    const { addressId, newAddress, tableNumber, tableToken, paymentMethod, couponCode, restaurantSlug, useWallet, usePoints, cartItems: reqCartItems } = req.body as {
       addressId?: string;
       newAddress?: { label: string; flat: string; street: string; area: string; city: string; pincode: string; isDefault: boolean };
       tableNumber?: string;
-      paymentMethod: 'RAZORPAY' | 'COD' | 'WALLET';
+      tableToken?: string;
+      paymentMethod: 'RAZORPAY' | 'COD' | 'WALLET' | 'PAY_TO_WAITER';
       couponCode?: string;
       restaurantSlug: string;
       useWallet?: boolean;
+      usePoints?: boolean;
       cartItems?: Array<{ menuItemId: string; variantId?: string | null; quantity: number; addOns?: Array<{ id: string; name: string; price: number }> }>;
     };
 
@@ -277,6 +288,13 @@ export async function placeOrder(
     if (!restaurant) throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
     if (!restaurant.isOpen || !isRestaurantOpen(restaurant.operatingHours, restaurant.isOpen)) {
       throw new AppError('Restaurant is currently closed or outside operating hours.', 400, 'RESTAURANT_CLOSED');
+    }
+
+    // Verify table number signature to prevent table spoofing
+    if (tableNumber && tableNumber.trim() !== '') {
+      if (!tableToken || typeof tableToken !== 'string' || !verifyTableSignature(restaurant.id, tableNumber.trim(), tableToken)) {
+        throw new AppError('Invalid table QR code signature. Please scan the QR code on your table.', 403, 'INVALID_TABLE_TOKEN');
+      }
     }
 
     let cartItems: Array<{
@@ -339,14 +357,29 @@ export async function placeOrder(
       resolvedAddressId = addr.id;
     }
 
-    // Get user wallet balance
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { walletBalance: true } });
-    let walletDeduction = 0;
+    // Get user wallet balance and loyalty points
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { walletBalance: true, loyaltyPoints: true }
+    });
+
+    let pointsDeduction = 0;
+    let pointsValue = 0;
     let finalTotal = total;
 
+    if (usePoints && user && user.loyaltyPoints > 0) {
+      // 10 loyalty points = ₹1 discount
+      const maxPointsVal = user.loyaltyPoints / 10;
+      const pointsVal = Math.min(maxPointsVal, total);
+      pointsDeduction = Math.floor(pointsVal * 10);
+      pointsValue = pointsDeduction / 10;
+      finalTotal = total - pointsValue;
+    }
+
+    let walletDeduction = 0;
     if (useWallet && user && user.walletBalance > 0) {
-      walletDeduction = Math.min(user.walletBalance, total);
-      finalTotal = total - walletDeduction;
+      walletDeduction = Math.min(user.walletBalance, finalTotal);
+      finalTotal = finalTotal - walletDeduction;
     }
 
     let razorpayOrderId: string | undefined;
@@ -373,7 +406,7 @@ export async function placeOrder(
           gstAmount,
           deliveryFee,
           packagingFee,
-          discount: discount + walletDeduction,
+          discount: discount + walletDeduction + pointsValue,
           total: finalTotal,
           couponId,
           razorpayOrderId,
@@ -408,9 +441,25 @@ export async function placeOrder(
         });
       }
 
-      // Award loyalty points (1 point per ₹10 spent)
-      const pointsEarned = Math.floor(total / 10) * LOYALTY_POINTS_PER_RUPEE;
-      if (pointsEarned > 0 && paymentMethod !== 'COD') {
+      // Deduct loyalty points redeemed
+      if (pointsDeduction > 0) {
+        await tx.user.update({
+          where: { id: userId },
+          data: { loyaltyPoints: { decrement: pointsDeduction } },
+        });
+        await tx.loyaltyTransaction.create({
+          data: {
+            userId,
+            orderId: newOrder.id,
+            points: pointsDeduction,
+            type: 'REDEEMED',
+          },
+        });
+      }
+
+      // Award loyalty points (1 point per ₹10 spent on final cash paid)
+      const pointsEarned = Math.floor(finalTotal / 10) * LOYALTY_POINTS_PER_RUPEE;
+      if (pointsEarned > 0 && paymentMethod !== 'COD' && paymentMethod !== 'PAY_TO_WAITER') {
         await tx.user.update({
           where: { id: userId },
           data: { loyaltyPoints: { increment: pointsEarned } },
@@ -517,9 +566,11 @@ export async function getOrderById(
 
     if (!order) throw new AppError('Order not found.', 404, 'ORDER_NOT_FOUND');
 
-    // Access control — user can only see their own orders (or guest orders by ID)
-    if (req.user && order.userId && order.userId !== req.user.id) {
-      throw new AppError('Access denied.', 403, 'ACCESS_DENIED');
+    // Access control — user can only see their own orders (guests cannot see user orders)
+    if (order.userId) {
+      if (!req.user || (order.userId !== req.user.id && req.user.role === 'CUSTOMER')) {
+        throw new AppError('Access denied.', 403, 'ACCESS_DENIED');
+      }
     }
 
     res.json({ success: true, data: { order } });

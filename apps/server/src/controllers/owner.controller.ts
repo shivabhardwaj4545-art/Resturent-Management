@@ -5,6 +5,7 @@ import { uploadMenuItemImage, uploadRestaurantLogo, uploadRestaurantBanner } fro
 import { emitOrderStatusUpdate, emitNotification } from '../services/socket.service';
 import { cacheDelPattern, cacheSet } from '../services/redis.service';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
+import { generateTableSignature } from '../utils/tableSignature';
 
 async function getOwnerRestaurant(ownerId: string) {
   const restaurant = await prisma.restaurant.findFirst({
@@ -541,6 +542,48 @@ export async function updateOrderStatus(req: AuthenticatedRequest, res: Response
   } catch (error) { next(error); }
 }
 
+// ── Confirm Cash Payment (Pay at Counter / Waiter) ─────────────────────────
+
+export async function confirmPayment(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const id = req.params.id as string;
+
+    const order = await prisma.order.findFirst({
+      where: { id, restaurantId: restaurant.id, deletedAt: null },
+    });
+
+    if (!order) throw new AppError('Order not found.', 404, 'ORDER_NOT_FOUND');
+    if (order.paymentMethod === 'RAZORPAY') {
+      throw new AppError('Online payment status cannot be changed manually.', 400, 'INVALID_OPERATION');
+    }
+    if (order.paymentStatus === 'PAID') {
+      throw new AppError('Payment is already marked as paid.', 400, 'ALREADY_PAID');
+    }
+
+    await prisma.$transaction([
+      prisma.order.update({
+        where: { id },
+        data: { paymentStatus: 'PAID' },
+      }),
+      prisma.payment.updateMany({
+        where: { orderId: id },
+        data: { status: 'PAID' },
+      }),
+    ]);
+
+    // Emit real-time socket update to customer
+    emitOrderStatusUpdate(id, restaurant.id, {
+      orderId: id,
+      paymentStatus: 'PAID',
+      updatedAt: new Date().toISOString(),
+    });
+
+    res.json({ success: true, message: 'Payment confirmed successfully.' });
+  } catch (error) { next(error); }
+}
+
+
 // ── Analytics ──────────────────────────────────────────────────
 
 export async function getAnalytics(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -684,6 +727,20 @@ export async function seedDemoMenu(req: AuthenticatedRequest, res: Response, nex
 
     await cacheDelPattern(`menu:${restaurant.slug}*`);
     res.json({ success: true, message: 'Sample demo menu loaded successfully!' });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function signTable(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const table = req.query.table as string;
+    if (!table) {
+      throw new AppError('Table number is required.', 400, 'BAD_REQUEST');
+    }
+    const signature = generateTableSignature(restaurant.id, table);
+    res.json({ success: true, data: { signature } });
   } catch (error) {
     next(error);
   }

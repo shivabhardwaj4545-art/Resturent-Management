@@ -14,11 +14,12 @@ import {
   toggleFavorite,
   getWallet,
   topUpWallet,
+  verifyWalletTopUp,
   getLoyalty,
   getNotifications,
   markNotificationsRead,
 } from '../controllers/profile.controller';
-import { walletTopUpSchema } from '@qr-restaurant/shared/schemas';
+import { walletTopUpSchema, walletVerifySchema } from '@qr-restaurant/shared/schemas';
 
 const router = Router();
 
@@ -39,6 +40,7 @@ router.post('/favorites/:menuItemId', toggleFavorite);
 
 router.get('/wallet', getWallet);
 router.post('/wallet/topup', validate(walletTopUpSchema), topUpWallet);
+router.post('/wallet/verify', validate(walletVerifySchema), verifyWalletTopUp);
 
 router.get('/loyalty', getLoyalty);
 

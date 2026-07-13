@@ -161,8 +161,29 @@ export function OwnerSettingsPage() {
     try { await api.post('/auth/logout'); } finally { logout(); router.push('/login'); }
   };
 
+  const [tableToken, setTableToken] = useState('');
+
+  useEffect(() => {
+    const tableNum = tableNumber.trim();
+    if (!tableNum) {
+      setTableToken('');
+      return;
+    }
+
+    const delayDebounce = setTimeout(async () => {
+      try {
+        const response = await api.get(`/owner/restaurant/sign-table?table=${encodeURIComponent(tableNum)}`);
+        setTableToken(response.data.data.signature);
+      } catch {
+        console.error('Failed to generate table token.');
+      }
+    }, 450);
+
+    return () => clearTimeout(delayDebounce);
+  }, [tableNumber]);
+
   const qrUrl = data
-    ? `${typeof window !== 'undefined' ? window.location.origin : ''}/r/${data.slug}${tableNumber.trim() ? `?table=${encodeURIComponent(tableNumber.trim())}` : ''}`
+    ? `${typeof window !== 'undefined' ? window.location.origin : ''}/r/${data.slug}${tableNumber.trim() ? `?table=${encodeURIComponent(tableNumber.trim())}${tableToken ? `&token=${tableToken}` : ''}` : ''}`
     : '';
 
   useEffect(() => {

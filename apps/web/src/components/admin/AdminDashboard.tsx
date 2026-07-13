@@ -16,6 +16,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 import { toast } from 'sonner';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/admin/dashboard' },
@@ -136,9 +137,12 @@ export function AdminDashboard() {
               <p className="text-xs text-muted-foreground">Super Admin</p>
             </div>
           </div>
-          <button onClick={handleLogout} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-sm">
-            <LogOut className="w-4 h-4" /> Logout
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={handleLogout} className="flex-1 flex items-center gap-2 px-3 py-2 rounded-xl text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-sm">
+              <LogOut className="w-4 h-4" /> Logout
+            </button>
+            <ThemeToggle size="sm" />
+          </div>
         </div>
       </aside>
 

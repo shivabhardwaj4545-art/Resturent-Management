@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getRestaurantMenu } from '../controllers/menu.controller';
+import { getRestaurantMenu, callWaiter } from '../controllers/menu.controller';
 
 const router = Router();
 
@@ -12,4 +12,14 @@ const router = Router();
  */
 router.get('/:restaurantSlug', getRestaurantMenu);
 
+/**
+ * @swagger
+ * /menu/{restaurantSlug}/call-waiter:
+ *   post:
+ *     summary: Call a waiter for a table (public — no auth required)
+ *     tags: [Menu]
+ */
+router.post('/:restaurantSlug/call-waiter', callWaiter);
+
 export default router;
+

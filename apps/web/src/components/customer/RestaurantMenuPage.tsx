@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
-import { Search, Filter, ShoppingCart, Clock, MapPin, Star, Heart, Bot, X, ChevronUp, QrCode, ChevronRight } from 'lucide-react';
+import { Search, Filter, ShoppingCart, Clock, MapPin, Star, Bot, X, ChevronUp, QrCode, ChevronRight, BellRing } from 'lucide-react';
 import api from '@/lib/api';
 import { useCartStore } from '@/store/cart.store';
 import { useAuthStore } from '@/store/auth.store';
@@ -15,6 +15,9 @@ import { AIRecommendations } from './AIRecommendations';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { getDetailedStatus, formatTime12h } from '@/utils/operatingHours';
+import { ThemeToggle } from '@/components/ThemeToggle';
+
+const WAITER_COOLDOWN_SECONDS = 30;
 
 interface RestaurantMenuPageProps {
   slug: string;
@@ -27,6 +30,7 @@ interface RestaurantMenuPageProps {
     logo?: string;
     banner?: string;
     layout?: string;
+    token?: string;
   };
 }
 
@@ -37,6 +41,11 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
   const [cartOpen, setCartOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [waiterCooldown, setWaiterCooldown] = useState(0);
+  const [waiterLoading, setWaiterLoading] = useState(false);
+  const [showTableInput, setShowTableInput] = useState(false);
+  const [manualTableNumber, setManualTableNumber] = useState('');
+  const waiterTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { items: cartItems, itemCount, setRestaurant } = useCartStore();
   const { user: rawUser, loginRestaurantSlug, logout } = useAuthStore();
@@ -51,6 +60,16 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
   const [showHours, setShowHours] = useState(false);
 
   const [recentOrders, setRecentOrders] = useState<Array<{ orderId: string; restaurantSlug: string; createdAt: number }>>([]);
+
+  useEffect(() => {
+    if (tableNumber) {
+      localStorage.setItem(`table_num_${slug}`, tableNumber);
+    }
+    const token = searchParams?.token;
+    if (token) {
+      localStorage.setItem(`table_token_${slug}`, token);
+    }
+  }, [tableNumber, searchParams, slug]);
   
   useEffect(() => {
     const orders = localStorage.getItem('qr_restaurant_recent_orders');
@@ -194,6 +213,44 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Clean up cooldown timer on unmount
+  useEffect(() => {
+    return () => {
+      if (waiterTimerRef.current) clearInterval(waiterTimerRef.current);
+    };
+  }, []);
+
+  const handleCallWaiter = useCallback(async (tableNum?: string) => {
+    const effectiveTable = tableNum ?? tableNumber;
+    if (!effectiveTable || waiterCooldown > 0 || waiterLoading) return;
+    setWaiterLoading(true);
+    try {
+      const token = searchParams?.token || localStorage.getItem(`table_token_${slug}`) || '';
+      await api.post(`/menu/${slug}/call-waiter`, { tableNumber: effectiveTable, tableToken: token });
+      toast.success(`🙋 Waiter has been called for Table ${effectiveTable}!`, {
+        description: 'Please wait, someone will be with you shortly.',
+        duration: 4000,
+      });
+      // Start cooldown
+      setWaiterCooldown(WAITER_COOLDOWN_SECONDS);
+      setShowTableInput(false);
+      setManualTableNumber('');
+      waiterTimerRef.current = setInterval(() => {
+        setWaiterCooldown((prev) => {
+          if (prev <= 1) {
+            if (waiterTimerRef.current) clearInterval(waiterTimerRef.current);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } catch {
+      toast.error('Could not call waiter. Please try again.');
+    } finally {
+      setWaiterLoading(false);
+    }
+  }, [slug, tableNumber, waiterCooldown, waiterLoading]);
+
   const filteredCategories = useMemo(() => {
     if (!data) return [];
     return data.categories
@@ -286,6 +343,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
               </Link>
             </>
           )}
+          <ThemeToggle size="sm" className="bg-white/10 border-white/20 text-white hover:bg-white/20" />
         </div>
       </div>
       {/* Banner */}
@@ -469,7 +527,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                       <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                         <span>₹{order.total.toFixed(0)}</span>
                         <span>•</span>
-                        <span>{order.paymentMethod === 'RAZORPAY' ? 'Paid Online' : order.paymentMethod === 'COD' ? 'Cash/COD' : 'Wallet'}</span>
+                        <span>{order.paymentMethod === 'RAZORPAY' ? 'Paid Online' : order.paymentMethod === 'COD' ? 'Pay on Counter' : 'Wallet'}</span>
                         {order.tableNumber ? (
                           <>
                             <span>•</span>
@@ -658,8 +716,61 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
         )}
       </AnimatePresence>
 
-      {/* Chat & Scroll to top buttons */}
-      <div className="fixed bottom-24 right-4 z-20 flex flex-col gap-3">
+      {/* Call Waiter — table input popup (opens LEFT of FAB column to avoid edge clipping) */}
+      <AnimatePresence>
+        {showTableInput && !tableNumber && (
+          <>
+            <div
+              className="fixed inset-0 z-30"
+              onClick={() => { setShowTableInput(false); setManualTableNumber(''); }}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 8 }}
+              transition={{ duration: 0.15 }}
+              className="fixed z-40 bg-card border border-border rounded-2xl shadow-2xl p-4"
+              style={{ bottom: '5.5rem', right: '4.5rem', width: '220px' }}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-1.5">
+                  <BellRing className="w-4 h-4 text-orange-500 flex-shrink-0" />
+                  <span className="text-sm font-semibold">Call Waiter</span>
+                </div>
+                <button
+                  onClick={() => { setShowTableInput(false); setManualTableNumber(''); }}
+                  className="p-1 rounded-lg hover:bg-muted text-muted-foreground"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground mb-2">Enter your table number</p>
+              <input
+                type="number"
+                inputMode="numeric"
+                placeholder="e.g. 4"
+                value={manualTableNumber}
+                onChange={(e) => setManualTableNumber(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && manualTableNumber.trim() && handleCallWaiter(manualTableNumber.trim())}
+                className="w-full px-3 py-2 bg-muted rounded-xl text-sm border-0 focus:outline-none focus:ring-2 focus:ring-orange-500/30 mb-2"
+                autoFocus
+              />
+              <button
+                onClick={() => manualTableNumber.trim() && handleCallWaiter(manualTableNumber.trim())}
+                disabled={!manualTableNumber.trim() || waiterLoading}
+                className="w-full py-2 rounded-xl text-white text-sm font-semibold disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
+                style={{ background: 'linear-gradient(135deg, #f97316, #f59e0b)' }}
+              >
+                <BellRing className="w-3.5 h-3.5" />
+                {waiterLoading ? 'Calling...' : 'Call Waiter'}
+              </button>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Floating Action Buttons — right column */}
+      <div className="fixed bottom-6 right-4 z-20 flex flex-col gap-3 items-center">
         {showScrollTop && (
           <button
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
@@ -675,6 +786,35 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
         >
           <Bot className="w-6 h-6" />
         </button>
+        {/* Call Waiter FAB */}
+        <motion.button
+          whileHover={{ scale: waiterCooldown > 0 ? 1 : 1.1 }}
+          whileTap={{ scale: waiterCooldown > 0 ? 1 : 0.95 }}
+          onClick={() => {
+            if (tableNumber) {
+              handleCallWaiter();
+            } else {
+              setShowTableInput((v) => !v);
+            }
+          }}
+          disabled={waiterCooldown > 0 || waiterLoading}
+          title={waiterCooldown > 0 ? `Wait ${waiterCooldown}s before calling again` : 'Call a waiter'}
+          className={`relative w-12 h-12 rounded-full text-white shadow-2xl flex items-center justify-center transition-all ${
+            waiterCooldown > 0 ? 'opacity-60 cursor-not-allowed' : ''
+          }`}
+          style={{
+            background: waiterCooldown > 0
+              ? 'linear-gradient(135deg, #6b7280, #9ca3af)'
+              : 'linear-gradient(135deg, #f97316, #f59e0b)',
+          }}
+        >
+          <BellRing className="w-5 h-5" />
+          {waiterCooldown > 0 && (
+            <span className="absolute -top-1 -right-1 w-5 h-5 bg-gray-700 text-white rounded-full text-[9px] font-bold flex items-center justify-center">
+              {waiterCooldown}
+            </span>
+          )}
+        </motion.button>
       </div>
     </div>
   );

@@ -37,7 +37,9 @@ import {
   getOrders,
   getOrderDetail,
   updateOrderStatus,
+  confirmPayment,
   getAnalytics,
+  signTable,
 } from '../controllers/owner.controller';
 import { upload } from '../services/cloudinary.service';
 
@@ -55,6 +57,7 @@ router.put('/restaurant', validate(restaurantProfileSchema), updateRestaurant);
 router.patch('/restaurant/toggle', validate(restaurantToggleSchema), toggleRestaurant);
 router.post('/restaurant/logo', upload.single('logo'), uploadLogo);
 router.post('/restaurant/banner', upload.single('banner'), uploadBanner);
+router.get('/restaurant/sign-table', signTable);
 
 // Menu categories
 router.get('/menu/categories', getCategories);
@@ -82,6 +85,7 @@ router.patch('/coupons/:id/toggle', toggleCoupon);
 router.get('/orders', getOrders);
 router.get('/orders/:id', getOrderDetail);
 router.patch('/orders/:id/status', validate(updateOrderStatusSchema), updateOrderStatus);
+router.patch('/orders/:id/payment', confirmPayment);
 
 // Analytics
 router.get('/analytics', getAnalytics);

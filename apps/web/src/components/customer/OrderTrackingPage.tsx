@@ -18,6 +18,7 @@ import { io, Socket } from 'socket.io-client';
 import api from '@/lib/api';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import { InvoiceDownload } from './InvoiceDownload';
 
 // ─── Tracking Step Definitions ────────────────────────────────────────────────
 
@@ -65,7 +66,13 @@ interface Address {
 
 interface Order {
   id: string;
+  restaurantId: string;
   status: string;
+  subtotal: number;
+  gstAmount: number;
+  deliveryFee: number;
+  packagingFee: number;
+  discount: number;
   total: number;
   paymentMethod: string;
   paymentStatus: string;
@@ -84,6 +91,7 @@ interface Order {
     id: string;
     quantity: number;
     unitPrice: number;
+    subtotal: number;
     menuItem: { name: string; image: string | null };
     variant: { name: string } | null;
   }>;
@@ -329,21 +337,26 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
         )}
 
         {/* Actions */}
-        <div className="flex gap-3">
-          <Link
-            href={`/r/${restaurantSlug}`}
-            className="flex-1 py-3 rounded-xl border border-border text-center text-sm font-semibold hover:bg-muted transition-colors"
-          >
-            Back to Menu
-          </Link>
-          {isCompleted && (
-            <button
-              className="flex-1 py-3 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2"
-              style={{ backgroundColor: themeColor }}
+        <div className="flex flex-col gap-3">
+          <div className="flex gap-3">
+            <Link
+              href={`/r/${restaurantSlug}`}
+              className="flex-1 py-3 rounded-xl border border-border text-center text-sm font-semibold hover:bg-muted transition-colors flex items-center justify-center"
             >
-              <RotateCcw className="w-4 h-4" />
-              Reorder
-            </button>
+              Back to Menu
+            </Link>
+            {isCompleted && (
+              <button
+                className="flex-1 py-3 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2"
+                style={{ backgroundColor: themeColor }}
+              >
+                <RotateCcw className="w-4 h-4" />
+                Reorder
+              </button>
+            )}
+          </div>
+          {['CONFIRMED', 'PREPARING', 'BAKING', 'READY', 'ON_THE_WAY', 'DELIVERED'].includes(currentStatus) && (
+            <InvoiceDownload order={order} themeColor={themeColor} />
           )}
         </div>
       </div>

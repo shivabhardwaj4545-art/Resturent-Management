@@ -1,7 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
-import { createRazorpayOrder } from '../services/payment.razorpay.service';
+import { createRazorpayOrder, verifyRazorpaySignature } from '../services/payment.razorpay.service';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
 
 export async function getProfile(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -161,6 +161,51 @@ export async function topUpWallet(req: AuthenticatedRequest, res: Response, next
         currency: 'INR',
       },
       message: 'Complete payment to add funds to your wallet',
+    });
+  } catch (error) { next(error); }
+}
+
+export async function verifyWalletTopUp(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { razorpayOrderId, razorpayPaymentId, razorpaySignature, amount } = req.body as {
+      razorpayOrderId: string;
+      razorpayPaymentId: string;
+      razorpaySignature: string;
+      amount: number;
+    };
+    const userId = req.user!.id;
+
+    const isMock = razorpayOrderId.startsWith('order_mock_');
+    if (!isMock) {
+      const isValid = verifyRazorpaySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature);
+      if (!isValid) {
+        throw new AppError('Payment verification failed. Invalid signature.', 400, 'INVALID_PAYMENT_SIGNATURE');
+      }
+    }
+
+    const user = await prisma.$transaction(async (tx) => {
+      const updatedUser = await tx.user.update({
+        where: { id: userId },
+        data: { walletBalance: { increment: amount } },
+        select: { id: true, name: true, email: true, walletBalance: true },
+      });
+
+      await tx.walletTransaction.create({
+        data: {
+          userId,
+          amount,
+          type: 'CREDIT',
+          reference: `Top-up via Razorpay (${razorpayPaymentId})`,
+        },
+      });
+
+      return updatedUser;
+    });
+
+    res.json({
+      success: true,
+      data: { walletBalance: user.walletBalance },
+      message: `Successfully added ₹${amount} to your wallet!`,
     });
   } catch (error) { next(error); }
 }

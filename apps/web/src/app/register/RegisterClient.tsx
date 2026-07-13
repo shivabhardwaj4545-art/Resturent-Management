@@ -14,8 +14,17 @@ import { toast } from 'sonner';
 const registerSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   email: z.string().email('Enter a valid email'),
-  phone: z.string().min(10, 'Enter a valid 10-digit phone number').max(15, 'Phone number too long').optional().or(z.literal('')),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  phone: z
+    .string()
+    .regex(/^[6-9]\d{9}$/, 'Enter a valid 10-digit Indian mobile number')
+    .optional()
+    .or(z.literal('')),
+  password: z
+    .string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/[0-9]/, 'Password must contain at least one number')
+    .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character'),
 });
 
 type RegisterForm = z.infer<typeof registerSchema>;
@@ -49,7 +58,7 @@ export default function RegisterClient() {
         router.push('/login');
       }
     } catch (error: any) {
-      const errMsg = error.response?.data?.message || 'Registration failed. Please try again.';
+      const errMsg = error.response?.data?.error || error.response?.data?.message || 'Registration failed. Please try again.';
       toast.error(errMsg);
     } finally {
       setLoading(false);

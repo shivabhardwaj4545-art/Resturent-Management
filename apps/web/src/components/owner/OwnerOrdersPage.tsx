@@ -117,6 +117,17 @@ export function OwnerOrdersPage() {
     onError: () => toast.error('Failed to update order status'),
   });
 
+  const confirmPaymentMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.patch(`/owner/orders/${id}/payment`);
+    },
+    onSuccess: () => {
+      toast.success('Payment marked as PAID');
+      qc.invalidateQueries({ queryKey: ['owner-orders'] });
+    },
+    onError: () => toast.error('Failed to update payment status'),
+  });
+
   const handleLogout = async () => {
     try { await api.post('/auth/logout'); } finally { logout(); router.push('/login'); }
   };
@@ -365,10 +376,11 @@ export function OwnerOrdersPage() {
                               <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
                                 order.paymentMethod === 'RAZORPAY' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300' :
                                 order.paymentMethod === 'WALLET' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' :
+                                order.paymentMethod === 'PAY_TO_WAITER' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' :
                                 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
                               }`}>
                                 <CreditCard className="w-3 h-3" />
-                                {order.paymentMethod === 'RAZORPAY' ? 'Razorpay' : order.paymentMethod === 'WALLET' ? 'Wallet' : 'COD'}
+                                {order.paymentMethod === 'RAZORPAY' ? 'Razorpay' : order.paymentMethod === 'WALLET' ? 'Wallet' : order.paymentMethod === 'PAY_TO_WAITER' ? 'Pay to Waiter' : 'Pay on Counter'}
                               </span>
                               
                               {/* Payment Status Badge */}
@@ -380,6 +392,36 @@ export function OwnerOrdersPage() {
                               }`}>
                                 {order.paymentStatus}
                               </span>
+                            </div>
+
+                            {/* Additional Payment Info / Action */}
+                            <div className="pt-2 border-t border-border space-y-2">
+                              {order.paymentStatus === 'PAID' ? (
+                                <p className="text-xs font-semibold text-green-600 dark:text-green-400 flex items-center gap-1">
+                                  {order.paymentMethod === 'RAZORPAY' ? (
+                                    <>✅ Paid Online via Razorpay</>
+                                  ) : order.paymentMethod === 'PAY_TO_WAITER' ? (
+                                    <>💵 Paid to Waiter</>
+                                  ) : (
+                                    <>💵 Cash Received / Paid at Counter</>
+                                  )}
+                                </p>
+                              ) : (
+                                order.paymentMethod !== 'RAZORPAY' && (
+                                  <button
+                                    onClick={() => confirmPaymentMutation.mutate(order.id)}
+                                    disabled={confirmPaymentMutation.isPending}
+                                    className="w-full py-2 px-3 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                    {confirmPaymentMutation.isPending 
+                                      ? 'Confirming...' 
+                                      : order.paymentMethod === 'PAY_TO_WAITER' 
+                                      ? 'Confirm Payment Paid to Waiter' 
+                                      : 'Mark as Paid (Received Cash)'}
+                                  </button>
+                                )
+                              )}
                             </div>
 
                             {/* Action Buttons */}

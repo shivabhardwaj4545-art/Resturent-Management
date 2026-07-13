@@ -4,7 +4,7 @@ export const guestCheckoutSchema = z.object({
   guestName: z.string().min(2, 'Name must be at least 2 characters').max(100),
   guestPhone: z.string().regex(/^[6-9]\d{9}$/, 'Enter a valid 10-digit Indian mobile number'),
   tableNumber: z.string().optional(),
-  paymentMethod: z.enum(['RAZORPAY', 'COD']),
+  paymentMethod: z.enum(['RAZORPAY', 'COD', 'PAY_TO_WAITER']),
   couponCode: z.string().optional(),
   restaurantSlug: z.string().min(1, 'Restaurant slug is required'),
   cartItems: z.array(
@@ -37,7 +37,7 @@ export const userCheckoutSchema = z.object({
     })
     .optional(),
   tableNumber: z.string().optional(),
-  paymentMethod: z.enum(['RAZORPAY', 'COD', 'WALLET']),
+  paymentMethod: z.enum(['RAZORPAY', 'COD', 'WALLET', 'PAY_TO_WAITER']),
   couponCode: z.string().optional(),
   restaurantSlug: z.string().min(1),
   useWallet: z.boolean().default(false),
@@ -81,8 +81,16 @@ export const walletTopUpSchema = z.object({
   amount: z.number().positive('Amount must be positive').min(10).max(10000),
 });
 
+export const walletVerifySchema = z.object({
+  razorpayOrderId: z.string().min(1),
+  razorpayPaymentId: z.string().min(1),
+  razorpaySignature: z.string().min(1),
+  amount: z.number().positive(),
+});
+
 export type GuestCheckoutInput = z.infer<typeof guestCheckoutSchema>;
 export type UserCheckoutInput = z.infer<typeof userCheckoutSchema>;
 export type UpdateOrderStatusInput = z.infer<typeof updateOrderStatusSchema>;
 export type RazorpayVerifyInput = z.infer<typeof razorpayVerifySchema>;
 export type WalletTopUpInput = z.infer<typeof walletTopUpSchema>;
+export type WalletVerifyInput = z.infer<typeof walletVerifySchema>;

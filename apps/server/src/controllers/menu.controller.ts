@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { cacheGet, cacheSet } from '../services/redis.service';
+import { emitWaiterCall } from '../services/socket.service';
+import { verifyTableSignature } from '../utils/tableSignature';
 
 export async function getRestaurantMenu(
   req: Request,
@@ -79,3 +81,49 @@ export async function getRestaurantMenu(
     next(error);
   }
 }
+
+// POST /menu/:restaurantSlug/call-waiter (public — no auth required)
+export async function callWaiter(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const restaurantSlug = req.params.restaurantSlug as string;
+    const { tableNumber, tableToken } = req.body as { tableNumber?: string; tableToken?: string };
+
+    if (!tableNumber || typeof tableNumber !== 'string' || tableNumber.trim() === '') {
+      throw new AppError('tableNumber is required', 400, 'VALIDATION_ERROR');
+    }
+
+    const restaurant = await prisma.restaurant.findFirst({
+      where: {
+        slug: restaurantSlug,
+        deletedAt: null,
+        isApproved: true,
+        isSuspended: false,
+      },
+      select: { id: true, name: true },
+    });
+
+    if (!restaurant) {
+      throw new AppError('Restaurant not found', 404, 'RESTAURANT_NOT_FOUND');
+    }
+
+    // Verify cryptographic signature of the table number
+    if (!tableToken || typeof tableToken !== 'string' || !verifyTableSignature(restaurant.id, tableNumber.trim(), tableToken)) {
+      throw new AppError('Invalid table QR code signature. Please scan the QR code on your table.', 403, 'INVALID_TABLE_TOKEN');
+    }
+
+    // Emit real-time waiter call to the restaurant owner's socket room
+    emitWaiterCall(restaurant.id, tableNumber.trim());
+
+    res.json({
+      success: true,
+      message: `Waiter has been called for Table ${tableNumber.trim()}`,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+

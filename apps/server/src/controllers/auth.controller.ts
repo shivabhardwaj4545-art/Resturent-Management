@@ -84,6 +84,7 @@ export async function register(req: Request, res: Response, next: NextFunction):
         role: finalRole,
         verifyToken,
         verifyTokenExp,
+        isVerified: true,
       },
       select: {
         id: true,
@@ -116,7 +117,18 @@ export async function register(req: Request, res: Response, next: NextFunction):
     }
 
     // Send verification email
-    await sendVerificationEmail(email, name, verifyToken);
+    /*
+    try {
+      await sendVerificationEmail(email, name, verifyToken);
+    } catch (emailError: any) {
+      if (process.env.NODE_ENV === 'production') {
+        throw emailError;
+      }
+      console.warn(`[DEV ONLY] Failed to send verification email: ${emailError.message}`);
+      const verifyUrl = `${process.env.CLIENT_URL ?? 'http://localhost:3000'}/verify-email?token=${verifyToken}`;
+      console.log(`[DEV ONLY] Verification link: ${verifyUrl}`);
+    }
+    */
 
     const cleanUser = {
       ...user,
@@ -126,7 +138,7 @@ export async function register(req: Request, res: Response, next: NextFunction):
     res.status(201).json({
       success: true,
       data: { user: cleanUser },
-      message: 'Account created! Please check your email to verify your account.',
+      message: 'Account created! You can now log in.',
     });
   } catch (error) {
     next(error);
@@ -154,6 +166,7 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
       throw new AppError('Invalid email or password.', 401, 'INVALID_CREDENTIALS');
     }
 
+    /*
     if (!user.isVerified) {
       throw new AppError(
         'Please verify your email before logging in.',
@@ -161,6 +174,7 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
         'EMAIL_NOT_VERIFIED'
       );
     }
+    */
 
     const tokenPayload = {
       id: user.id,
@@ -257,7 +271,16 @@ export async function forgotPassword(
         data: { resetToken, resetTokenExp },
       });
 
-      await sendPasswordResetEmail(email, user.name, resetToken);
+      try {
+        await sendPasswordResetEmail(email, user.name, resetToken);
+      } catch (emailError: any) {
+        if (process.env.NODE_ENV === 'production') {
+          throw emailError;
+        }
+        console.warn(`[DEV ONLY] Failed to send password reset email: ${emailError.message}`);
+        const resetUrl = `${process.env.CLIENT_URL ?? 'http://localhost:3000'}/reset-password?token=${resetToken}`;
+        console.log(`[DEV ONLY] Reset password link: ${resetUrl}`);
+      }
     }
 
     res.json({

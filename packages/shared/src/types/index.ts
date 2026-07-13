@@ -25,6 +25,7 @@ export enum PaymentMethod {
   RAZORPAY = 'RAZORPAY',
   COD = 'COD',
   WALLET = 'WALLET',
+  PAY_TO_WAITER = 'PAY_TO_WAITER',
 }
 
 export enum PaymentStatus {

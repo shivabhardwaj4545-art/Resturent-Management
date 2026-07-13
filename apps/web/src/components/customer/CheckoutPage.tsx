@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, CreditCard, Banknote, Wallet, MapPin, User, Phone, Loader2, Plus, PlusCircle, Check, Home, Briefcase, Lock, X, Smartphone, Building } from 'lucide-react';
+import { ChevronLeft, CreditCard, Banknote, Wallet, MapPin, User, Phone, Loader2, Plus, PlusCircle, Check, Home, Briefcase, Lock, X, Smartphone, Building, Gift } from 'lucide-react';
 import { useCartStore } from '@/store/cart.store';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -41,7 +41,7 @@ interface RazorpayOptions {
 const guestSchema = z.object({
   guestName: z.string().min(2, 'Name required'),
   guestPhone: z.string().regex(/^[6-9]\d{9}$/, 'Enter valid 10-digit number'),
-  paymentMethod: z.enum(['RAZORPAY', 'COD']),
+  paymentMethod: z.enum(['RAZORPAY', 'COD', 'PAY_TO_WAITER']),
 });
 
 type GuestForm = z.infer<typeof guestSchema>;
@@ -64,6 +64,7 @@ interface Address {
 interface CheckoutPageProps {
   restaurantSlug: string;
   tableNumber?: string;
+  tableToken?: string;
 }
 
 const saveOrderToRecent = (orderId: string, restaurantSlug: string) => {
@@ -88,7 +89,7 @@ const saveOrderToRecent = (orderId: string, restaurantSlug: string) => {
 };
 
 
-export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps) {
+export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: CheckoutPageProps) {
   const router = useRouter();
   const { user: rawUser, loginRestaurantSlug, logout } = useAuthStore();
 
@@ -112,14 +113,10 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
   const restaurant = menuData?.restaurant;
   const hasDelivery = restaurant?.hasDelivery ?? true;
 
-  const [diningOption, setDiningOption] = useState<'DINE_IN' | 'DELIVERY'>(
-    tableNumber ? 'DINE_IN' : 'DELIVERY'
-  );
+  const [diningOption, setDiningOption] = useState<'DINE_IN' | 'DELIVERY'>('DINE_IN');
 
   useEffect(() => {
-    if (restaurant && !hasDelivery) {
-      setDiningOption('DINE_IN');
-    }
+    setDiningOption('DINE_IN');
   }, [restaurant, hasDelivery]);
 
   const [manualTableNumber, setManualTableNumber] = useState(tableNumber || '');
@@ -176,6 +173,17 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
     },
     enabled: !!activeUser,
   });
+
+  const { data: profileData, refetch: refetchProfile } = useQuery({
+    queryKey: ['user-profile'],
+    queryFn: async () => {
+      const response = await api.get('/profile');
+      return response.data.data.user as { loyaltyPoints: number; walletBalance: number };
+    },
+    enabled: !!activeUser,
+  });
+
+  const [usePoints, setUsePoints] = useState(false);
 
   const addresses = addressesData ?? [];
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
@@ -235,7 +243,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
 
   const { items, couponCode, couponDiscount, clearCart, subtotal, total, removeItem } = useCartStore();
   const [loading, setLoading] = useState(false);
-  const [selectedPayment, setSelectedPayment] = useState<'RAZORPAY' | 'COD' | 'WALLET'>('RAZORPAY');
+  const [selectedPayment, setSelectedPayment] = useState<'RAZORPAY' | 'COD' | 'WALLET' | 'PAY_TO_WAITER'>('RAZORPAY');
   const [razorpayKeyId, setRazorpayKeyId] = useState<string>('');
   // Use a ref so handleRazorpayPayment always reads the latest key (avoids stale closure race condition)
   const razorpayKeyRef = useRef<string>('');
@@ -256,7 +264,12 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
   const gst = subtotalAmount * GST_RATE;
   const isDineIn = diningOption === 'DINE_IN';
   const deliveryPlusPackaging = isDineIn ? 0 : (DELIVERY_FEE + PACKAGING_FEE);
-  const grandTotal = Math.max(subtotalAmount + gst + deliveryPlusPackaging - couponDiscount, 0);
+  const grandTotalBeforePoints = Math.max(subtotalAmount + gst + deliveryPlusPackaging - couponDiscount, 0);
+  
+  const pointsAvailable = profileData?.loyaltyPoints ?? activeUser?.loyaltyPoints ?? 0;
+  const maxPointsDiscount = pointsAvailable / 10;
+  const pointsDiscount = usePoints ? Math.min(maxPointsDiscount, grandTotalBeforePoints) : 0;
+  const grandTotal = Math.max(grandTotalBeforePoints - pointsDiscount, 0);
 
   const { register, handleSubmit, formState: { errors } } = useForm<GuestForm>({
     resolver: zodResolver(guestSchema),
@@ -375,10 +388,12 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
     }
     setLoading(true);
     try {
+      const token = tableToken || localStorage.getItem(`table_token_${restaurantSlug}`) || '';
       const response = await api.post('/orders/guest', {
         guestName: formData.guestName,
         guestPhone: formData.guestPhone,
         tableNumber: manualTableNumber || undefined,
+        tableToken: token,
         paymentMethod: selectedPayment,
         couponCode: couponCode ?? undefined,
         restaurantSlug,
@@ -428,12 +443,14 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
     }
     setLoading(true);
     try {
+      const token = tableToken || localStorage.getItem(`table_token_${restaurantSlug}`) || '';
       const response = await api.post('/orders', {
-        ...(diningOption === 'DINE_IN' ? { tableNumber: manualTableNumber || undefined } : { addressId: selectedAddressId }),
+        ...(diningOption === 'DINE_IN' ? { tableNumber: manualTableNumber || undefined, tableToken: token } : { addressId: selectedAddressId }),
         paymentMethod: selectedPayment,
         couponCode: couponCode ?? undefined,
         restaurantSlug,
         useWallet: selectedPayment === 'WALLET',
+        usePoints,
         cartItems: items.map((item) => ({
           menuItemId: item.menuItemId,
           variantId: item.variantId,
@@ -484,39 +501,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
       </div>
 
       <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
-        {/* Dining Option Selector */}
-        {restaurant && (
-          hasDelivery ? (
-            <div className="bg-card border border-border rounded-2xl p-2.5 flex gap-2 shadow-sm">
-              <button
-                type="button"
-                onClick={() => setDiningOption('DINE_IN')}
-                className={`flex-1 py-2.5 text-center text-sm font-semibold rounded-xl transition-all ${
-                  diningOption === 'DINE_IN'
-                    ? 'text-white bg-primary shadow-md'
-                    : 'text-muted-foreground hover:bg-muted/50'
-                }`}
-              >
-                🍽️ Dine-In (at Table)
-              </button>
-              <button
-                type="button"
-                onClick={() => setDiningOption('DELIVERY')}
-                className={`flex-1 py-2.5 text-center text-sm font-semibold rounded-xl transition-all ${
-                  diningOption === 'DELIVERY'
-                    ? 'text-white bg-primary shadow-md'
-                    : 'text-muted-foreground hover:bg-muted/50'
-                }`}
-              >
-                🏡 Home Delivery
-              </button>
-            </div>
-          ) : (
-            <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs px-3.5 py-2.5 rounded-xl text-center font-medium shadow-sm">
-              ⚠️ This restaurant currently only supports Dine-in ordering. Home delivery is unavailable.
-            </div>
-          )
-        )}
+        {/* Dining Option Selector removed (Dine-In only) */}
 
         {/* Order Summary */}
         <div className="bg-card border border-border rounded-2xl p-4">
@@ -544,6 +529,11 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
             {couponDiscount > 0 && (
               <div className="flex justify-between text-green-600">
                 <span>Coupon ({couponCode})</span><span>-₹{couponDiscount.toFixed(2)}</span>
+              </div>
+            )}
+            {pointsDiscount > 0 && (
+              <div className="flex justify-between text-green-600">
+                <span>Loyalty Points Discount</span><span>-₹{pointsDiscount.toFixed(2)}</span>
               </div>
             )}
             <div className="flex justify-between font-bold text-base border-t border-border pt-2">
@@ -690,6 +680,34 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
           </div>
         )}
 
+        {/* Loyalty Points Card */}
+        {activeUser && pointsAvailable > 0 && (
+          <div className="bg-card border border-border rounded-2xl p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-orange-100 dark:bg-orange-950/40 flex items-center justify-center text-orange-500">
+                <Gift className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-semibold text-sm text-foreground">Redeem Loyalty Points</p>
+                <p className="text-xs text-muted-foreground">
+                  You have {pointsAvailable} points (Worth ₹{maxPointsDiscount.toFixed(0)})
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setUsePoints(!usePoints)}
+              className={`px-4 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                usePoints
+                  ? 'border-orange-500 bg-orange-500 text-white'
+                  : 'border-border text-foreground hover:bg-muted'
+              }`}
+            >
+              {usePoints ? 'Redeemed' : 'Redeem'}
+            </button>
+          </div>
+        )}
+
         {/* Payment Method */}
         {!(diningOption === 'DELIVERY' && !activeUser) && (
           <div className="bg-card border border-border rounded-2xl p-4">
@@ -697,13 +715,14 @@ export function CheckoutPage({ restaurantSlug, tableNumber }: CheckoutPageProps)
             <div className="space-y-2">
               {[
                 { value: 'RAZORPAY', label: 'Pay Online', sublabel: 'UPI, Cards, Net Banking', icon: <CreditCard className="w-5 h-5" /> },
-                { value: 'COD', label: 'Cash on Delivery', sublabel: 'Pay when order arrives', icon: <Banknote className="w-5 h-5" /> },
+                { value: 'COD', label: 'Pay on Counter', sublabel: 'Pay cash or card at the counter', icon: <Banknote className="w-5 h-5" /> },
+                { value: 'PAY_TO_WAITER', label: 'Pay to Waiter', sublabel: 'Pay at your table (Cash/UPI/Card)', icon: <User className="w-5 h-5" /> },
                 ...(activeUser ? [{ value: 'WALLET', label: 'Wallet', sublabel: `Balance: ₹${activeUser.walletBalance}`, icon: <Wallet className="w-5 h-5" /> }] : []),
               ].map((method) => (
                 <button
                   key={method.value}
                   type="button"
-                  onClick={() => setSelectedPayment(method.value as 'RAZORPAY' | 'COD' | 'WALLET')}
+                  onClick={() => setSelectedPayment(method.value as 'RAZORPAY' | 'COD' | 'WALLET' | 'PAY_TO_WAITER')}
                   className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all ${
                     selectedPayment === method.value
                       ? 'border-primary bg-primary/5'

@@ -32,7 +32,7 @@ export default function VerifyEmailClient() {
         }, 3000);
       } catch (err: any) {
         setStatus('error');
-        const errMsg = err.response?.data?.message || 'Verification failed. The token may be invalid or expired.';
+        const errMsg = err.response?.data?.error || err.response?.data?.message || 'Verification failed. The token may be invalid or expired.';
         setMessage(errMsg);
         toast.error(errMsg);
       }
