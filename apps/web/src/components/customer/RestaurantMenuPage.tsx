@@ -307,7 +307,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-md">
             <QrCode className="w-4 h-4 text-white" />
           </div>
-          <span className="font-display font-bold text-sm tracking-tight">QR Restaurant</span>
+          <span className="font-display font-bold text-sm tracking-tight">EZ- Restaurant</span>
         </Link>
         <div className="flex items-center gap-3">
           {activeUser ? (

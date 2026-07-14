@@ -110,8 +110,8 @@ export async function callWaiter(
       throw new AppError('Restaurant not found', 404, 'RESTAURANT_NOT_FOUND');
     }
 
-    // Verify cryptographic signature of the table number
-    if (!tableToken || typeof tableToken !== 'string' || !verifyTableSignature(restaurant.id, tableNumber.trim(), tableToken)) {
+    // Verify cryptographic signature of the table number (bypassed in development)
+    if (process.env.NODE_ENV !== 'development' && (!tableToken || typeof tableToken !== 'string' || !verifyTableSignature(restaurant.id, tableNumber.trim(), tableToken))) {
       throw new AppError('Invalid table QR code signature. Please scan the QR code on your table.', 403, 'INVALID_TABLE_TOKEN');
     }
 

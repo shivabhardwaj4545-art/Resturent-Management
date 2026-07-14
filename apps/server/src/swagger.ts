@@ -4,7 +4,7 @@ const options: swaggerJsdoc.Options = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'QR Restaurant SaaS API',
+      title: 'EZ- Restaurant SaaS API',
       version: '1.0.0',
       description: `
 ## Multi-Restaurant QR-Based Ordering & Management SaaS Platform API
@@ -27,7 +27,7 @@ Include it in the \`Authorization\` header: \`Bearer <token>\`
 - AI routes: 10 req/min
       `,
       contact: {
-        name: 'QR Restaurant Support',
+        name: 'EZ- Restaurant Support',
         email: 'support@qrrestaurant.com',
       },
       license: { name: 'MIT' },

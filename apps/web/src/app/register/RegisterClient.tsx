@@ -82,10 +82,10 @@ export default function RegisterClient() {
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center">
               <QrCode className="w-5 h-5 text-white" />
             </div>
-            <span className="font-display font-bold text-xl text-white">QR Restaurant</span>
+            <span className="font-display font-bold text-xl text-white">EZ- Restaurant</span>
           </Link>
           <h1 className="font-display text-3xl font-bold text-white mb-2">Create an account</h1>
-          <p className="text-slate-400">Get started with QR Restaurant today</p>
+          <p className="text-slate-400">Get started with EZ- Restaurant today</p>
         </div>
 
         <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl">

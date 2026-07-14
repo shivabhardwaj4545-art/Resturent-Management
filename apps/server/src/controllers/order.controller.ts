@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma';
 import { isRestaurantOpen } from '../utils/operatingHours';
 import { AppError } from '../utils/AppError';
 import { createRazorpayOrder, verifyRazorpaySignature } from '../services/payment.razorpay.service';
-import { emitNewOrder, emitNotification } from '../services/socket.service';
+import { emitNewOrder, emitNotification, emitWaiterCall } from '../services/socket.service';
 import { sendOrderConfirmationEmail } from '../services/email.service';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { verifyTableSignature } from '../utils/tableSignature';
@@ -144,8 +144,8 @@ export async function placeGuestOrder(
       throw new AppError('Restaurant is currently closed or outside operating hours.', 400, 'RESTAURANT_CLOSED');
     }
 
-    // Verify table number signature to prevent table spoofing
-    if (tableNumber && tableNumber.trim() !== '') {
+    // Verify table number signature to prevent table spoofing (bypassed in development)
+    if (tableNumber && tableNumber.trim() !== '' && process.env.NODE_ENV !== 'development') {
       if (!tableToken || typeof tableToken !== 'string' || !verifyTableSignature(restaurant.id, tableNumber.trim(), tableToken)) {
         throw new AppError('Invalid table QR code signature. Please scan the QR code on your table.', 403, 'INVALID_TABLE_TOKEN');
       }
@@ -229,6 +229,10 @@ export async function placeGuestOrder(
     // Notify restaurant via Socket.io
     emitNewOrder(restaurant.id, order);
 
+    if (paymentMethod === 'PAY_TO_WAITER' && tableNumber) {
+      emitWaiterCall(restaurant.id, tableNumber, 'payment', total);
+    }
+
     // Create notification for restaurant
     await prisma.notification.create({
       data: {
@@ -290,8 +294,8 @@ export async function placeOrder(
       throw new AppError('Restaurant is currently closed or outside operating hours.', 400, 'RESTAURANT_CLOSED');
     }
 
-    // Verify table number signature to prevent table spoofing
-    if (tableNumber && tableNumber.trim() !== '') {
+    // Verify table number signature to prevent table spoofing (bypassed in development)
+    if (tableNumber && tableNumber.trim() !== '' && process.env.NODE_ENV !== 'development') {
       if (!tableToken || typeof tableToken !== 'string' || !verifyTableSignature(restaurant.id, tableNumber.trim(), tableToken)) {
         throw new AppError('Invalid table QR code signature. Please scan the QR code on your table.', 403, 'INVALID_TABLE_TOKEN');
       }
@@ -504,6 +508,10 @@ export async function placeOrder(
 
     // Notify restaurant
     emitNewOrder(restaurant.id, order);
+
+    if (paymentMethod === 'PAY_TO_WAITER' && tableNumber) {
+      emitWaiterCall(restaurant.id, tableNumber, 'payment', finalTotal);
+    }
     emitNotification(userId, {
       type: 'ORDER_PLACED',
       title: 'Order Placed!',

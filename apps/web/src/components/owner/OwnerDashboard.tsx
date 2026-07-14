@@ -56,7 +56,7 @@ export function OwnerDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Waiter call notifications
-  type WaiterCall = { tableNumber: string; calledAt: string; id: string };
+  type WaiterCall = { tableNumber: string; calledAt: string; id: string; type?: 'default' | 'payment'; amount?: number };
   const [waiterCalls, setWaiterCalls] = useState<WaiterCall[]>([]);
   const [showWaiterPanel, setShowWaiterPanel] = useState(false);
   const [activeWaiterAlert, setActiveWaiterAlert] = useState<WaiterCall | null>(null);
@@ -99,7 +99,7 @@ export function OwnerDashboard() {
 
     socket.emit('join:restaurant', data.restaurant.id);
 
-    socket.on('waiter:called', (payload: { tableNumber: string; calledAt: string }) => {
+    socket.on('waiter:called', (payload: { tableNumber: string; calledAt: string; type?: 'default' | 'payment'; amount?: number }) => {
       const newCall: WaiterCall = {
         ...payload,
         id: `${payload.tableNumber}-${Date.now()}`,
@@ -160,11 +160,19 @@ export function OwnerDashboard() {
                   animate={{ scale: [1, 1.2, 1] }}
                   transition={{ repeat: Infinity, duration: 0.8 }}
                 >
-                  <BellRing className="w-8 h-8 text-white" />
+                  {activeWaiterAlert.type === 'payment' ? (
+                    <DollarSign className="w-8 h-8 text-white" />
+                  ) : (
+                    <BellRing className="w-8 h-8 text-white" />
+                  )}
                 </motion.div>
                 <div>
-                  <p className="text-white font-bold text-lg leading-tight">Waiter Called!</p>
-                  <p className="text-orange-100 text-xs">A table needs your attention</p>
+                  <p className="text-white font-bold text-lg leading-tight">
+                    {activeWaiterAlert.type === 'payment' ? 'Payment Requested!' : 'Waiter Called!'}
+                  </p>
+                  <p className="text-orange-100 text-xs">
+                    {activeWaiterAlert.type === 'payment' ? 'Table requests payment collection' : 'A table needs your attention'}
+                  </p>
                 </div>
               </div>
 
@@ -177,6 +185,11 @@ export function OwnerDashboard() {
                 >
                   {activeWaiterAlert.tableNumber}
                 </motion.p>
+                {activeWaiterAlert.type === 'payment' && activeWaiterAlert.amount && (
+                  <p className="text-xl font-bold text-orange-500 mb-2">
+                    Amount: ₹{activeWaiterAlert.amount}
+                  </p>
+                )}
                 <p className="text-xs text-muted-foreground">
                   Called at {new Date(activeWaiterAlert.calledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                 </p>
@@ -362,14 +375,31 @@ export function OwnerDashboard() {
                                 className="flex items-center justify-between bg-orange-50 dark:bg-orange-900/20 border border-orange-200/50 dark:border-orange-500/20 rounded-xl px-3 py-2.5"
                               >
                                 <div className="flex items-center gap-2">
-                                  <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center">
-                                    <BellRing className="w-4 h-4 text-orange-500" />
+                                  <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center flex-shrink-0">
+                                    {call.type === 'payment' ? (
+                                      <DollarSign className="w-4 h-4 text-orange-500" />
+                                    ) : (
+                                      <BellRing className="w-4 h-4 text-orange-500" />
+                                    )}
                                   </div>
                                   <div>
-                                    <p className="text-sm font-bold text-foreground">
+                                    <p className="text-sm font-bold text-foreground flex items-center gap-1.5">
                                       Table {call.tableNumber}
+                                      {call.type === 'payment' && (
+                                        <span className="text-[9px] bg-orange-100 dark:bg-orange-950 text-orange-600 dark:text-orange-400 px-1.5 py-0.5 rounded-full font-semibold">
+                                          Pay
+                                        </span>
+                                      )}
                                     </p>
                                     <p className="text-[11px] text-muted-foreground">
+                                      {call.type === 'payment' ? (
+                                        <span className="font-semibold text-orange-500/90 dark:text-orange-400/90">
+                                          Payment requested {call.amount ? `(₹${call.amount})` : ''}
+                                        </span>
+                                      ) : (
+                                        <span>Called for assistance</span>
+                                      )}
+                                      {' • '}
                                       {new Date(call.calledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                     </p>
                                   </div>

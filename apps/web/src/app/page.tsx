@@ -22,7 +22,7 @@ export default function HomePage() {
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center">
             <QrCode className="w-4 h-4 text-white" />
           </div>
-          <span className="font-display font-bold text-xl text-foreground">QR Restaurant</span>
+          <span className="font-display font-bold text-xl text-foreground">EZ- Restaurant</span>
         </div>
         <div className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
           <a href="#features" className="hover:text-foreground transition-colors">Features</a>
@@ -283,7 +283,7 @@ export default function HomePage() {
               Ready to transform your restaurant?
             </h2>
             <p className="text-muted-foreground mb-8">
-              Join 500+ restaurants already using QR Restaurant to deliver better dining experiences.
+              Join 500+ restaurants already using EZ- Restaurant to deliver better dining experiences.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link href="/register" className="btn-premium text-center">
@@ -305,9 +305,9 @@ export default function HomePage() {
             <div className="w-6 h-6 rounded bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center">
               <QrCode className="w-3 h-3 text-white" />
             </div>
-            <span className="font-display font-bold text-foreground">QR Restaurant</span>
+            <span className="font-display font-bold text-foreground">EZ- Restaurant</span>
           </div>
-          <p className="text-muted-foreground text-sm">© 2024 QR Restaurant SaaS. Built with ❤️ in India.</p>
+          <p className="text-muted-foreground text-sm">© 2024 EZ- Restaurant SaaS. Built with ❤️ in India.</p>
           <div className="flex gap-6 text-sm text-muted-foreground">
             {(!mounted || !user) && (
               <>

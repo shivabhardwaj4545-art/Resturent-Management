@@ -11,7 +11,7 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const FROM = `"${process.env.SMTP_FROM_NAME ?? 'QR Restaurant'}" <${
+const FROM = `"${process.env.SMTP_FROM_NAME ?? 'EZ- Restaurant'}" <${
   process.env.SMTP_FROM_EMAIL ?? 'noreply@qrrestaurant.com'
 }>`;
 
@@ -45,7 +45,7 @@ export async function sendVerificationEmail(
     </style></head>
     <body>
       <div class="container">
-        <div class="header"><h1>🍽️ QR Restaurant</h1></div>
+        <div class="header"><h1>🍽️ EZ- Restaurant</h1></div>
         <div class="body">
           <h2>Verify your email, ${name}!</h2>
           <p>Thanks for signing up. Click the button below to verify your email address and get started.</p>
@@ -54,12 +54,12 @@ export async function sendVerificationEmail(
           </p>
           <p style="color: #888; font-size: 14px;">This link expires in 24 hours. If you didn't sign up, you can safely ignore this email.</p>
         </div>
-        <div class="footer"><p>© 2024 QR Restaurant SaaS. All rights reserved.</p></div>
+        <div class="footer"><p>© 2024 EZ- Restaurant SaaS. All rights reserved.</p></div>
       </div>
     </body>
     </html>
   `;
-  await sendEmail(to, 'Verify your QR Restaurant account', html);
+  await sendEmail(to, 'Verify your EZ- Restaurant account', html);
 }
 
 export async function sendPasswordResetEmail(
@@ -94,7 +94,7 @@ export async function sendPasswordResetEmail(
     </body>
     </html>
   `;
-  await sendEmail(to, 'Reset your QR Restaurant password', html);
+  await sendEmail(to, 'Reset your EZ- Restaurant password', html);
 }
 
 export async function sendOrderConfirmationEmail(

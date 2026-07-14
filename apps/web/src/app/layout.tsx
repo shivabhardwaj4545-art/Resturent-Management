@@ -18,24 +18,24 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 
 export const metadata: Metadata = {
   title: {
-    default: 'QR Restaurant — Order. Track. Enjoy.',
-    template: '%s | QR Restaurant',
+    default: 'EZ- Restaurant — Order. Track. Enjoy.',
+    template: '%s | EZ- Restaurant',
   },
   description:
     'Scan a QR code, browse the menu, order food, and track your order in real time. No app install required. Powered by AI recommendations.',
   keywords: ['restaurant ordering', 'QR code menu', 'food delivery', 'online ordering', 'restaurant management'],
-  authors: [{ name: 'QR Restaurant Platform' }],
+  authors: [{ name: 'EZ- Restaurant Platform' }],
   openGraph: {
     type: 'website',
     locale: 'en_IN',
     url: 'https://qrrestaurant.com',
-    title: 'QR Restaurant — Order. Track. Enjoy.',
+    title: 'EZ- Restaurant — Order. Track. Enjoy.',
     description: 'Scan a QR code and order food seamlessly. No app required.',
-    siteName: 'QR Restaurant',
+    siteName: 'EZ- Restaurant',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'QR Restaurant',
+    title: 'EZ- Restaurant',
     description: 'Smart QR-based restaurant ordering platform.',
   },
   manifest: '/manifest.json',

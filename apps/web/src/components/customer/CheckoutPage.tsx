@@ -319,7 +319,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
       key,
       amount: Math.round(amount * 100),
       currency: 'INR',
-      name: 'QR Restaurant',
+      name: 'EZ- Restaurant',
       description: `Order #${orderId.slice(-8).toUpperCase()}`,
       order_id: razorpayOrderId,
       handler: async (response) => {

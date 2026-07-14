@@ -95,12 +95,14 @@ export function emitNotification(userId: string, notification: unknown): void {
 }
 
 // Emit waiter call notification to restaurant
-export function emitWaiterCall(restaurantId: string, tableNumber: string): void {
+export function emitWaiterCall(restaurantId: string, tableNumber: string, type: 'default' | 'payment' = 'default', amount?: number): void {
   if (!io) return;
   io.to(`restaurant:${restaurantId}`).emit('waiter:called', {
     tableNumber,
     restaurantId,
     calledAt: new Date().toISOString(),
+    type,
+    amount,
   });
 }
 
