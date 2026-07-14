@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 
 export function generateTableSignature(restaurantId: string, tableNumber: string): string {
-  const secret = process.env.JWT_SECRET || 'table_signing_fallback_secret_key';
+  const secret = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'table_signing_fallback_secret_key';
   return crypto
     .createHmac('sha256', secret)
     .update(`${restaurantId}:${tableNumber}`)
