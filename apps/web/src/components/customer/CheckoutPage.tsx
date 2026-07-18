@@ -121,6 +121,15 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
 
   const [manualTableNumber, setManualTableNumber] = useState(tableNumber || '');
 
+  useEffect(() => {
+    if (!tableNumber) {
+      const storedTable = localStorage.getItem(`table_num_${restaurantSlug}`);
+      if (storedTable) {
+        setManualTableNumber(storedTable);
+      }
+    }
+  }, [tableNumber, restaurantSlug]);
+
   // Mock Payment Modal state
   const [showMockPaymentModal, setShowMockPaymentModal] = useState(false);
   const [mockPaymentData, setMockPaymentData] = useState<{

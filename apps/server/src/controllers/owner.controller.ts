@@ -561,16 +561,36 @@ export async function confirmPayment(req: AuthenticatedRequest, res: Response, n
       throw new AppError('Payment is already marked as paid.', 400, 'ALREADY_PAID');
     }
 
-    await prisma.$transaction([
-      prisma.order.update({
+    const LOYALTY_POINTS_PER_RUPEE = 1;
+    const pointsEarned = Math.floor(Number(order.total) / 10) * LOYALTY_POINTS_PER_RUPEE;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({
         where: { id },
         data: { paymentStatus: 'PAID' },
-      }),
-      prisma.payment.updateMany({
+      });
+
+      await tx.payment.updateMany({
         where: { orderId: id },
         data: { status: 'PAID' },
-      }),
-    ]);
+      });
+
+      if (order.userId && pointsEarned > 0) {
+        await tx.user.update({
+          where: { id: order.userId },
+          data: { loyaltyPoints: { increment: pointsEarned } },
+        });
+
+        await tx.loyaltyTransaction.create({
+          data: {
+            userId: order.userId,
+            orderId: order.id,
+            points: pointsEarned,
+            type: 'EARNED',
+          },
+        });
+      }
+    });
 
     // Emit real-time socket update to customer
     emitOrderStatusUpdate(id, restaurant.id, {

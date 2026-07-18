@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -25,9 +25,23 @@ export default function LoginClient() {
   const searchParams = useSearchParams();
   const restaurantSlug = searchParams.get('restaurant');
   const isPartner = searchParams.get('partner') === 'true';
-  const { setUser } = useAuthStore();
+  const { setUser, user, isAuthenticated } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      if (user.role === 'SUPER_ADMIN') {
+        router.push('/admin/dashboard');
+      } else if (user.role === 'RESTAURANT_OWNER') {
+        router.push('/owner/dashboard');
+      } else if (restaurantSlug) {
+        router.push(`/r/${restaurantSlug}`);
+      } else {
+        router.push('/');
+      }
+    }
+  }, [isAuthenticated, user, router, restaurantSlug]);
 
   const { register, handleSubmit, setValue, formState: { errors } } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
