@@ -6,13 +6,14 @@ import { motion } from 'framer-motion';
 import {
   ShoppingBag, UtensilsCrossed, LayoutDashboard, Tag, BarChart3, Settings, LogOut,
   Menu, Search, Clock, ChevronDown, RefreshCw, User, MapPin, Palette,
-  Mail, Phone, CreditCard, Receipt, Check
+  Mail, Phone, CreditCard, Receipt, Check, Wallet, Banknote
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
+import { WaiterBell } from '@/components/owner/WaiterBell';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
@@ -70,7 +71,7 @@ type Order = {
   cancelledAt: string | null;
   user: { name: string; phone: string | null; email: string | null } | null;
   address: { flat: string; street: string; area: string; city: string; pincode: string } | null;
-  items: Array<{ quantity: number; menuItem: { name: string }; subtotal: number; unitPrice: number }>;
+  items: Array<{ quantity: number; menuItem: { name: string }; subtotal: number; unitPrice: number; addOns?: any }>;
 };
 
 const formatTime = (timeStr: string | null | undefined) => {
@@ -185,9 +186,12 @@ export function OwnerOrdersPage() {
               <span className="text-sm text-muted-foreground">({data.pagination.total} total)</span>
             )}
           </div>
-          <button onClick={() => refetch()} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground">
-            <RefreshCw className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <WaiterBell />
+            <button onClick={() => refetch()} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground">
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
@@ -225,6 +229,14 @@ export function OwnerOrdersPage() {
                         {order.tableNumber && (
                           <span className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" />Table {order.tableNumber}</span>
                         )}
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${
+                          order.paymentMethod === 'RAZORPAY' ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-400 dark:border-purple-900/30' :
+                          order.paymentMethod === 'WALLET' ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-900/30' :
+                          order.paymentMethod === 'PAY_TO_WAITER' ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400 dark:border-blue-900/30' :
+                          'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-900/30'
+                        }`}>
+                          {order.paymentMethod === 'RAZORPAY' ? 'Online' : order.paymentMethod === 'WALLET' ? 'Wallet' : order.paymentMethod === 'PAY_TO_WAITER' ? 'Pay to Waiter' : 'Pay on Counter'}
+                        </span>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                         <User className="w-3 h-3" />
@@ -261,6 +273,11 @@ export function OwnerOrdersPage() {
                                     <span className="text-xs text-muted-foreground ml-2">
                                       ({item.quantity} × ₹{item.unitPrice || (item.subtotal / item.quantity).toFixed(0)})
                                     </span>
+                                    {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
+                                      <div className="text-[11px] text-muted-foreground mt-0.5 ml-2">
+                                        + {item.addOns.map((ao: any) => ao.name).join(', ')}
+                                      </div>
+                                    )}
                                   </div>
                                   <span className="font-semibold text-foreground">₹{item.subtotal.toFixed(0)}</span>
                                 </div>
@@ -379,7 +396,10 @@ export function OwnerOrdersPage() {
                                 order.paymentMethod === 'PAY_TO_WAITER' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' :
                                 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
                               }`}>
-                                <CreditCard className="w-3 h-3" />
+                                {order.paymentMethod === 'RAZORPAY' ? <CreditCard className="w-3 h-3" /> :
+                                 order.paymentMethod === 'WALLET' ? <Wallet className="w-3 h-3" /> :
+                                 order.paymentMethod === 'PAY_TO_WAITER' ? <User className="w-3 h-3" /> :
+                                 <Banknote className="w-3 h-3" />}
                                 {order.paymentMethod === 'RAZORPAY' ? 'Razorpay' : order.paymentMethod === 'WALLET' ? 'Wallet' : order.paymentMethod === 'PAY_TO_WAITER' ? 'Pay to Waiter' : 'Pay on Counter'}
                               </span>
                               
@@ -407,20 +427,20 @@ export function OwnerOrdersPage() {
                                   )}
                                 </p>
                               ) : (
-                                order.paymentMethod !== 'RAZORPAY' && (
-                                  <button
-                                    onClick={() => confirmPaymentMutation.mutate(order.id)}
-                                    disabled={confirmPaymentMutation.isPending}
-                                    className="w-full py-2 px-3 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
-                                  >
-                                    <Check className="w-3.5 h-3.5" />
-                                    {confirmPaymentMutation.isPending 
-                                      ? 'Confirming...' 
-                                      : order.paymentMethod === 'PAY_TO_WAITER' 
-                                      ? 'Confirm Payment Paid to Waiter' 
-                                      : 'Mark as Paid (Received Cash)'}
-                                  </button>
-                                )
+                                <button
+                                  onClick={() => confirmPaymentMutation.mutate(order.id)}
+                                  disabled={confirmPaymentMutation.isPending}
+                                  className="w-full py-2 px-3 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  {confirmPaymentMutation.isPending 
+                                    ? 'Confirming...' 
+                                    : order.paymentMethod === 'RAZORPAY'
+                                    ? 'Confirm Direct Online Payment'
+                                    : order.paymentMethod === 'PAY_TO_WAITER' 
+                                    ? 'Confirm Payment Paid to Waiter' 
+                                    : 'Mark as Paid (Received Cash)'}
+                                </button>
                               )}
                             </div>
 

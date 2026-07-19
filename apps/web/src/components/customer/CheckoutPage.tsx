@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, CreditCard, Banknote, Wallet, MapPin, User, Phone, Loader2, Plus, PlusCircle, Check, Home, Briefcase, Lock, X, Smartphone, Building, Gift } from 'lucide-react';
+import { ChevronLeft, CreditCard, Banknote, Wallet, MapPin, User, Phone, Loader2, Plus, PlusCircle, Check, Home, Briefcase, Lock, X, Smartphone, Building, Gift, Copy, QrCode } from 'lucide-react';
 import { useCartStore } from '@/store/cart.store';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -29,7 +29,7 @@ interface RazorpayOptions {
   currency: string;
   name: string;
   description: string;
-  order_id: string;
+  order_id?: string;
   handler: (response: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => void;
   prefill: { name: string; email: string; contact: string };
   theme: { color: string };
@@ -91,14 +91,12 @@ const saveOrderToRecent = (orderId: string, restaurantSlug: string) => {
 
 export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: CheckoutPageProps) {
   const router = useRouter();
-  const { user: rawUser, loginRestaurantSlug, logout } = useAuthStore();
+  const { user: rawUser, logout } = useAuthStore();
 
   const activeUser = useMemo(() => {
     if (!rawUser) return null;
-    if (rawUser.role !== 'CUSTOMER') return rawUser;
-    if (loginRestaurantSlug === restaurantSlug) return rawUser;
-    return null;
-  }, [rawUser, loginRestaurantSlug, restaurantSlug]);
+    return rawUser;
+  }, [rawUser]);
 
   // Fetch Restaurant Data
   const { data: menuData } = useQuery({
@@ -139,7 +137,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
     customerName: string;
     customerPhone: string;
   } | null>(null);
-  const [mockPaymentMethod, setMockPaymentMethod] = useState<'card' | 'upi' | 'netbanking'>('card');
+  const [mockPaymentMethod, setMockPaymentMethod] = useState<'manual' | 'automatic'>('manual');
   const [isProcessingMockPayment, setIsProcessingMockPayment] = useState(false);
   const [mockCardNumber, setMockCardNumber] = useState('');
   const [mockCardExpiry, setMockCardExpiry] = useState('');
@@ -252,10 +250,38 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
 
   const { items, couponCode, couponDiscount, clearCart, subtotal, total, removeItem } = useCartStore();
   const [loading, setLoading] = useState(false);
-  const [selectedPayment, setSelectedPayment] = useState<'RAZORPAY' | 'COD' | 'WALLET' | 'PAY_TO_WAITER'>('RAZORPAY');
+  const [mounted, setMounted] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState<'RAZORPAY' | 'COD' | 'PAY_TO_WAITER'>('RAZORPAY');
+  const [onlinePaymentType, setOnlinePaymentType] = useState<'DIRECT' | 'RAZORPAY'>('DIRECT');
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (restaurant) {
+      const hasDirect = !!(restaurant.paymentQrCode || restaurant.paymentUpiId || restaurant.paymentPhone || restaurant.bankAccountNumber);
+      setOnlinePaymentType(hasDirect ? 'DIRECT' : 'RAZORPAY');
+    }
+  }, [restaurant]);
   const [razorpayKeyId, setRazorpayKeyId] = useState<string>('');
   // Use a ref so handleRazorpayPayment always reads the latest key (avoids stale closure race condition)
   const razorpayKeyRef = useRef<string>('');
+
+  const [addonOrderId, setAddonOrderId] = useState<string | null>(null);
+  const [addonOrderNum, setAddonOrderNum] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedId = sessionStorage.getItem('qr_restaurant_addon_order_id');
+      const storedNum = sessionStorage.getItem('qr_restaurant_addon_order_num');
+      if (storedId) {
+        setAddonOrderId(storedId);
+        setAddonOrderNum(storedNum);
+        setSelectedPayment('PAY_TO_WAITER');
+      }
+    }
+  }, []);
 
   useEffect(() => {
     api.get('/orders/razorpay-key')
@@ -269,15 +295,16 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
       });
   }, []);
 
-  const subtotalAmount = subtotal();
+  const subtotalAmount = mounted ? subtotal() : 0;
   const gst = subtotalAmount * GST_RATE;
   const isDineIn = diningOption === 'DINE_IN';
   const deliveryPlusPackaging = isDineIn ? 0 : (DELIVERY_FEE + PACKAGING_FEE);
-  const grandTotalBeforePoints = Math.max(subtotalAmount + gst + deliveryPlusPackaging - couponDiscount, 0);
-  
+  const finalCouponDiscount = addonOrderId ? 0 : couponDiscount;
+  const grandTotalBeforePoints = Math.max(subtotalAmount + gst + deliveryPlusPackaging - finalCouponDiscount, 0);
+
   const pointsAvailable = profileData?.loyaltyPoints ?? activeUser?.loyaltyPoints ?? 0;
   const maxPointsDiscount = pointsAvailable / 10;
-  const pointsDiscount = usePoints ? Math.min(maxPointsDiscount, grandTotalBeforePoints) : 0;
+  const pointsDiscount = usePoints && !addonOrderId ? Math.min(maxPointsDiscount, grandTotalBeforePoints) : 0;
   const grandTotal = Math.max(grandTotalBeforePoints - pointsDiscount, 0);
 
   const { register, handleSubmit, formState: { errors } } = useForm<GuestForm>({
@@ -296,31 +323,17 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
   };
 
   const handleRazorpayPayment = async (orderId: string, razorpayOrderId: string, amount: number, customerName: string, customerPhone: string) => {
-    // Always read from the ref to get the latest key (avoids stale closure)
-    const key = razorpayKeyRef.current || razorpayKeyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
+    // Always read from ref or env to get the latest key
+    const key = razorpayKeyRef.current || razorpayKeyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_TAVv5bDEV3HwgB';
 
-    // If server returned a mock order ID, it means Razorpay keys are not configured on the server
-    if (razorpayOrderId.startsWith('order_mock_')) {
-      if (process.env.NODE_ENV === 'development') {
-        // Allow mock simulation only in development
-        setMockPaymentData({ orderId, razorpayOrderId, amount, customerName, customerPhone });
-        setShowMockPaymentModal(true);
-      } else {
-        toast.error('Payment gateway is not configured. Please contact support.');
-      }
-      return;
-    }
-
-    // If no Razorpay key is available, show an actionable error
-    if (!key || key.includes('your_key_id')) {
+    if (!key) {
       toast.error('Payment gateway configuration error. Please contact support.');
-      console.error('Razorpay key is missing. Set RAZORPAY_KEY_ID in server environment variables.');
       return;
     }
 
     const loaded = await loadRazorpay();
     if (!loaded) {
-      toast.error('Failed to load payment gateway. Please try again.');
+      toast.error('Failed to load payment gateway. Please check your internet connection.');
       return;
     }
 
@@ -330,14 +343,14 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
       currency: 'INR',
       name: 'EZ- Restaurant',
       description: `Order #${orderId.slice(-8).toUpperCase()}`,
-      order_id: razorpayOrderId,
+      ...(razorpayOrderId ? { order_id: razorpayOrderId } : {}),
       handler: async (response) => {
         try {
           await api.post('/orders/verify-payment', {
             orderId,
-            razorpayOrderId: response.razorpay_order_id,
-            razorpayPaymentId: response.razorpay_payment_id,
-            razorpaySignature: response.razorpay_signature,
+            razorpayOrderId: response.razorpay_order_id || razorpayOrderId,
+            razorpayPaymentId: response.razorpay_payment_id || `pay_${Date.now()}`,
+            razorpaySignature: response.razorpay_signature || 'direct_signature',
           });
           saveOrderToRecent(orderId, restaurantSlug);
           clearCart();
@@ -360,11 +373,16 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
       },
     };
 
-    const rzp = new window.Razorpay(options);
-    rzp.on('payment.failed', (response: any) => {
-      toast.error(response.error?.description || 'Payment failed. Please try again.');
-    });
-    rzp.open();
+    try {
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', (response: any) => {
+        toast.error(response?.error?.description || 'Payment failed. Please try again.');
+      });
+      rzp.open();
+    } catch (err: any) {
+      console.error('Failed to initialize Razorpay payment modal:', err);
+      toast.error('Could not open Razorpay checkout window. Please try again.');
+    }
   };
 
   const handleConfirmMockPayment = async () => {
@@ -404,6 +422,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
         tableNumber: manualTableNumber || undefined,
         tableToken: token,
         paymentMethod: selectedPayment,
+        isDirect: selectedPayment === 'RAZORPAY' && onlinePaymentType === 'DIRECT',
         couponCode: couponCode ?? undefined,
         restaurantSlug,
         cartItems: items.map((item) => ({
@@ -418,12 +437,13 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
         order: { id: string; total: number; razorpayOrderId: string | null };
       };
 
-      if (selectedPayment === 'RAZORPAY' && order.razorpayOrderId) {
+      if (selectedPayment === 'RAZORPAY' && order.razorpayOrderId && onlinePaymentType === 'RAZORPAY') {
         await handleRazorpayPayment(order.id, order.razorpayOrderId, order.total, formData.guestName, formData.guestPhone);
       } else {
         saveOrderToRecent(order.id, restaurantSlug);
         clearCart();
-        toast.success('Order placed successfully! 🎉');
+        const hasDirectPayment = !!(restaurant?.paymentQrCode || restaurant?.paymentUpiId || restaurant?.paymentPhone || restaurant?.bankAccountNumber);
+        toast.success(hasDirectPayment && selectedPayment === 'RAZORPAY' ? 'Order placed! Please pay direct to the restaurant.' : 'Order placed successfully! 🎉');
         router.push(`/r/${restaurantSlug}/order/${order.id}`);
       }
     } catch (err: any) {
@@ -456,9 +476,10 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
       const response = await api.post('/orders', {
         ...(diningOption === 'DINE_IN' ? { tableNumber: manualTableNumber || undefined, tableToken: token } : { addressId: selectedAddressId }),
         paymentMethod: selectedPayment,
+        isDirect: selectedPayment === 'RAZORPAY' && onlinePaymentType === 'DIRECT',
         couponCode: couponCode ?? undefined,
         restaurantSlug,
-        useWallet: selectedPayment === 'WALLET',
+        useWallet: false,
         usePoints,
         cartItems: items.map((item) => ({
           menuItemId: item.menuItemId,
@@ -472,12 +493,13 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
         order: { id: string; total: number; razorpayOrderId: string | null };
       };
 
-      if (selectedPayment === 'RAZORPAY' && order.razorpayOrderId) {
+      if (selectedPayment === 'RAZORPAY' && order.razorpayOrderId && onlinePaymentType === 'RAZORPAY') {
         await handleRazorpayPayment(order.id, order.razorpayOrderId, order.total, activeUser!.name, activeUser!.phone ?? '');
       } else {
         saveOrderToRecent(order.id, restaurantSlug);
         clearCart();
-        toast.success('Order placed! 🎉');
+        const hasDirectPayment = !!(restaurant?.paymentQrCode || restaurant?.paymentUpiId || restaurant?.paymentPhone || restaurant?.bankAccountNumber);
+        toast.success(hasDirectPayment && selectedPayment === 'RAZORPAY' ? 'Order placed! Please pay direct to the restaurant.' : 'Order placed! 🎉');
         router.push(`/r/${restaurantSlug}/order/${order.id}`);
       }
     } catch (err: any) {
@@ -498,13 +520,47 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
     }
   };
 
+  const handleAddItemsToOrder = async () => {
+    if (items.length === 0) return;
+    setLoading(true);
+    try {
+      const response = await api.post(`/orders/${addonOrderId}/add-items`, {
+        cartItems: items.map((item) => ({
+          menuItemId: item.menuItemId,
+          variantId: item.variantId,
+          quantity: item.quantity,
+          addOns: item.addOns,
+        })),
+        paymentMethod: selectedPayment,
+      });
+
+      const { order } = response.data.data as {
+        order: { id: string; total: number; razorpayOrderId: string | null };
+      };
+
+      // Clean up session storage add-on mode
+      sessionStorage.removeItem('qr_restaurant_addon_order_id');
+      sessionStorage.removeItem('qr_restaurant_addon_order_num');
+
+      saveOrderToRecent(order.id, restaurantSlug);
+      clearCart();
+      toast.success('Items successfully added to your order! 🎉');
+      router.push(`/r/${restaurantSlug}/order/${order.id}`);
+    } catch (err: any) {
+      const errMsg = err.response?.data?.error ?? err.response?.data?.message ?? 'Failed to add items to order.';
+      toast.error(errMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3">
         <div className="flex items-center gap-3 max-w-lg mx-auto">
-          <button onClick={() => router.back()} className="p-2 rounded-xl hover:bg-muted transition-colors">
+          <Link href={`/r/${restaurantSlug}`} className="p-2 rounded-xl hover:bg-muted transition-colors">
             <ChevronLeft className="w-5 h-5" />
-          </button>
+          </Link>
           <h1 className="font-display font-bold text-lg">Checkout</h1>
         </div>
       </div>
@@ -515,38 +571,38 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
         {/* Order Summary */}
         <div className="bg-card border border-border rounded-2xl p-4">
           <h2 className="font-display font-semibold mb-3">Order Summary</h2>
-          <div className="space-y-2 mb-4">
-            {items.map((item) => (
+          <div className="space-y-2 mb-4" suppressHydrationWarning>
+            {mounted && items.map((item) => (
               <div key={item.id} className="flex justify-between text-sm">
                 <span className="text-muted-foreground">{item.name} × {item.quantity}</span>
                 <span>₹{(item.unitPrice * item.quantity).toFixed(0)}</span>
               </div>
             ))}
           </div>
-          <div className="border-t border-border pt-3 space-y-1.5 text-sm">
+          <div className="border-t border-border pt-3 space-y-1.5 text-sm" suppressHydrationWarning>
             <div className="flex justify-between text-muted-foreground">
-              <span>Subtotal</span><span>₹{subtotalAmount.toFixed(2)}</span>
+              <span>Subtotal</span><span suppressHydrationWarning>₹{subtotalAmount.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-muted-foreground">
-              <span>GST (18%)</span><span>₹{gst.toFixed(2)}</span>
+              <span>GST (18%)</span><span suppressHydrationWarning>₹{gst.toFixed(2)}</span>
             </div>
             {!isDineIn && (
               <div className="flex justify-between text-muted-foreground">
                 <span>Delivery + Packaging</span><span>₹{DELIVERY_FEE + PACKAGING_FEE}</span>
               </div>
             )}
-            {couponDiscount > 0 && (
+            {mounted && !addonOrderId && couponDiscount > 0 && (
               <div className="flex justify-between text-green-600">
                 <span>Coupon ({couponCode})</span><span>-₹{couponDiscount.toFixed(2)}</span>
               </div>
             )}
-            {pointsDiscount > 0 && (
+            {mounted && !addonOrderId && pointsDiscount > 0 && (
               <div className="flex justify-between text-green-600">
                 <span>Loyalty Points Discount</span><span>-₹{pointsDiscount.toFixed(2)}</span>
               </div>
             )}
             <div className="flex justify-between font-bold text-base border-t border-border pt-2">
-              <span>Total</span><span>₹{grandTotal.toFixed(2)}</span>
+              <span>Total</span><span suppressHydrationWarning>₹{grandTotal.toFixed(2)}</span>
             </div>
           </div>
         </div>
@@ -690,7 +746,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
         )}
 
         {/* Loyalty Points Card */}
-        {activeUser && pointsAvailable > 0 && (
+        {activeUser && pointsAvailable > 0 && !addonOrderId && (
           <div className="bg-card border border-border rounded-2xl p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-orange-100 dark:bg-orange-950/40 flex items-center justify-center text-orange-500">
@@ -726,12 +782,11 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
                 { value: 'RAZORPAY', label: 'Pay Online', sublabel: 'UPI, Cards, Net Banking', icon: <CreditCard className="w-5 h-5" /> },
                 { value: 'COD', label: 'Pay on Counter', sublabel: 'Pay cash or card at the counter', icon: <Banknote className="w-5 h-5" /> },
                 { value: 'PAY_TO_WAITER', label: 'Pay to Waiter', sublabel: 'Pay at your table (Cash/UPI/Card)', icon: <User className="w-5 h-5" /> },
-                ...(activeUser ? [{ value: 'WALLET', label: 'Wallet', sublabel: `Balance: ₹${activeUser.walletBalance}`, icon: <Wallet className="w-5 h-5" /> }] : []),
               ].map((method) => (
                 <button
                   key={method.value}
                   type="button"
-                  onClick={() => setSelectedPayment(method.value as 'RAZORPAY' | 'COD' | 'WALLET' | 'PAY_TO_WAITER')}
+                  onClick={() => setSelectedPayment(method.value as 'RAZORPAY' | 'COD' | 'PAY_TO_WAITER')}
                   className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all ${
                     selectedPayment === method.value
                       ? 'border-primary bg-primary/5'
@@ -753,7 +808,200 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
                 </button>
               ))}
             </div>
+
+            <AnimatePresence>
+              {selectedPayment === 'RAZORPAY' && !!(restaurant?.paymentQrCode || restaurant?.paymentUpiId || restaurant?.paymentPhone || restaurant?.bankAccountNumber) && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mt-3 pl-3 border-l-2 border-primary/30 space-y-2 overflow-hidden"
+                >
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">
+                    Select Online Payment Option:
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setOnlinePaymentType('DIRECT')}
+                      className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all relative ${
+                        onlinePaymentType === 'DIRECT'
+                          ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
+                          : 'border-border hover:bg-muted/40'
+                      }`}
+                    >
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                        onlinePaymentType === 'DIRECT' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                      }`}>
+                        <User className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-xs text-foreground font-display">Pay Direct to Owner</p>
+                        <p className="text-[10px] text-muted-foreground leading-normal mt-0.5">Use Owner QR, UPI, or Bank</p>
+                      </div>
+                      {onlinePaymentType === 'DIRECT' && (
+                        <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-primary" />
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setOnlinePaymentType('RAZORPAY')}
+                      className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all relative ${
+                        onlinePaymentType === 'RAZORPAY'
+                          ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
+                          : 'border-border hover:bg-muted/40'
+                      }`}
+                    >
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                        onlinePaymentType === 'RAZORPAY' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                      }`}>
+                        <CreditCard className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-xs text-foreground font-display">Pay using Razorpay</p>
+                        <p className="text-[10px] text-muted-foreground leading-normal mt-0.5">Standard online instant payment</p>
+                      </div>
+                      {onlinePaymentType === 'RAZORPAY' && (
+                        <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-primary" />
+                      )}
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
+        )}
+
+        {selectedPayment === 'RAZORPAY' && onlinePaymentType === 'DIRECT' && (restaurant?.paymentQrCode || restaurant?.paymentUpiId || restaurant?.paymentPhone || restaurant?.bankAccountNumber) && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-card border border-border rounded-2xl p-5 space-y-4 shadow-sm"
+          >
+            <div className="flex items-center gap-2 border-b border-border pb-3">
+              <CreditCard className="w-5 h-5 text-primary" />
+              <h3 className="font-display font-semibold text-sm">Direct Payment Details</h3>
+            </div>
+            
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Please transfer the total amount of <strong className="text-foreground">₹{grandTotal.toFixed(2)}</strong> directly to the restaurant owner using the details below:
+            </p>
+
+            {restaurant.paymentQrCode && (
+              <div className="flex flex-col items-center justify-center p-3 bg-white rounded-2xl border border-border max-w-[200px] mx-auto">
+                <img
+                  src={restaurant.paymentQrCode}
+                  alt="Restaurant Payment QR"
+                  className="w-40 h-40 object-contain"
+                />
+                <span className="text-[10px] text-gray-500 mt-1 font-semibold">Scan to Pay</span>
+              </div>
+            )}
+
+            <div className="space-y-2.5 text-xs">
+              {restaurant.paymentUpiId && (
+                <div className="flex items-center justify-between p-2.5 bg-muted/40 rounded-xl">
+                  <div>
+                    <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">UPI ID</span>
+                    <span className="font-mono font-medium text-foreground">{restaurant.paymentUpiId}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(restaurant.paymentUpiId || '');
+                      toast.success('UPI ID copied!');
+                    }}
+                    className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
+                    title="Copy UPI ID"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {restaurant.paymentPhone && (
+                <div className="flex items-center justify-between p-2.5 bg-muted/40 rounded-xl">
+                  <div>
+                    <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Phone for Payment</span>
+                    <span className="font-mono font-medium text-foreground">{restaurant.paymentPhone}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(restaurant.paymentPhone || '');
+                      toast.success('Phone number copied!');
+                    }}
+                    className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
+                    title="Copy Phone"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {restaurant.bankAccountNumber && (
+                <div className="p-3 bg-muted/20 border border-border/60 rounded-xl space-y-2">
+                  <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Bank Account Details</span>
+                  
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    {restaurant.bankAccountHolder && (
+                      <div>
+                        <span className="text-muted-foreground block">Holder Name</span>
+                        <span className="font-medium text-foreground">{restaurant.bankAccountHolder}</span>
+                      </div>
+                    )}
+                    {restaurant.bankName && (
+                      <div>
+                        <span className="text-muted-foreground block">Bank Name</span>
+                        <span className="font-medium text-foreground">{restaurant.bankName}</span>
+                      </div>
+                    )}
+                    <div className="col-span-2 flex items-center justify-between border-t border-border/50 pt-1.5 mt-1">
+                      <div>
+                        <span className="text-muted-foreground block">Account Number</span>
+                        <span className="font-mono font-medium text-foreground">{restaurant.bankAccountNumber}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(restaurant.bankAccountNumber || '');
+                          toast.success('Account number copied!');
+                        }}
+                        className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
+                        title="Copy Account Number"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    {restaurant.bankIfsc && (
+                      <div className="col-span-2 flex items-center justify-between border-t border-border/50 pt-1.5 mt-1">
+                        <div>
+                          <span className="text-muted-foreground block">IFSC Code</span>
+                          <span className="font-mono font-medium text-foreground">{restaurant.bankIfsc}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(restaurant.bankIfsc || '');
+                            toast.success('IFSC Code copied!');
+                          }}
+                          className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
+                          title="Copy IFSC Code"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-3 bg-primary/5 border border-primary/10 rounded-xl text-[11px] text-primary leading-relaxed font-medium">
+              After transfer, click <strong>Place Order / Settle Payment</strong> below. Your order will be placed as pending, and will be confirmed once the restaurant owner verifies the transaction.
+            </div>
+          </motion.div>
         )}
 
         {/* Guest or user form or login required prompt */}
@@ -807,6 +1055,24 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
                 Log Out & Use Customer Account
               </button>
             </div>
+          </div>
+        ) : addonOrderId ? (
+          <div className="bg-card border border-border rounded-2xl p-4 space-y-4">
+            <h2 className="font-display font-semibold text-sm">Add Items to Active Order</h2>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              These items will be appended to your active Order #{addonOrderNum} for Table {manualTableNumber || localStorage.getItem(`table_num_${restaurantSlug}`) || '1'}.
+            </p>
+            <div className="p-3 bg-primary/5 border border-primary/10 rounded-xl text-xs text-primary font-medium">
+              📝 Added items will be billed to your running tab. You can settle the final amount at the end of your meal.
+            </div>
+            <button
+              onClick={handleAddItemsToOrder}
+              disabled={loading || items.length === 0}
+              className="w-full py-4 rounded-2xl text-white font-bold text-base bg-gradient-to-r from-orange-500 to-amber-500 disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20"
+            >
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {loading ? 'Adding Items...' : `Confirm & Add Items · ₹${grandTotal.toFixed(0)}`}
+            </button>
           </div>
         ) : activeUser ? (
           <div className="bg-card border border-border rounded-2xl p-4">
@@ -972,153 +1238,207 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
               <div className="flex border-b border-border p-2 bg-muted/10">
                 <button
                   type="button"
-                  onClick={() => setMockPaymentMethod('card')}
+                  onClick={() => setMockPaymentMethod('manual')}
                   className={`flex-1 flex flex-col items-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                    mockPaymentMethod === 'card'
-                      ? 'bg-card text-primary shadow-sm border border-border'
-                      : 'text-muted-foreground hover:bg-muted/50'
-                  }`}
-                >
-                  <CreditCard className="w-4 h-4" />
-                  Card
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMockPaymentMethod('upi')}
-                  className={`flex-1 flex flex-col items-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                    mockPaymentMethod === 'upi'
+                    mockPaymentMethod === 'manual'
                       ? 'bg-card text-primary shadow-sm border border-border'
                       : 'text-muted-foreground hover:bg-muted/50'
                   }`}
                 >
                   <Smartphone className="w-4 h-4" />
-                  UPI
+                  Pay Manually
                 </button>
                 <button
                   type="button"
-                  onClick={() => setMockPaymentMethod('netbanking')}
+                  onClick={() => setMockPaymentMethod('automatic')}
                   className={`flex-1 flex flex-col items-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                    mockPaymentMethod === 'netbanking'
+                    mockPaymentMethod === 'automatic'
                       ? 'bg-card text-primary shadow-sm border border-border'
                       : 'text-muted-foreground hover:bg-muted/50'
                   }`}
                 >
-                  <Building className="w-4 h-4" />
-                  Net Banking
+                  <CreditCard className="w-4 h-4" />
+                  Razorpay (Automatic)
                 </button>
               </div>
 
               {/* Content area */}
-              <div className="p-6 space-y-4 min-h-[180px]">
-                {mockPaymentMethod === 'card' && (
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Card Number</label>
-                      <input
-                        type="text"
-                        placeholder="4111 2222 3333 4444"
-                        maxLength={19}
-                        value={mockCardNumber}
-                        onChange={(e) => setMockCardNumber(formatCardNumber(e.target.value))}
-                        className="w-full px-3.5 py-2.5 bg-muted rounded-xl text-sm border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 text-foreground font-mono"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Expiry Date</label>
-                        <input
-                          type="text"
-                          placeholder="MM/YY"
-                          maxLength={5}
-                          value={mockCardExpiry}
-                          onChange={(e) => setMockCardExpiry(formatExpiry(e.target.value))}
-                          className="w-full px-3.5 py-2.5 bg-muted rounded-xl text-sm border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 text-foreground font-mono"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">CVV</label>
-                        <input
-                          type="password"
-                          placeholder="•••"
-                          maxLength={3}
-                          value={mockCardCVV}
-                          onChange={(e) => setMockCardCVV(e.target.value.replace(/[^0-9]/g, ''))}
-                          className="w-full px-3.5 py-2.5 bg-muted rounded-xl text-sm border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 text-foreground font-mono"
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Card Holder Name</label>
-                      <input
-                        type="text"
-                        placeholder={mockPaymentData.customerName}
-                        value={mockCardName}
-                        onChange={(e) => setMockCardName(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-muted rounded-xl text-sm border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 text-foreground"
-                      />
-                    </div>
-                  </div>
-                )}
+              <div className="p-6 space-y-4 min-h-[220px]">
+                {mockPaymentMethod === 'manual' && (
+                  <div className="space-y-4 max-h-[300px] overflow-y-auto pr-1">
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Please transfer the total amount directly to the restaurant owner using the details below, then click <strong>Confirm Manual Payment</strong>.
+                    </p>
 
-                {mockPaymentMethod === 'upi' && (
-                  <div className="space-y-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">UPI ID / VPA</label>
-                      <input
-                        type="text"
-                        placeholder="username@bank"
-                        value={mockUPIId}
-                        onChange={(e) => setMockUPIId(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-muted rounded-xl text-sm border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 text-foreground font-mono"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Popular Handles</span>
-                      <div className="flex flex-wrap gap-2">
-                        {['@okhdfcbank', '@okaxis', '@okicici', '@paytm'].map((handle) => (
+                    {restaurant?.paymentQrCode && (
+                      <div className="flex flex-col items-center justify-center p-3 bg-white rounded-2xl border border-border max-w-[180px] mx-auto">
+                        <img
+                          src={restaurant.paymentQrCode}
+                          alt="Restaurant Payment QR"
+                          className="w-36 h-36 object-contain"
+                        />
+                        <span className="text-[10px] text-gray-500 mt-1 font-semibold">Scan to Pay</span>
+                      </div>
+                    )}
+
+                    <div className="space-y-2 text-xs">
+                      {restaurant?.paymentUpiId && (
+                        <div className="flex items-center justify-between p-2.5 bg-muted/40 rounded-xl">
+                          <div>
+                            <span className="text-muted-foreground block text-[9px] uppercase font-bold tracking-wider">UPI ID</span>
+                            <span className="font-mono font-medium text-foreground">{restaurant.paymentUpiId}</span>
+                          </div>
                           <button
                             type="button"
-                            key={handle}
                             onClick={() => {
-                              const username = mockUPIId.split('@')[0] || 'customer';
-                              setMockUPIId(`${username}${handle}`);
+                              navigator.clipboard.writeText(restaurant.paymentUpiId || '');
+                              toast.success('UPI ID copied!');
                             }}
-                            className="px-3 py-1.5 rounded-lg border border-border hover:border-primary text-xs bg-muted/50 hover:bg-primary/5 text-foreground transition-all font-mono"
+                            className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
+                            title="Copy UPI ID"
                           >
-                            {handle}
+                            <Copy className="w-3 h-3" />
                           </button>
-                        ))}
-                      </div>
+                        </div>
+                      )}
+
+                      {restaurant?.paymentPhone && (
+                        <div className="flex items-center justify-between p-2.5 bg-muted/40 rounded-xl">
+                          <div>
+                            <span className="text-muted-foreground block text-[9px] uppercase font-bold tracking-wider">Phone for Payment</span>
+                            <span className="font-mono font-medium text-foreground">{restaurant.paymentPhone}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(restaurant.paymentPhone || '');
+                              toast.success('Phone number copied!');
+                            }}
+                            className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
+                            title="Copy Phone"
+                          >
+                            <Copy className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+
+                      {restaurant?.bankAccountNumber && (
+                        <div className="p-3 bg-muted/20 border border-border/60 rounded-xl space-y-2">
+                          <span className="text-muted-foreground block text-[9px] uppercase font-bold tracking-wider">Bank Account Details</span>
+                          <div className="grid grid-cols-2 gap-2 text-[10px]">
+                            {restaurant.bankAccountHolder && (
+                              <div>
+                                <span className="text-muted-foreground block">Holder Name</span>
+                                <span className="font-medium text-foreground">{restaurant.bankAccountHolder}</span>
+                              </div>
+                            )}
+                            {restaurant.bankName && (
+                              <div>
+                                <span className="text-muted-foreground block">Bank Name</span>
+                                <span className="font-medium text-foreground">{restaurant.bankName}</span>
+                              </div>
+                            )}
+                            <div className="col-span-2 flex items-center justify-between border-t border-border/50 pt-1.5 mt-1">
+                              <div>
+                                <span className="text-muted-foreground block">Account Number</span>
+                                <span className="font-mono font-medium text-foreground">{restaurant.bankAccountNumber}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(restaurant.bankAccountNumber || '');
+                                  toast.success('Account number copied!');
+                                }}
+                                className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
+                                title="Copy Account Number"
+                              >
+                                <Copy className="w-3 h-3" />
+                              </button>
+                            </div>
+                            {restaurant.bankIfsc && (
+                              <div className="col-span-2 flex items-center justify-between border-t border-border/50 pt-1.5 mt-1">
+                                <div>
+                                  <span className="text-muted-foreground block">IFSC Code</span>
+                                  <span className="font-mono font-medium text-foreground">{restaurant.bankIfsc}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(restaurant.bankIfsc || '');
+                                    toast.success('IFSC Code copied!');
+                                  }}
+                                  className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
+                                  title="Copy IFSC Code"
+                                >
+                                  <Copy className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {!restaurant?.paymentQrCode && !restaurant?.paymentUpiId && !restaurant?.paymentPhone && !restaurant?.bankAccountNumber && (
+                        <div className="text-center py-6 text-muted-foreground text-xs flex flex-col items-center gap-1">
+                          <QrCode className="w-8 h-8 text-muted-foreground/50 mb-1" />
+                          <span>No manual payment details entered by the restaurant owner.</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
 
-                {mockPaymentMethod === 'netbanking' && (
+                {mockPaymentMethod === 'automatic' && (
                   <div className="space-y-3">
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Popular Banks</span>
-                    <div className="grid grid-cols-2 gap-2.5">
-                      {[
-                        { id: 'sbi', name: 'State Bank of India', short: 'SBI' },
-                        { id: 'hdfc', name: 'HDFC Bank', short: 'HDFC' },
-                        { id: 'icici', name: 'ICICI Bank', short: 'ICICI' },
-                        { id: 'axis', name: 'Axis Bank', short: 'Axis' },
-                      ].map((bank) => (
-                        <button
-                          type="button"
-                          key={bank.id}
-                          onClick={() => setSelectedBank(bank.id)}
-                          className={`p-3 rounded-xl border text-left flex items-center justify-between transition-all ${
-                            selectedBank === bank.id
-                              ? 'border-primary bg-primary/5 text-primary'
-                              : 'border-border hover:bg-muted/50 text-foreground'
-                          }`}
-                        >
-                          <span className="text-xs font-semibold">{bank.name}</span>
-                          {selectedBank === bank.id && (
-                            <Check className="w-3.5 h-3.5 text-primary" />
-                          )}
-                        </button>
-                      ))}
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Pay online instantly using our simulated Razorpay secure gateway.
+                    </p>
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Card Number</label>
+                        <input
+                          type="text"
+                          placeholder="4111 2222 3333 4444"
+                          maxLength={19}
+                          value={mockCardNumber}
+                          onChange={(e) => setMockCardNumber(formatCardNumber(e.target.value))}
+                          className="w-full px-3.5 py-2.5 bg-muted rounded-xl text-sm border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 text-foreground font-mono"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Expiry Date</label>
+                          <input
+                            type="text"
+                            placeholder="MM/YY"
+                            maxLength={5}
+                            value={mockCardExpiry}
+                            onChange={(e) => setMockCardExpiry(formatExpiry(e.target.value))}
+                            className="w-full px-3.5 py-2.5 bg-muted rounded-xl text-sm border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 text-foreground font-mono"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">CVV</label>
+                          <input
+                            type="password"
+                            placeholder="•••"
+                            maxLength={3}
+                            value={mockCardCVV}
+                            onChange={(e) => setMockCardCVV(e.target.value.replace(/[^0-9]/g, ''))}
+                            className="w-full px-3.5 py-2.5 bg-muted rounded-xl text-sm border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 text-foreground font-mono"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Card Holder Name</label>
+                        <input
+                          type="text"
+                          placeholder={mockPaymentData.customerName}
+                          value={mockCardName}
+                          onChange={(e) => setMockCardName(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-muted rounded-xl text-sm border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 text-foreground"
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1153,6 +1473,8 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
                       <Loader2 className="w-4 h-4 animate-spin" />
                       Processing...
                     </>
+                  ) : mockPaymentMethod === 'manual' ? (
+                    'Confirm Manual Payment'
                   ) : (
                     `Pay ₹${mockPaymentData.amount.toFixed(0)}`
                   )}

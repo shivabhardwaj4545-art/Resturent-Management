@@ -18,6 +18,7 @@ import {
   toggleRestaurant,
   uploadLogo,
   uploadBanner,
+  uploadPaymentQr,
   getCategories,
   createCategory,
   updateCategory,
@@ -57,6 +58,7 @@ router.put('/restaurant', validate(restaurantProfileSchema), updateRestaurant);
 router.patch('/restaurant/toggle', validate(restaurantToggleSchema), toggleRestaurant);
 router.post('/restaurant/logo', upload.single('logo'), uploadLogo);
 router.post('/restaurant/banner', upload.single('banner'), uploadBanner);
+router.post('/restaurant/payment-qr', upload.single('paymentQr'), uploadPaymentQr);
 router.get('/restaurant/sign-table', signTable);
 
 // Menu categories

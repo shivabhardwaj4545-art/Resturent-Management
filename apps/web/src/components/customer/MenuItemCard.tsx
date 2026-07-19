@@ -46,14 +46,12 @@ export function MenuItemCard({ item, themeColor, restaurantId, restaurantSlug, l
   const [favoriteLoading, setFavoriteLoading] = useState(false);
 
   const { addItem, items: cartItems, updateQuantity, removeItem } = useCartStore();
-  const { user: rawUser, loginRestaurantSlug } = useAuthStore();
+  const { user: rawUser } = useAuthStore();
 
   const activeUser = useMemo(() => {
     if (!rawUser) return null;
-    if (rawUser.role !== 'CUSTOMER') return rawUser;
-    if (loginRestaurantSlug === restaurantSlug) return rawUser;
-    return null;
-  }, [rawUser, loginRestaurantSlug, restaurantSlug]);
+    return rawUser;
+  }, [rawUser]);
 
   const cartItemId = `${item.id}:${selectedVariant?.id ?? 'default'}`;
   const cartItem = cartItems.find((ci) => ci.id === cartItemId);

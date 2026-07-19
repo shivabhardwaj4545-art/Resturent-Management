@@ -13,10 +13,13 @@ import {
   RotateCcw,
   Utensils,
   MapPin,
+  CreditCard,
+  Copy,
 } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
 import api from '@/lib/api';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { InvoiceDownload } from './InvoiceDownload';
 
@@ -86,6 +89,13 @@ interface Order {
     logo: string | null;
     themeColor: string | null;
     phone: string | null;
+    paymentQrCode?: string | null;
+    paymentUpiId?: string | null;
+    paymentPhone?: string | null;
+    bankName?: string | null;
+    bankAccountNumber?: string | null;
+    bankIfsc?: string | null;
+    bankAccountHolder?: string | null;
   };
   items: Array<{
     id: string;
@@ -94,6 +104,7 @@ interface Order {
     subtotal: number;
     menuItem: { name: string; image: string | null };
     variant: { name: string } | null;
+    addOns?: any;
   }>;
 }
 
@@ -105,9 +116,17 @@ interface OrderTrackingPageProps {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPageProps) {
+  const router = useRouter();
   const [currentStatus, setCurrentStatus] = useState<string>('PENDING');
   const [showRating, setShowRating] = useState(false);
   const [rating, setRating] = useState(0);
+
+  const handleAddMoreItems = () => {
+    if (!order) return;
+    sessionStorage.setItem('qr_restaurant_addon_order_id', orderId);
+    sessionStorage.setItem('qr_restaurant_addon_order_num', order.id.slice(-8).toUpperCase());
+    router.push(`/r/${restaurantSlug}`);
+  };
 
   // ── Fetch order data ──────────────────────────────────────────────────────
   const { data: order, isLoading } = useQuery({
@@ -282,26 +301,202 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
           )}
         </div>
 
+        {/* Direct Payment Card */}
+        {order.paymentStatus !== 'PAID' && order.paymentMethod === 'RAZORPAY' && (order.restaurant.paymentQrCode || order.restaurant.paymentUpiId || order.restaurant.paymentPhone || order.restaurant.bankAccountNumber) && (
+          <div className="bg-card border border-border rounded-2xl p-5 space-y-4 shadow-sm">
+            <div className="flex items-center gap-2 border-b border-border pb-3">
+              <CreditCard className="w-5 h-5 text-primary" style={{ color: themeColor }} />
+              <h3 className="font-display font-semibold text-sm">Direct Payment Details</h3>
+            </div>
+            
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Please transfer the total amount of <strong className="text-foreground">₹{order.total.toFixed(2)}</strong> directly to the restaurant owner using the details below:
+            </p>
+
+            {order.restaurant.paymentQrCode && (
+              <div className="flex flex-col items-center justify-center p-3 bg-white rounded-2xl border border-border max-w-[200px] mx-auto">
+                <img
+                  src={order.restaurant.paymentQrCode}
+                  alt="Restaurant Payment QR"
+                  className="w-40 h-40 object-contain"
+                />
+                <span className="text-[10px] text-gray-500 mt-1 font-semibold">Scan to Pay</span>
+              </div>
+            )}
+
+            <div className="space-y-2.5 text-xs">
+              {order.restaurant.paymentUpiId && (
+                <div className="flex items-center justify-between p-2.5 bg-muted/40 rounded-xl">
+                  <div>
+                    <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">UPI ID</span>
+                    <span className="font-mono font-medium text-foreground">{order.restaurant.paymentUpiId}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(order.restaurant.paymentUpiId || '');
+                      toast.success('UPI ID copied!');
+                    }}
+                    className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
+                    title="Copy UPI ID"
+                    style={{ color: themeColor }}
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {order.restaurant.paymentPhone && (
+                <div className="flex items-center justify-between p-2.5 bg-muted/40 rounded-xl">
+                  <div>
+                    <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Phone for Payment</span>
+                    <span className="font-mono font-medium text-foreground">{order.restaurant.paymentPhone}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(order.restaurant.paymentPhone || '');
+                      toast.success('Phone number copied!');
+                    }}
+                    className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
+                    title="Copy Phone"
+                    style={{ color: themeColor }}
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {order.restaurant.bankAccountNumber && (
+                <div className="p-3 bg-muted/20 border border-border/60 rounded-xl space-y-2">
+                  <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Bank Account Details</span>
+                  
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    {order.restaurant.bankAccountHolder && (
+                      <div>
+                        <span className="text-muted-foreground block">Holder Name</span>
+                        <span className="font-medium text-foreground">{order.restaurant.bankAccountHolder}</span>
+                      </div>
+                    )}
+                    {order.restaurant.bankName && (
+                      <div>
+                        <span className="text-muted-foreground block">Bank Name</span>
+                        <span className="font-medium text-foreground">{order.restaurant.bankName}</span>
+                      </div>
+                    )}
+                    <div className="col-span-2 flex items-center justify-between border-t border-border/50 pt-1.5 mt-1">
+                      <div>
+                        <span className="text-muted-foreground block">Account Number</span>
+                        <span className="font-mono font-medium text-foreground">{order.restaurant.bankAccountNumber}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(order.restaurant.bankAccountNumber || '');
+                          toast.success('Account number copied!');
+                        }}
+                        className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
+                        title="Copy Account Number"
+                        style={{ color: themeColor }}
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    {order.restaurant.bankIfsc && (
+                      <div className="col-span-2 flex items-center justify-between border-t border-border/50 pt-1.5 mt-1">
+                        <div>
+                          <span className="text-muted-foreground block">IFSC Code</span>
+                          <span className="font-mono font-medium text-foreground">{order.restaurant.bankIfsc}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(order.restaurant.bankIfsc || '');
+                            toast.success('IFSC Code copied!');
+                          }}
+                          className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
+                          title="Copy IFSC Code"
+                          style={{ color: themeColor }}
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-3 rounded-xl text-[11px] leading-relaxed font-medium bg-muted/50 border border-border">
+              Your order has been placed. Once you complete the payment, the restaurant owner will manually confirm and mark the order as PAID.
+            </div>
+          </div>
+        )}
+
         {/* Order items */}
         <div className="bg-card border border-border rounded-2xl p-4">
           <h2 className="font-display font-semibold mb-3">Your Order</h2>
           <div className="space-y-2">
             {order.items.map((item) => (
-              <div key={item.id} className="flex justify-between text-sm">
-                <span>
-                  {item.menuItem.name}
-                  {item.variant && (
-                    <span className="text-muted-foreground"> ({item.variant.name})</span>
-                  )}
-                  <span className="text-muted-foreground"> × {item.quantity}</span>
-                </span>
-                <span>₹{(item.unitPrice * item.quantity).toFixed(0)}</span>
+              <div key={item.id} className="space-y-0.5 border-b border-border/50 pb-2 last:border-0 last:pb-0">
+                <div className="flex justify-between text-sm">
+                  <span>
+                    {item.menuItem.name}
+                    {item.variant && (
+                      <span className="text-muted-foreground"> ({item.variant.name})</span>
+                    )}
+                    <span className="text-muted-foreground"> × {item.quantity}</span>
+                  </span>
+                  <span>₹{(item.unitPrice * item.quantity).toFixed(0)}</span>
+                </div>
+                {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
+                  <div className="text-[11px] text-muted-foreground pl-2">
+                    + {item.addOns.map((ao: any) => ao.name).join(', ')}
+                  </div>
+                )}
               </div>
             ))}
-            <div className="border-t border-border pt-2 flex justify-between font-bold">
-              <span>Total Paid</span>
-              <span>₹{order.total.toFixed(2)}</span>
+            <div className="border-t border-border pt-3 space-y-1.5 text-sm">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Subtotal</span>
+                <span>₹{order.subtotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>GST (18%)</span>
+                <span>₹{order.gstAmount.toFixed(2)}</span>
+              </div>
+              {order.deliveryFee > 0 && (
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Delivery Fee</span>
+                  <span>₹{order.deliveryFee.toFixed(2)}</span>
+                </div>
+              )}
+              {order.packagingFee > 0 && (
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Packaging Fee</span>
+                  <span>₹{order.packagingFee.toFixed(2)}</span>
+                </div>
+              )}
+              {order.discount > 0 && (
+                <div className="flex justify-between text-green-600 font-medium">
+                  <span>Discount</span>
+                  <span>-₹{order.discount.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-bold text-base border-t border-border pt-2">
+                <span>Total Paid</span>
+                <span>₹{order.total.toFixed(2)}</span>
+              </div>
             </div>
+            {!['DELIVERED', 'CANCELLED'].includes(order.status) && (
+              <button
+                onClick={handleAddMoreItems}
+                className="w-full mt-3 py-2.5 px-4 border border-dashed rounded-xl text-xs font-semibold hover:bg-muted transition-colors flex items-center justify-center gap-1.5"
+                style={{ color: themeColor, borderColor: themeColor }}
+              >
+                <span>➕ Add More Items (Roti, Paneer, etc.)</span>
+              </button>
+            )}
           </div>
         </div>
 

@@ -141,6 +141,16 @@ model Restaurant {
   themeColor      String?
   commissionRate  Float    @default(5)
   ownerId         String
+
+  // Payment Details (Optional for direct owner payment)
+  paymentQrCode     String?
+  paymentUpiId      String?
+  paymentPhone      String?
+  bankName          String?
+  bankAccountNumber String?
+  bankIfsc          String?
+  bankAccountHolder String?
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   deletedAt       DateTime?

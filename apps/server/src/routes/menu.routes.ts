@@ -1,7 +1,10 @@
 import { Router } from 'express';
-import { getRestaurantMenu, callWaiter } from '../controllers/menu.controller';
+import { getRestaurantMenu, callWaiter, getPublicRestaurants } from '../controllers/menu.controller';
 
 const router = Router();
+
+// Public list of restaurants (for landing page demo button)
+router.get('/restaurants', getPublicRestaurants);
 
 /**
  * @swagger

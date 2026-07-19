@@ -14,6 +14,7 @@ import api from '@/lib/api';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
+import { WaiterBell } from '@/components/owner/WaiterBell';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
@@ -314,6 +315,7 @@ export function OwnerCustomizePage() {
               <p className="text-xs text-muted-foreground">Customize branding, menu templates, section order & fields</p>
             </div>
           </div>
+          <WaiterBell />
         </header>
 
         {/* Studio Sub-header Navigation */}

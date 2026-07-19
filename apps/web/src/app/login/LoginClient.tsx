@@ -64,6 +64,24 @@ export default function LoginClient() {
 
       setUser(user, accessToken, restaurantSlug || null);
 
+      // Claim guest orders if there are any in localStorage
+      if (user.role === 'CUSTOMER') {
+        try {
+          const orders = localStorage.getItem('qr_restaurant_recent_orders');
+          if (orders) {
+            const parsed = JSON.parse(orders);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const orderIds = parsed.map((o: any) => o.orderId).filter(Boolean);
+              if (orderIds.length > 0) {
+                await api.post('/orders/claim-guest-orders', { orderIds });
+              }
+            }
+          }
+        } catch (e) {
+          console.error('Failed to claim guest orders on login', e);
+        }
+      }
+
       if (user.role === 'SUPER_ADMIN') {
         router.push('/admin/dashboard');
       } else if (user.role === 'RESTAURANT_OWNER') {

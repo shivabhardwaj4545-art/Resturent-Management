@@ -5,6 +5,23 @@ import { cacheGet, cacheSet } from '../services/redis.service';
 import { emitWaiterCall } from '../services/socket.service';
 import { verifyTableSignature } from '../utils/tableSignature';
 
+// Public: list of approved restaurants (for demo/landing page)
+export async function getPublicRestaurants(
+  _req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const restaurants = await prisma.restaurant.findMany({
+      where: { isApproved: true, isSuspended: false, deletedAt: null },
+      select: { slug: true, name: true },
+      orderBy: { createdAt: 'asc' },
+      take: 10,
+    });
+    res.json({ success: true, data: { restaurants } });
+  } catch (error) { next(error); }
+}
+
 export async function getRestaurantMenu(
   req: Request,
   res: Response,
@@ -45,6 +62,13 @@ export async function getRestaurantMenu(
         minOrderValue: true,
         deliveryRadius: true,
         themeColor: true,
+        paymentQrCode: true,
+        paymentUpiId: true,
+        paymentPhone: true,
+        bankName: true,
+        bankAccountNumber: true,
+        bankIfsc: true,
+        bankAccountHolder: true,
       },
     });
 

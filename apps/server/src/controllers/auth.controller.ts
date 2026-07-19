@@ -98,13 +98,16 @@ export async function register(req: Request, res: Response, next: NextFunction):
 
     // If registering as restaurant owner, create a placeholder restaurant
     if (role === 'RESTAURANT_OWNER') {
-      const slug =
-        name
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/(^-|-$)/g, '') +
-        '-' +
-        Math.random().toString(36).slice(2, 6);
+      // Generate a unique short code slug (e.g. rest-k7m2xq) that doesn't reveal owner name
+      let slug = '';
+      let attempts = 0;
+      do {
+        slug = 'rest-' + Math.random().toString(36).slice(2, 8);
+        attempts++;
+      } while (
+        attempts < 10 &&
+        await prisma.restaurant.findUnique({ where: { slug } })
+      );
 
       await prisma.restaurant.create({
         data: {

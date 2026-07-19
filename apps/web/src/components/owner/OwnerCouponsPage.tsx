@@ -12,6 +12,7 @@ import api from '@/lib/api';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
+import { WaiterBell } from '@/components/owner/WaiterBell';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
@@ -217,10 +218,13 @@ export function OwnerCouponsPage() {
             </button>
             <h1 className="font-display font-bold text-xl">Coupons</h1>
           </div>
-          <button onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl font-medium text-sm hover:bg-primary/90 transition-colors">
-            <Plus className="w-4 h-4" /> Create Coupon
-          </button>
+          <div className="flex items-center gap-2">
+            <WaiterBell />
+            <button onClick={() => setShowCreate(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl font-medium text-sm hover:bg-primary/90 transition-colors">
+              <Plus className="w-4 h-4" /> Create Coupon
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-5">

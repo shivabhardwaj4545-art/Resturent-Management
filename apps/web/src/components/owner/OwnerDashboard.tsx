@@ -17,26 +17,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
-import { io, Socket } from 'socket.io-client';
-
-// Play attention beep using Web Audio API
-function playAlertBeep() {
-  try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = ctx.createOscillator();
-    const gain = ctx.createGain();
-    oscillator.connect(gain);
-    gain.connect(ctx.destination);
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(880, ctx.currentTime);
-    oscillator.frequency.setValueAtTime(660, ctx.currentTime + 0.15);
-    oscillator.frequency.setValueAtTime(880, ctx.currentTime + 0.3);
-    gain.gain.setValueAtTime(0.4, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-    oscillator.start(ctx.currentTime);
-    oscillator.stop(ctx.currentTime + 0.6);
-  } catch { /* silent fail */ }
-}
+import { WaiterBell } from '@/components/owner/WaiterBell';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
@@ -55,11 +36,7 @@ export function OwnerDashboard() {
   const qc = useQueryClient();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Waiter call notifications
-  type WaiterCall = { tableNumber: string; calledAt: string; id: string; type?: 'default' | 'payment'; amount?: number };
-  const [waiterCalls, setWaiterCalls] = useState<WaiterCall[]>([]);
-  const [showWaiterPanel, setShowWaiterPanel] = useState(false);
-  const [activeWaiterAlert, setActiveWaiterAlert] = useState<WaiterCall | null>(null);
+
 
   const { data, isLoading } = useQuery({
     queryKey: ['owner-dashboard'],
@@ -72,6 +49,7 @@ export function OwnerDashboard() {
           id: string; status: string; total: number; createdAt: string;
           guestName: string | null; user: { name: string } | null;
           items: Array<{ menuItem: { name: string } }>;
+          paymentMethod: string;
         }>;
         last7DaysRevenue: Array<{ date: string; revenue: number; orders: number }>;
       };
@@ -87,34 +65,6 @@ export function OwnerDashboard() {
       router.push('/login');
     }
   };
-
-  // Real-time waiter call via Socket.IO
-  useEffect(() => {
-    if (!data?.restaurant?.id) return;
-
-    const socket: Socket = io(
-      process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') ?? 'http://localhost:4000',
-      { transports: ['websocket'], withCredentials: true }
-    );
-
-    socket.emit('join:restaurant', data.restaurant.id);
-
-    socket.on('waiter:called', (payload: { tableNumber: string; calledAt: string; type?: 'default' | 'payment'; amount?: number }) => {
-      const newCall: WaiterCall = {
-        ...payload,
-        id: `${payload.tableNumber}-${Date.now()}`,
-      };
-      setWaiterCalls((prev) => [newCall, ...prev]);
-      setShowWaiterPanel(true);
-      setActiveWaiterAlert(newCall); // Show big modal
-      playAlertBeep();
-    });
-
-    return () => {
-      socket.disconnect();
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data?.restaurant?.id]);
 
   const toggleRestaurant = async () => {
     if (!data) return;
@@ -138,84 +88,6 @@ export function OwnerDashboard() {
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
-      {/* ── Big Waiter Call Modal ───────────────────────────────── */}
-      <AnimatePresence>
-        {activeWaiterAlert && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
-          >
-            <motion.div
-              initial={{ scale: 0.7, y: 40 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.7, y: 40 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 24 }}
-              className="relative mx-4 w-full max-w-sm bg-card border-2 border-orange-400 rounded-3xl shadow-2xl overflow-hidden"
-            >
-              {/* Pulsing top banner */}
-              <div className="bg-gradient-to-r from-orange-500 to-amber-500 px-6 py-4 flex items-center gap-3">
-                <motion.div
-                  animate={{ scale: [1, 1.2, 1] }}
-                  transition={{ repeat: Infinity, duration: 0.8 }}
-                >
-                  {activeWaiterAlert.type === 'payment' ? (
-                    <DollarSign className="w-8 h-8 text-white" />
-                  ) : (
-                    <BellRing className="w-8 h-8 text-white" />
-                  )}
-                </motion.div>
-                <div>
-                  <p className="text-white font-bold text-lg leading-tight">
-                    {activeWaiterAlert.type === 'payment' ? 'Payment Requested!' : 'Waiter Called!'}
-                  </p>
-                  <p className="text-orange-100 text-xs">
-                    {activeWaiterAlert.type === 'payment' ? 'Table requests payment collection' : 'A table needs your attention'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-8 text-center">
-                <p className="text-muted-foreground text-sm mb-2">Table Number</p>
-                <motion.p
-                  animate={{ scale: [1, 1.05, 1] }}
-                  transition={{ repeat: Infinity, duration: 1.2 }}
-                  className="text-7xl font-black text-foreground mb-2"
-                >
-                  {activeWaiterAlert.tableNumber}
-                </motion.p>
-                {activeWaiterAlert.type === 'payment' && activeWaiterAlert.amount && (
-                  <p className="text-xl font-bold text-orange-500 mb-2">
-                    Amount: ₹{activeWaiterAlert.amount}
-                  </p>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  Called at {new Date(activeWaiterAlert.calledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                </p>
-              </div>
-
-              <div className="px-6 pb-6 flex gap-3">
-                <button
-                  onClick={() => {
-                    setWaiterCalls((prev) => prev.filter((c) => c.id !== activeWaiterAlert.id));
-                    setActiveWaiterAlert(null);
-                  }}
-                  className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold hover:bg-muted transition-colors"
-                >
-                  Dismiss
-                </button>
-                <button
-                  onClick={() => setActiveWaiterAlert(null)}
-                  className="flex-1 py-3 rounded-xl text-white text-sm font-semibold bg-gradient-to-r from-orange-500 to-amber-500 hover:opacity-90 transition-opacity"
-                >
-                  ✓ Sending Waiter
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
       {/* Sidebar Backdrop */}
       {sidebarOpen && (
         <div
@@ -312,114 +184,7 @@ export function OwnerDashboard() {
               </button>
             )}
             {/* Waiter Calls Bell */}
-            <div className="relative">
-              <button
-                onClick={() => setShowWaiterPanel((v) => !v)}
-                className="relative p-2 rounded-xl hover:bg-muted transition-colors"
-                title="Waiter call notifications"
-              >
-                {waiterCalls.length > 0 ? (
-                  <BellRing className="w-5 h-5 text-orange-500 animate-[ring_1s_ease-in-out_3]" />
-                ) : (
-                  <Bell className="w-5 h-5" />
-                )}
-                {waiterCalls.length > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-orange-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center animate-bounce">
-                    {waiterCalls.length}
-                  </span>
-                )}
-              </button>
-
-              {/* Waiter Call Panel */}
-              <AnimatePresence>
-                {showWaiterPanel && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setShowWaiterPanel(false)} />
-                    <motion.div
-                      initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                      transition={{ duration: 0.15 }}
-                      className="absolute right-0 mt-2 z-50 w-80 bg-card border border-border shadow-2xl rounded-2xl overflow-hidden"
-                    >
-                      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-orange-50 dark:bg-orange-900/20">
-                        <div className="flex items-center gap-2">
-                          <BellRing className="w-4 h-4 text-orange-500" />
-                          <span className="font-semibold text-sm text-orange-700 dark:text-orange-400">
-                            Waiter Calls {waiterCalls.length > 0 && `(${waiterCalls.length})`}
-                          </span>
-                        </div>
-                        {waiterCalls.length > 0 && (
-                          <button
-                            onClick={() => setWaiterCalls([])}
-                            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                          >
-                            Clear all
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="max-h-72 overflow-y-auto">
-                        {waiterCalls.length === 0 ? (
-                          <div className="py-8 text-center text-muted-foreground text-sm">
-                            <Bell className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                            No waiter calls right now
-                          </div>
-                        ) : (
-                          <div className="p-2 space-y-1.5">
-                            {waiterCalls.map((call) => (
-                              <motion.div
-                                key={call.id}
-                                initial={{ opacity: 0, x: -10 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                className="flex items-center justify-between bg-orange-50 dark:bg-orange-900/20 border border-orange-200/50 dark:border-orange-500/20 rounded-xl px-3 py-2.5"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center flex-shrink-0">
-                                    {call.type === 'payment' ? (
-                                      <DollarSign className="w-4 h-4 text-orange-500" />
-                                    ) : (
-                                      <BellRing className="w-4 h-4 text-orange-500" />
-                                    )}
-                                  </div>
-                                  <div>
-                                    <p className="text-sm font-bold text-foreground flex items-center gap-1.5">
-                                      Table {call.tableNumber}
-                                      {call.type === 'payment' && (
-                                        <span className="text-[9px] bg-orange-100 dark:bg-orange-950 text-orange-600 dark:text-orange-400 px-1.5 py-0.5 rounded-full font-semibold">
-                                          Pay
-                                        </span>
-                                      )}
-                                    </p>
-                                    <p className="text-[11px] text-muted-foreground">
-                                      {call.type === 'payment' ? (
-                                        <span className="font-semibold text-orange-500/90 dark:text-orange-400/90">
-                                          Payment requested {call.amount ? `(₹${call.amount})` : ''}
-                                        </span>
-                                      ) : (
-                                        <span>Called for assistance</span>
-                                      )}
-                                      {' • '}
-                                      {new Date(call.calledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    </p>
-                                  </div>
-                                </div>
-                                <button
-                                  onClick={() => setWaiterCalls((prev) => prev.filter((c) => c.id !== call.id))}
-                                  className="p-1 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                                >
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
-                              </motion.div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
-            </div>
+            <WaiterBell />
 
             {/* Pending orders indicator */}
             {(data?.stats?.pendingOrders ?? 0) > 0 && (
@@ -539,6 +304,14 @@ export function OwnerDashboard() {
                           </span>
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[order.status] ?? ''}`}>
                             {order.status}
+                          </span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold border ${
+                            order.paymentMethod === 'RAZORPAY' ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-400 dark:border-purple-900/30' :
+                            order.paymentMethod === 'WALLET' ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-900/30' :
+                            order.paymentMethod === 'PAY_TO_WAITER' ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400 dark:border-blue-900/30' :
+                            'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-900/30'
+                          }`}>
+                            {order.paymentMethod === 'RAZORPAY' ? 'Online' : order.paymentMethod === 'WALLET' ? 'Wallet' : order.paymentMethod === 'PAY_TO_WAITER' ? 'Pay to Waiter' : 'Pay on Counter'}
                           </span>
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5">

@@ -316,20 +316,29 @@ export async function createRestaurant(req: AuthenticatedRequest, res: Response,
       });
     }
 
-    // 2. Generate slug
-    const slug =
-      customSlug?.trim() ||
-      name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/(^-|-$)/g, '');
+    // 2. Generate slug — use provided custom slug or generate a unique code
+    let slug: string;
+    if (customSlug?.trim()) {
+      slug = customSlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    } else {
+      // Generate a unique short code slug (e.g. rest-k7m2xq)
+      let attempts = 0;
+      slug = '';
+      do {
+        slug = 'rest-' + Math.random().toString(36).slice(2, 8);
+        attempts++;
+      } while (
+        attempts < 10 &&
+        await prisma.restaurant.findUnique({ where: { slug } })
+      );
+    }
 
     // Check if slug is unique
     const existingRestaurant = await prisma.restaurant.findUnique({
       where: { slug },
     });
     if (existingRestaurant) {
-      throw new AppError('A restaurant with this slug/URL already exists.', 400, 'SLUG_EXISTS');
+      throw new AppError('A restaurant with this slug/URL already exists. Please choose a different one.', 400, 'SLUG_EXISTS');
     }
 
     // 3. Create restaurant (approved by default since admin creates it)

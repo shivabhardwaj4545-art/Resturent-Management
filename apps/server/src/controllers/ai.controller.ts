@@ -217,13 +217,26 @@ export async function getCouponSuggestion(
         OR: [{ restaurantId: restaurant.id }, { restaurantId: null }],
         expiresAt: { gt: new Date() },
       },
-      select: { code: true, type: true, value: true, minOrderAmount: true, maxDiscount: true },
+      select: {
+        code: true,
+        type: true,
+        value: true,
+        minOrderAmount: true,
+        maxDiscount: true,
+        maxUses: true,
+        usedCount: true,
+      },
     });
+
+    // Exclude coupons that have reached their usage limit from AI suggestion
+    const activeCoupons = coupons.filter(
+      (c) => c.maxUses === null || c.usedCount < c.maxUses
+    );
 
     const suggestion = await getSmartCouponSuggestion({
       cartItems,
       cartTotal,
-      availableCoupons: coupons.map((c) => ({
+      availableCoupons: activeCoupons.map((c) => ({
         ...c,
         type: c.type as 'FLAT' | 'PERCENT',
       })),
@@ -239,6 +252,8 @@ export async function getCouponSuggestion(
           value: c.value,
           minOrderAmount: c.minOrderAmount,
           maxDiscount: c.maxDiscount,
+          maxUses: c.maxUses,
+          usedCount: c.usedCount,
         })),
       },
     });

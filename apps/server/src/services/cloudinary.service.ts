@@ -1,6 +1,9 @@
 import { v2 as cloudinaryV2, UploadApiResponse } from 'cloudinary';
 import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
 import { AppError } from '../utils/AppError';
+import { logger } from '../utils/logger';
 
 // Configure Cloudinary
 cloudinaryV2.config({
@@ -29,6 +32,40 @@ export async function uploadImageToCloudinary(
   folder: string,
   publicId?: string
 ): Promise<{ url: string; publicId: string }> {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+  const isConfigured =
+    cloudName &&
+    cloudName !== 'your-cloudinary-cloud-name' &&
+    apiKey &&
+    apiKey !== 'your-cloudinary-api-key' &&
+    apiSecret &&
+    apiSecret !== 'your-cloudinary-api-secret';
+
+  if (!isConfigured) {
+    logger.warn('⚠️ Cloudinary is not configured or using placeholders. Falling back to local storage.');
+    
+    const uploadsDir = path.join(__dirname, '../../uploads');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    
+    // Create a unique sanitized filename
+    const sanitizedFolder = folder.replace(/[^a-zA-Z0-9-_]/g, '_');
+    const sanitizedPublicId = publicId ? publicId.replace(/[^a-zA-Z0-9-_]/g, '_') : Date.now().toString();
+    const filename = `${sanitizedFolder}_${sanitizedPublicId}.png`;
+    const filePath = path.join(uploadsDir, filename);
+    
+    fs.writeFileSync(filePath, buffer);
+    
+    const apiUrl = process.env.API_URL || 'http://localhost:4000';
+    const url = `${apiUrl}/uploads/${filename}`;
+    
+    return { url, publicId: filename };
+  }
+
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinaryV2.uploader.upload_stream(
       {
@@ -59,7 +96,24 @@ export async function uploadImageToCloudinary(
 }
 
 export async function deleteImageFromCloudinary(publicId: string): Promise<void> {
-  await cloudinaryV2.uploader.destroy(publicId);
+  try {
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const isConfigured = cloudName && cloudName !== 'your-cloudinary-cloud-name' && apiKey && apiKey !== 'your-cloudinary-api-key';
+
+    if (!isConfigured || publicId.includes('_') || publicId.endsWith('.png')) {
+      const uploadsDir = path.join(__dirname, '../../uploads');
+      const filePath = path.join(uploadsDir, publicId);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        logger.info(`Deleted local file: ${publicId}`);
+      }
+      return;
+    }
+    await cloudinaryV2.uploader.destroy(publicId);
+  } catch (error: any) {
+    logger.warn(`Failed to delete image: ${error.message}`);
+  }
 }
 
 export async function uploadMenuItemImage(
@@ -89,5 +143,13 @@ export async function uploadRestaurantBanner(
   slug: string
 ): Promise<string> {
   const { url } = await uploadImageToCloudinary(buffer, 'banners', `${slug}-banner`);
+  return url;
+}
+
+export async function uploadRestaurantPaymentQr(
+  buffer: Buffer,
+  slug: string
+): Promise<string> {
+  const { url } = await uploadImageToCloudinary(buffer, 'payment-qrs', `${slug}-payment-qr`);
   return url;
 }

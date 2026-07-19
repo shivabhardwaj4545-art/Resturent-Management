@@ -1,4 +1,5 @@
 import express from 'express';
+import path from 'path';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -74,6 +75,9 @@ app.use(
 );
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
+
+// Serve local uploads
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // ── Request Logger ─────────────────────────────────────────────
 app.use(requestLogger);

@@ -6,13 +6,22 @@ import { ArrowRight, QrCode, Zap, BarChart3, Shield, Star, ChefHat, Clock, Smart
 import { useAuthStore } from '@/store/auth.store';
 import { useState, useEffect } from 'react';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import api from '@/lib/api';
 
 export default function HomePage() {
   const { user } = useAuthStore();
   const [mounted, setMounted] = useState(false);
+  const [demoSlug, setDemoSlug] = useState('upstates');
 
   useEffect(() => {
     setMounted(true);
+    // Fetch the latest approved restaurant slug for demo links
+    api.get('/menu/restaurants').then((res) => {
+      const restaurants = res?.data?.data?.restaurants;
+      if (Array.isArray(restaurants) && restaurants.length > 0) {
+        setDemoSlug(restaurants[0].slug);
+      }
+    }).catch(() => { /* keep fallback */ });
   }, []);
   return (
     <div className="min-h-screen bg-background text-foreground overflow-hidden">
@@ -46,7 +55,7 @@ export default function HomePage() {
                 </Link>
               )}
               {user.role === 'CUSTOMER' && (
-                <Link href="/r/upstates" className="text-sm bg-muted hover:bg-accent border border-border px-4 py-2 rounded-lg transition-all font-medium text-foreground">
+                <Link href={`/r/${demoSlug}`} className="text-sm bg-muted hover:bg-accent border border-border px-4 py-2 rounded-lg transition-all font-medium text-foreground">
                   Browse Menu
                 </Link>
               )}
@@ -93,7 +102,7 @@ export default function HomePage() {
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link href="/r/upstates" className="btn-premium flex items-center gap-2 justify-center text-base">
+              <Link href={`/r/${demoSlug}`} className="btn-premium flex items-center gap-2 justify-center text-base">
                 Try Live Demo
                 <ArrowRight className="w-4 h-4" />
               </Link>
@@ -289,7 +298,7 @@ export default function HomePage() {
               <Link href="/register" className="btn-premium text-center">
                 Get Started Free
               </Link>
-              <Link href="/r/upstates" className="flex items-center justify-center gap-2 bg-muted hover:bg-accent border border-border px-6 py-3 rounded-xl font-semibold transition-all text-foreground">
+              <Link href={`/r/${demoSlug}`} className="flex items-center justify-center gap-2 bg-muted hover:bg-accent border border-border px-6 py-3 rounded-xl font-semibold transition-all text-foreground">
                 <QrCode className="w-4 h-4" />
                 Try Demo Menu
               </Link>

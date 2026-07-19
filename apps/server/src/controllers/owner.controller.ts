@@ -1,7 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
-import { uploadMenuItemImage, uploadRestaurantLogo, uploadRestaurantBanner } from '../services/cloudinary.service';
+import { uploadMenuItemImage, uploadRestaurantLogo, uploadRestaurantBanner, uploadRestaurantPaymentQr } from '../services/cloudinary.service';
 import { emitOrderStatusUpdate, emitNotification } from '../services/socket.service';
 import { cacheDelPattern, cacheSet } from '../services/redis.service';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
@@ -98,12 +98,43 @@ export async function getRestaurant(req: AuthenticatedRequest, res: Response, ne
 export async function updateRestaurant(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const restaurant = await getOwnerRestaurant(req.user!.id);
+    const body = { ...req.body } as Record<string, any>;
+
+    if (body.slug && typeof body.slug === 'string') {
+      const sanitizedSlug = body.slug
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9-]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+
+      if (!sanitizedSlug) {
+        throw new AppError('Invalid URL slug format. Use letters, numbers, and hyphens.', 400, 'INVALID_SLUG');
+      }
+
+      if (sanitizedSlug !== restaurant.slug) {
+        const existing = await prisma.restaurant.findUnique({
+          where: { slug: sanitizedSlug },
+        });
+
+        if (existing && existing.id !== restaurant.id) {
+          throw new AppError('This URL slug is already taken by another restaurant. Please choose a unique URL slug.', 400, 'SLUG_TAKEN');
+        }
+        body.slug = sanitizedSlug;
+      }
+    }
+
     const updated = await prisma.restaurant.update({
       where: { id: restaurant.id },
-      data: req.body as Record<string, unknown>,
+      data: body,
     });
+
     await cacheDelPattern(`menu:${restaurant.slug}*`);
-    res.json({ success: true, data: { restaurant: updated }, message: 'Restaurant updated' });
+    if (updated.slug !== restaurant.slug) {
+      await cacheDelPattern(`menu:${updated.slug}*`);
+    }
+
+    res.json({ success: true, data: { restaurant: updated }, message: 'Restaurant settings updated' });
   } catch (error) { next(error); }
 }
 
@@ -143,6 +174,17 @@ export async function uploadBanner(req: AuthenticatedRequest, res: Response, nex
     await prisma.restaurant.update({ where: { id: restaurant.id }, data: { banner: url } });
     await cacheDelPattern(`menu:${restaurant.slug}*`);
     res.json({ success: true, data: { banner: url }, message: 'Banner uploaded' });
+  } catch (error) { next(error); }
+}
+
+export async function uploadPaymentQr(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+    if (!req.file) throw new AppError('No image file provided.', 400, 'NO_FILE');
+    const url = await uploadRestaurantPaymentQr(req.file.buffer, restaurant.slug);
+    await prisma.restaurant.update({ where: { id: restaurant.id }, data: { paymentQrCode: url } });
+    await cacheDelPattern(`menu:${restaurant.slug}*`);
+    res.json({ success: true, data: { paymentQrCode: url }, message: 'Payment QR uploaded' });
   } catch (error) { next(error); }
 }
 
@@ -554,9 +596,6 @@ export async function confirmPayment(req: AuthenticatedRequest, res: Response, n
     });
 
     if (!order) throw new AppError('Order not found.', 404, 'ORDER_NOT_FOUND');
-    if (order.paymentMethod === 'RAZORPAY') {
-      throw new AppError('Online payment status cannot be changed manually.', 400, 'INVALID_OPERATION');
-    }
     if (order.paymentStatus === 'PAID') {
       throw new AppError('Payment is already marked as paid.', 400, 'ALREADY_PAID');
     }

@@ -5,6 +5,8 @@ interface PageProps {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{
     table?: string;
+    t?: string;
+    token?: string;
     preview?: string;
     themeColor?: string;
     name?: string;
@@ -26,11 +28,34 @@ export default async function MenuPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const resolvedSearchParams = await searchParams;
 
+  let effectiveTable: string | undefined = undefined;
+  let effectiveToken: string | undefined = undefined;
+
+  if (resolvedSearchParams.t) {
+    try {
+      const decoded = Buffer.from(resolvedSearchParams.t, 'base64').toString('utf-8');
+      const parts = decoded.split(':');
+      if (parts.length === 2 && parts[0] && parts[1]) {
+        effectiveTable = parts[0];
+        effectiveToken = parts[1];
+      }
+    } catch {
+      // Invalid t token payload
+    }
+  } else if (resolvedSearchParams.table && resolvedSearchParams.token) {
+    effectiveTable = resolvedSearchParams.table;
+    effectiveToken = resolvedSearchParams.token;
+  }
+
   return (
     <RestaurantMenuPage
       slug={slug}
-      tableNumber={resolvedSearchParams.table}
-      searchParams={resolvedSearchParams}
+      tableNumber={effectiveTable}
+      searchParams={{
+        ...resolvedSearchParams,
+        table: effectiveTable,
+        token: effectiveToken,
+      }}
     />
   );
 }

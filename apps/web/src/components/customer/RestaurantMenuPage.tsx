@@ -23,6 +23,9 @@ interface RestaurantMenuPageProps {
   slug: string;
   tableNumber?: string;
   searchParams?: {
+    table?: string;
+    t?: string;
+    token?: string;
     preview?: string;
     themeColor?: string;
     name?: string;
@@ -30,7 +33,6 @@ interface RestaurantMenuPageProps {
     logo?: string;
     banner?: string;
     layout?: string;
-    token?: string;
   };
 }
 
@@ -48,26 +50,40 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
   const waiterTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { items: cartItems, itemCount, setRestaurant } = useCartStore();
-  const { user: rawUser, loginRestaurantSlug, logout } = useAuthStore();
+  const { user: rawUser, logout } = useAuthStore();
   
   const activeUser = useMemo(() => {
     if (!rawUser) return null;
-    if (rawUser.role !== 'CUSTOMER') return rawUser;
-    if (loginRestaurantSlug === slug) return rawUser;
-    return null;
-  }, [rawUser, loginRestaurantSlug, slug]);
+    return rawUser;
+  }, [rawUser]);
 
   const [showHours, setShowHours] = useState(false);
+  const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
+
+  const [addonOrderId, setAddonOrderId] = useState<string | null>(null);
+  const [addonOrderNum, setAddonOrderNum] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedId = sessionStorage.getItem('qr_restaurant_addon_order_id');
+      const storedNum = sessionStorage.getItem('qr_restaurant_addon_order_num');
+      if (storedId) {
+        setAddonOrderId(storedId);
+        setAddonOrderNum(storedNum);
+      }
+    }
+  }, []);
 
   const [recentOrders, setRecentOrders] = useState<Array<{ orderId: string; restaurantSlug: string; createdAt: number }>>([]);
 
   useEffect(() => {
-    if (tableNumber) {
-      localStorage.setItem(`table_num_${slug}`, tableNumber);
-    }
     const token = searchParams?.token;
-    if (token) {
+    if (tableNumber && token) {
+      localStorage.setItem(`table_num_${slug}`, tableNumber);
       localStorage.setItem(`table_token_${slug}`, token);
+    } else if (!tableNumber) {
+      localStorage.removeItem(`table_num_${slug}`);
+      localStorage.removeItem(`table_token_${slug}`);
     }
   }, [tableNumber, searchParams, slug]);
   
@@ -84,7 +100,16 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
               o.orderId &&
               now - o.createdAt < 24 * 60 * 60 * 1000 // 24 hours
           );
-          setRecentOrders(filtered);
+          
+          // Deduplicate by orderId
+          const uniqueMap = new Map<string, any>();
+          filtered.forEach((o: any) => {
+            if (!uniqueMap.has(o.orderId)) {
+              uniqueMap.set(o.orderId, o);
+            }
+          });
+          const uniqueFiltered = Array.from(uniqueMap.values());
+          setRecentOrders(uniqueFiltered);
         }
       } catch (e) {
         console.error('Failed to parse recent orders', e);
@@ -100,17 +125,65 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
         try {
           const res = await api.get(`/orders/${o.orderId}`);
           return res.data.data.order;
-        } catch (err) {
-          console.error(`Failed to fetch order ${o.orderId}`, err);
+        } catch (err: any) {
+          const status = err?.response?.status;
+          // If the order is forbidden (403) or not found (404), remove it from localStorage
+          if (status === 404 || status === 403) {
+            try {
+              const orders = localStorage.getItem('qr_restaurant_recent_orders');
+              if (orders) {
+                let parsed = JSON.parse(orders);
+                if (Array.isArray(parsed)) {
+                  parsed = parsed.filter((item: any) => item.orderId !== o.orderId);
+                  localStorage.setItem('qr_restaurant_recent_orders', JSON.stringify(parsed));
+                  setRecentOrders((prev) => prev.filter((item) => item.orderId !== o.orderId));
+                }
+              }
+            } catch (e) {
+              console.error(e);
+            }
+          } else {
+            console.warn(`Order ${o.orderId} fetch failed:`, err?.message ?? err);
+          }
           return null;
         }
       });
       const results = await Promise.all(promises);
-      return results.filter(Boolean);
+      const validOrders = results.filter(Boolean);
+      
+      // Deduplicate valid orders just in case
+      const uniqueMap = new Map<string, any>();
+      validOrders.forEach((order: any) => {
+        if (!uniqueMap.has(order.id)) {
+          uniqueMap.set(order.id, order);
+        }
+      });
+      return Array.from(uniqueMap.values());
     },
     enabled: recentOrders.length > 0,
     refetchInterval: 10000,
   });
+
+  // Previous Orders for logged-in users
+  const { data: previousOrders } = useQuery({
+    queryKey: ['previous-orders', slug],
+    queryFn: async () => {
+      const res = await api.get('/orders');
+      const allOrders = res.data.data.orders as any[];
+      return allOrders.filter((o: any) => o.restaurant.slug === slug);
+    },
+    enabled: !!activeUser,
+    refetchInterval: 30000,
+  });
+
+  // Default tab selection on load
+  useEffect(() => {
+    if (activeOrdersDetails && activeOrdersDetails.length > 0) {
+      setActiveTab('active');
+    } else if (activeUser && previousOrders && previousOrders.length > 0) {
+      setActiveTab('history');
+    }
+  }, [activeOrdersDetails, previousOrders, activeUser]);
 
   const handleDismissOrder = (orderId: string) => {
     try {
@@ -300,35 +373,48 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
   const restaurantBanner = isPreview && searchParams?.banner !== undefined ? (searchParams.banner || null) : restaurant.banner;
 
   return (
-    <div className="min-h-screen bg-background pb-24 relative">
+    <div className="min-h-screen bg-background pb-24 relative overflow-x-hidden w-full">
       {/* Floating Navigation Header */}
       <div className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black/80 via-black/40 to-transparent">
-        <Link href="/" className="flex items-center gap-1.5 text-white drop-shadow-md hover:opacity-90 transition-opacity">
+        <div className="flex items-center gap-1.5 text-white drop-shadow-md flex-shrink-0 select-none">
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-md">
             <QrCode className="w-4 h-4 text-white" />
           </div>
-          <span className="font-display font-bold text-sm tracking-tight">EZ- Restaurant</span>
-        </Link>
-        <div className="flex items-center gap-3">
+          <span className="font-display font-bold text-sm tracking-tight hidden sm:block">{restaurantName || 'Digital Menu'}</span>
+        </div>
+        <div className="flex items-center gap-1.5 sm:gap-3">
           {activeUser ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-white/90 font-semibold bg-white/10 px-2.5 py-1.5 rounded-lg backdrop-blur-md">
+            <div className="flex items-center gap-1 sm:gap-2">
+              <span className="text-xs text-white/90 font-semibold bg-white/10 px-2.5 py-1.5 rounded-lg backdrop-blur-md hidden sm:inline-block">
                 Hi, {activeUser.name.split(' ')[0]}
               </span>
               {activeUser.role !== 'CUSTOMER' ? (
                 <Link
                   href={activeUser.role === 'SUPER_ADMIN' ? '/admin/dashboard' : '/owner/dashboard'}
-                  className="text-xs bg-primary hover:bg-primary/95 border border-primary/20 px-3 py-1.5 rounded-lg text-white font-semibold shadow-sm transition-all"
+                  className="text-[10px] sm:text-xs bg-primary hover:bg-primary/95 border border-primary/20 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-white font-semibold shadow-sm transition-all"
                 >
                   Dashboard
                 </Link>
               ) : null}
+              {activeUser.role === 'CUSTOMER' && (
+                <button
+                  onClick={() => {
+                    setActiveTab('history');
+                    setTimeout(() => {
+                      document.getElementById('orders-section')?.scrollIntoView({ behavior: 'smooth' });
+                    }, 100);
+                  }}
+                  className="text-[10px] sm:text-xs bg-white/10 hover:bg-white/20 border border-white/20 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-white font-semibold shadow-sm transition-all"
+                >
+                  Order History
+                </button>
+              )}
               <button
                 onClick={() => {
                   logout();
                   toast.success('Logged out successfully');
                 }}
-                className="text-xs bg-red-500/80 hover:bg-red-500 border border-red-500/20 px-3 py-1.5 rounded-lg text-white font-semibold shadow-sm transition-all"
+                className="text-[10px] sm:text-xs bg-red-500/80 hover:bg-red-500 border border-red-500/20 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-white font-semibold shadow-sm transition-all"
               >
                 Logout
               </button>
@@ -337,7 +423,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
             <>
               <Link
                 href={`/login?restaurant=${slug}`}
-                className="text-xs bg-primary hover:bg-primary/95 border border-primary/20 px-3 py-1.5 rounded-lg text-white font-semibold shadow-sm transition-all"
+                className="text-[10px] sm:text-xs bg-primary hover:bg-primary/95 border border-primary/20 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-white font-semibold shadow-sm transition-all"
               >
                 Login
               </Link>
@@ -346,6 +432,26 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
           <ThemeToggle size="sm" className="bg-white/10 border-white/20 text-white hover:bg-white/20" />
         </div>
       </div>
+      {addonOrderId && (
+        <div className="bg-amber-500 text-white text-xs font-semibold px-4 py-3 flex items-center justify-between shadow-md">
+          <div className="flex items-center gap-2">
+            <span>📝</span>
+            <span>You are adding items to your active Order #{addonOrderNum}. Added items will show at checkout.</span>
+          </div>
+          <button
+            onClick={() => {
+              sessionStorage.removeItem('qr_restaurant_addon_order_id');
+              sessionStorage.removeItem('qr_restaurant_addon_order_num');
+              setAddonOrderId(null);
+              setAddonOrderNum(null);
+              toast.info('Cancelled adding items to order.');
+            }}
+            className="bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded-md transition-colors"
+          >
+            Cancel Add-on
+          </button>
+        </div>
+      )}
       {/* Banner */}
       <div className="relative h-48 md:h-64 w-full overflow-hidden">
         {restaurantBanner ? (
@@ -471,99 +577,215 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
         </div>
       </div>
 
-      {/* Active/Recent Orders Section */}
-      {activeOrdersDetails && activeOrdersDetails.length > 0 && (
-        <div className="px-4 md:px-8 mb-6 space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="font-display font-bold text-sm tracking-tight text-foreground flex items-center gap-1.5">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-              </span>
-              Active Orders ({activeOrdersDetails.length})
-            </h3>
-            <span className="text-[10px] text-muted-foreground animate-pulse">Auto-updating...</span>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            {activeOrdersDetails.map((order: any) => {
-              if (!order) return null;
-              const statusDetails = getOrderStatusDetails(order.status);
-
-              return (
-                <div
-                  key={order.id}
-                  className="relative group bg-card hover:bg-card/85 border border-border rounded-2xl p-4 shadow-sm transition-all duration-200"
+      {/* Active/Recent Orders & History Section */}
+      {((activeOrdersDetails && activeOrdersDetails.length > 0) || activeUser || (previousOrders && previousOrders.length > 0)) && (
+        <div id="orders-section" className="px-4 md:px-8 mb-6 space-y-3">
+          {/* Header & Tabs */}
+          {!activeUser ? (
+            <div className="flex items-center justify-between">
+              <h3 className="font-display font-bold text-sm tracking-tight text-foreground flex items-center gap-1.5">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                </span>
+                Active Orders ({activeOrdersDetails?.length ?? 0})
+              </h3>
+              <span className="text-[10px] text-muted-foreground animate-pulse">Auto-updating...</span>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between border-b border-border">
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setActiveTab('active')}
+                  className={`pb-2 font-display font-bold text-sm tracking-tight transition-all border-b-2 ${
+                    activeTab === 'active'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
                 >
-                  {/* Close / Dismiss Button */}
-                  <button
-                    onClick={() => handleDismissOrder(order.id)}
-                    className="absolute top-3 right-3 p-1 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                    title="Dismiss"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+                  Active Orders ({activeOrdersDetails?.length ?? 0})
+                </button>
+                <button
+                  onClick={() => setActiveTab('history')}
+                  className={`pb-2 font-display font-bold text-sm tracking-tight transition-all border-b-2 ${
+                    activeTab === 'history'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Order History ({previousOrders?.length ?? 0})
+                </button>
+              </div>
+              {activeTab === 'active' && (
+                <span className="text-[10px] text-muted-foreground animate-pulse mb-2">Auto-updating...</span>
+              )}
+            </div>
+          )}
 
-                  <Link href={`/r/${slug}/order/${order.id}`} className="block space-y-3">
-                    <div className="flex items-center justify-between pr-6">
-                      <div className="space-y-0.5">
-                        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                          Order #{order.id.slice(-8).toUpperCase()}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      </div>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${statusDetails.color}`}>
-                        {statusDetails.label}
-                      </span>
-                    </div>
-
-                    {/* Order Details Preview */}
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold text-foreground truncate">
-                        {order.items?.map((item: any) => `${item.menuItem.name} × ${item.quantity}`).join(', ')}
-                      </p>
-                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                        <span>₹{order.total.toFixed(0)}</span>
-                        <span>•</span>
-                        <span>{order.paymentMethod === 'RAZORPAY' ? 'Paid Online' : order.paymentMethod === 'COD' ? 'Pay on Counter' : 'Wallet'}</span>
-                        {order.tableNumber ? (
-                          <>
-                            <span>•</span>
-                            <span className="font-semibold text-primary">Table {order.tableNumber}</span>
-                          </>
-                        ) : (
-                          <>
-                            <span>•</span>
-                            <span>Delivery</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Progress Bar */}
-                    <div className="space-y-1">
-                      <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all duration-500 ease-out"
-                          style={{
-                            width: `${statusDetails.progress}%`,
-                            backgroundColor: order.status === 'CANCELLED' ? '#ef4444' : themeColor,
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-1 text-[11px] font-bold text-primary group-hover:translate-x-0.5 transition-transform">
-                      <span>Track Live Status</span>
-                      <ChevronRight className="w-3.5 h-3.5" style={{ color: themeColor }} />
-                    </div>
-                  </Link>
+          {/* Tab Content: Active Orders */}
+          {activeTab === 'active' && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {!activeOrdersDetails || activeOrdersDetails.length === 0 ? (
+                <div className="sm:col-span-2 py-8 text-center text-muted-foreground text-sm border border-dashed border-border rounded-2xl bg-card">
+                  No active orders right now
                 </div>
-              );
-            })}
-          </div>
+              ) : (
+                activeOrdersDetails.map((order: any) => {
+                  if (!order) return null;
+                  const statusDetails = getOrderStatusDetails(order.status);
+
+                  return (
+                    <div
+                      key={order.id}
+                      className="relative group bg-card hover:bg-card/85 border border-border rounded-2xl p-4 shadow-sm transition-all duration-200"
+                    >
+                      {['DELIVERED', 'CANCELLED'].includes(order.status) && (
+                        <button
+                          onClick={() => handleDismissOrder(order.id)}
+                          className="absolute top-3 right-3 p-1 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                          title="Dismiss"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+
+                      <Link href={`/r/${slug}/order/${order.id}`} className="block space-y-3">
+                        <div className="flex items-center justify-between pr-6">
+                          <div className="space-y-0.5">
+                            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                              Order #{order.id.slice(-8).toUpperCase()}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${statusDetails.color}`}>
+                            {statusDetails.label}
+                          </span>
+                        </div>
+
+                        <div className="space-y-1">
+                          <p className="text-xs font-semibold text-foreground truncate">
+                            {order.items?.map((item: any) => {
+                              const addOnsLabel = item.addOns && item.addOns.length > 0 ? ` (+ ${item.addOns.map((ao: any) => ao.name).join(', ')})` : '';
+                              return `${item.menuItem.name}${addOnsLabel} × ${item.quantity}`;
+                            }).join(', ')}
+                          </p>
+                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                            <span>₹{order.total.toFixed(0)}</span>
+                            <span>•</span>
+                            <span>
+                              {order.paymentMethod === 'RAZORPAY' ? 'Paid Online' : order.paymentMethod === 'COD' ? 'Pay on Counter' : order.paymentMethod === 'PAY_TO_WAITER' ? 'Pay to Waiter' : 'Wallet'}
+                            </span>
+                            {order.tableNumber ? (
+                              <>
+                                <span>•</span>
+                                <span className="font-semibold text-primary">Table {order.tableNumber}</span>
+                              </>
+                            ) : (
+                              <>
+                                <span>•</span>
+                                <span>Delivery</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all duration-500 ease-out"
+                              style={{
+                                width: `${statusDetails.progress}%`,
+                                backgroundColor: order.status === 'CANCELLED' ? '#ef4444' : themeColor,
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1 text-[11px] font-bold text-primary group-hover:translate-x-0.5 transition-transform">
+                          <span>Track Live Status</span>
+                          <ChevronRight className="w-3.5 h-3.5" style={{ color: themeColor }} />
+                        </div>
+                      </Link>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+
+          {/* Tab Content: Order History */}
+          {activeTab === 'history' && activeUser && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {!previousOrders || previousOrders.length === 0 ? (
+                <div className="sm:col-span-2 py-8 text-center text-muted-foreground text-sm border border-dashed border-border rounded-2xl bg-card">
+                  No previous orders found at this restaurant
+                </div>
+              ) : (
+                previousOrders.map((order: any) => {
+                  if (!order) return null;
+                  const statusDetails = getOrderStatusDetails(order.status);
+
+                  return (
+                    <div
+                      key={order.id}
+                      className="group bg-card hover:bg-card/85 border border-border rounded-2xl p-4 shadow-sm transition-all duration-200"
+                    >
+                      <Link href={`/r/${slug}/order/${order.id}`} className="block space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="space-y-0.5">
+                            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                              Order #{order.id.slice(-8).toUpperCase()}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {new Date(order.createdAt).toLocaleDateString()} at{' '}
+                              {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${statusDetails.color}`}>
+                            {statusDetails.label}
+                          </span>
+                        </div>
+
+                        <div className="space-y-1">
+                          <p className="text-xs font-semibold text-foreground truncate">
+                            {order.items?.map((item: any) => {
+                              const addOnsLabel = item.addOns && item.addOns.length > 0 ? ` (+ ${item.addOns.map((ao: any) => ao.name).join(', ')})` : '';
+                              return `${item.menuItem.name}${addOnsLabel} × ${item.quantity}`;
+                            }).join(', ')}
+                          </p>
+                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                            <span>₹{order.total.toFixed(0)}</span>
+                            <span>•</span>
+                            <span>
+                              {order.paymentMethod === 'RAZORPAY' ? 'Paid Online' : order.paymentMethod === 'COD' ? 'Pay on Counter' : order.paymentMethod === 'PAY_TO_WAITER' ? 'Pay to Waiter' : 'Wallet'}
+                            </span>
+                            {order.tableNumber ? (
+                              <>
+                                <span>•</span>
+                                <span className="font-semibold text-primary">Table {order.tableNumber}</span>
+                              </>
+                            ) : (
+                              <>
+                                <span>•</span>
+                                <span>Delivery</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1 text-[11px] font-bold text-primary group-hover:translate-x-0.5 transition-transform">
+                          <span>View Order Details & Invoice</span>
+                          <ChevronRight className="w-3.5 h-3.5" style={{ color: themeColor }} />
+                        </div>
+                      </Link>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
         </div>
       )}
 

@@ -12,6 +12,7 @@ import api from '@/lib/api';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
+import { WaiterBell } from '@/components/owner/WaiterBell';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer
@@ -112,7 +113,8 @@ export function OwnerAnalyticsPage() {
             </button>
             <h1 className="font-display font-bold text-xl">Analytics</h1>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <WaiterBell />
             {(['7d', '30d'] as const).map((p) => (
               <button key={p} onClick={() => setPeriod(p)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${period === p ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>

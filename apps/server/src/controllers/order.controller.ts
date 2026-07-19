@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma';
 import { isRestaurantOpen } from '../utils/operatingHours';
 import { AppError } from '../utils/AppError';
 import { createRazorpayOrder, verifyRazorpaySignature } from '../services/payment.razorpay.service';
-import { emitNewOrder, emitNotification, emitWaiterCall } from '../services/socket.service';
+import { emitNewOrder, emitNotification, emitWaiterCall, emitOrderStatusUpdate } from '../services/socket.service';
 import { sendOrderConfirmationEmail } from '../services/email.service';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { verifyTableSignature } from '../utils/tableSignature';
@@ -124,12 +124,13 @@ export async function placeGuestOrder(
   next: NextFunction
 ): Promise<void> {
   try {
-    const { guestName, guestPhone, tableNumber, tableToken, paymentMethod, couponCode, restaurantSlug, cartItems } = req.body as {
+    const { guestName, guestPhone, tableNumber, tableToken, paymentMethod, couponCode, restaurantSlug, cartItems, isDirect } = req.body as {
       guestName: string;
       guestPhone: string;
       tableNumber?: string;
       tableToken?: string;
       paymentMethod: 'RAZORPAY' | 'COD' | 'PAY_TO_WAITER';
+      isDirect?: boolean;
       couponCode?: string;
       restaurantSlug: string;
       cartItems: Array<{ menuItemId: string; variantId?: string; quantity: number; addOns?: Array<{ id: string; name: string; price: number }> }>;
@@ -165,7 +166,7 @@ export async function placeGuestOrder(
 
     let razorpayOrderId: string | undefined;
 
-    if (paymentMethod === 'RAZORPAY') {
+    if (paymentMethod === 'RAZORPAY' && !isDirect) {
       const rzOrder = await createRazorpayOrder(total, 'INR', `guest-${Date.now()}`, {
         guestName,
         restaurantName: restaurant.name,
@@ -229,8 +230,14 @@ export async function placeGuestOrder(
     // Notify restaurant via Socket.io
     emitNewOrder(restaurant.id, order);
 
-    if (paymentMethod === 'PAY_TO_WAITER' && tableNumber) {
-      emitWaiterCall(restaurant.id, tableNumber, 'payment', total);
+    if ((paymentMethod === 'PAY_TO_WAITER' || paymentMethod === 'COD') && tableNumber) {
+      const itemsSummary = order.items.map((item: any) => {
+        const addOnsLabel = item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0
+          ? ` (+ ${item.addOns.map((ao: any) => ao.name).join(', ')})`
+          : '';
+        return `${item.menuItem?.name || 'Item'}${addOnsLabel} × ${item.quantity}`;
+      }).join(', ');
+      emitWaiterCall(restaurant.id, tableNumber, 'payment', total, paymentMethod, itemsSummary);
     }
 
     // Create notification for restaurant
@@ -272,7 +279,7 @@ export async function placeOrder(
     if (req.user!.role !== 'CUSTOMER') {
       throw new AppError('Restaurant owners and administrators are not allowed to place orders.', 403, 'ORDER_RESTRICTED');
     }
-    const { addressId, newAddress, tableNumber, tableToken, paymentMethod, couponCode, restaurantSlug, useWallet, usePoints, cartItems: reqCartItems } = req.body as {
+    const { addressId, newAddress, tableNumber, tableToken, paymentMethod, couponCode, restaurantSlug, useWallet, usePoints, isDirect, cartItems: reqCartItems } = req.body as {
       addressId?: string;
       newAddress?: { label: string; flat: string; street: string; area: string; city: string; pincode: string; isDefault: boolean };
       tableNumber?: string;
@@ -282,6 +289,7 @@ export async function placeOrder(
       restaurantSlug: string;
       useWallet?: boolean;
       usePoints?: boolean;
+      isDirect?: boolean;
       cartItems?: Array<{ menuItemId: string; variantId?: string | null; quantity: number; addOns?: Array<{ id: string; name: string; price: number }> }>;
     };
 
@@ -388,7 +396,7 @@ export async function placeOrder(
 
     let razorpayOrderId: string | undefined;
 
-    if (paymentMethod === 'RAZORPAY' && finalTotal > 0) {
+    if (paymentMethod === 'RAZORPAY' && finalTotal > 0 && !isDirect) {
       const rzOrder = await createRazorpayOrder(finalTotal, 'INR', `order-${userId}-${Date.now()}`, {
         userId,
         restaurantName: restaurant.name,
@@ -509,8 +517,14 @@ export async function placeOrder(
     // Notify restaurant
     emitNewOrder(restaurant.id, order);
 
-    if (paymentMethod === 'PAY_TO_WAITER' && tableNumber) {
-      emitWaiterCall(restaurant.id, tableNumber, 'payment', finalTotal);
+    if ((paymentMethod === 'PAY_TO_WAITER' || paymentMethod === 'COD') && tableNumber) {
+      const itemsSummary = order.items.map((item: any) => {
+        const addOnsLabel = item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0
+          ? ` (+ ${item.addOns.map((ao: any) => ao.name).join(', ')})`
+          : '';
+        return `${item.menuItem?.name || 'Item'}${addOnsLabel} × ${item.quantity}`;
+      }).join(', ');
+      emitWaiterCall(restaurant.id, tableNumber, 'payment', finalTotal, paymentMethod, itemsSummary);
     }
     emitNotification(userId, {
       type: 'ORDER_PLACED',
@@ -560,7 +574,21 @@ export async function getOrderById(
     const order = await prisma.order.findFirst({
       where: { id: orderId, deletedAt: null },
       include: {
-        restaurant: { select: { name: true, logo: true, phone: true, themeColor: true } },
+        restaurant: {
+          select: {
+            name: true,
+            logo: true,
+            phone: true,
+            themeColor: true,
+            paymentQrCode: true,
+            paymentUpiId: true,
+            paymentPhone: true,
+            bankName: true,
+            bankAccountNumber: true,
+            bankIfsc: true,
+            bankAccountHolder: true,
+          }
+        },
         items: {
           include: {
             menuItem: { select: { name: true, image: true } },
@@ -607,7 +635,7 @@ export async function getUserOrders(
         skip,
         take: limit,
         include: {
-          restaurant: { select: { name: true, logo: true } },
+          restaurant: { select: { id: true, name: true, logo: true, slug: true } },
           items: { include: { menuItem: { select: { name: true, image: true } } }, take: 3 },
         },
       }),
@@ -632,7 +660,7 @@ export async function getUserOrders(
 // ── Verify Payment ────────────────────────────────────────────
 
 export async function verifyPayment(
-  req: AuthenticatedRequest,
+  req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> {
@@ -749,6 +777,189 @@ export async function createDirectOrder(
       order_id: rzOrder.id,
       amount: rzOrder.amount, // returned in paise
       currency: rzOrder.currency,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function addItemsToOrder(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const orderId = req.params.orderId as string;
+    const { cartItems, paymentMethod } = req.body as {
+      cartItems: Array<{ menuItemId: string; variantId?: string; quantity: number; addOns?: any }>;
+      paymentMethod?: 'RAZORPAY' | 'COD' | 'WALLET' | 'PAY_TO_WAITER';
+    };
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId, deletedAt: null },
+      include: { items: true, restaurant: true },
+    });
+
+    if (!order) {
+      throw new AppError('Order not found.', 404, 'ORDER_NOT_FOUND');
+    }
+
+    // Retrieve menuItem details to calculate prices
+    const menuItemIds = cartItems.map((item) => item.menuItemId);
+    const menuItems = await prisma.menuItem.findMany({
+      where: { id: { in: menuItemIds } },
+      include: { variants: true },
+    });
+
+    let addedSubtotal = 0;
+    const itemsToCreate: any[] = [];
+
+    for (const item of cartItems) {
+      const menuItem = menuItems.find((m) => m.id === item.menuItemId);
+      if (!menuItem) continue;
+
+      let unitPrice = menuItem.price;
+      if (item.variantId) {
+        const variant = menuItem.variants.find((v) => v.id === item.variantId);
+        if (variant) {
+          unitPrice = variant.price;
+        }
+      }
+
+      // Calculate add-on prices if any
+      let addOnsTotal = 0;
+      if (item.addOns && Array.isArray(item.addOns)) {
+        item.addOns.forEach((ao: any) => {
+          addOnsTotal += ao.price || 0;
+        });
+      }
+
+      const itemSubtotal = (unitPrice + addOnsTotal) * item.quantity;
+      addedSubtotal += itemSubtotal;
+
+      itemsToCreate.push({
+        orderId,
+        menuItemId: item.menuItemId,
+        variantId: item.variantId || null,
+        quantity: item.quantity,
+        unitPrice: unitPrice + addOnsTotal,
+        subtotal: itemSubtotal,
+        addOns: item.addOns ? item.addOns : undefined,
+      });
+    }
+
+    if (itemsToCreate.length === 0) {
+      throw new AppError('No valid items to add.', 400, 'INVALID_ITEMS');
+    }
+
+    const addedGst = addedSubtotal * 0.18; // 18% GST consistent with standard rate
+    const addedTotal = addedSubtotal + addedGst;
+
+    // Start a transaction to create items and update order totals
+    const updatedOrder = await prisma.$transaction(async (tx) => {
+      // Create new OrderItems
+      await tx.orderItem.createMany({
+        data: itemsToCreate,
+      });
+
+      // Update Order totals
+      const orderUpdate = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          subtotal: { increment: addedSubtotal },
+          gstAmount: { increment: addedGst },
+          total: { increment: addedTotal },
+          paymentStatus: order.paymentMethod === 'RAZORPAY' ? order.paymentStatus : 'PENDING',
+        },
+        include: {
+          items: { include: { menuItem: true } },
+          restaurant: true,
+        },
+      });
+
+      // Update payment record amount if it exists and is PENDING
+      const existingPayment = await tx.payment.findUnique({
+        where: { orderId },
+      });
+      if (existingPayment && existingPayment.status === 'PENDING') {
+        await tx.payment.update({
+          where: { orderId },
+          data: {
+            amount: { increment: addedTotal },
+            method: paymentMethod || existingPayment.method,
+          },
+        });
+      }
+
+      return orderUpdate;
+    });
+
+    // Emit order status update / socket events to update owner dashboard in real time
+    emitOrderStatusUpdate(orderId, order.restaurantId, {
+      orderId,
+      status: updatedOrder.status,
+      paymentStatus: updatedOrder.paymentStatus,
+      updatedAt: updatedOrder.updatedAt.toISOString(),
+    });
+
+    // Build items summary for only the newly added items
+    const itemsSummary = itemsToCreate.map((item: any) => {
+      const mItem = menuItems.find((m) => m.id === item.menuItemId);
+      const addOnsLabel = item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0
+        ? ` (+ ${item.addOns.map((ao: any) => ao.name).join(', ')})`
+        : '';
+      return `${mItem?.name || 'Item'}${addOnsLabel} × ${item.quantity}`;
+    }).join(', ');
+
+    // Send a waiter call notification to alert the owner that items were added!
+    emitWaiterCall(
+      order.restaurantId,
+      order.tableNumber || 'Delivery',
+      'addons',
+      addedTotal,
+      paymentMethod,
+      itemsSummary
+    );
+
+    res.json({
+      success: true,
+      data: { order: updatedOrder },
+      message: 'Items added to order successfully!',
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function claimGuestOrders(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { orderIds } = req.body as { orderIds: string[] };
+    if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
+      res.json({ success: true, message: 'No orders to claim.' });
+      return;
+    }
+
+    const userId = req.user!.id;
+
+    // Update all guest orders in the list that don't have a userId yet
+    await prisma.order.updateMany({
+      where: {
+        id: { in: orderIds },
+        userId: null,
+        deletedAt: null,
+      },
+      data: {
+        userId,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: 'Guest orders successfully claimed.',
     });
   } catch (error) {
     next(error);

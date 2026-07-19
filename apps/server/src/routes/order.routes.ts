@@ -10,6 +10,8 @@ import {
   verifyPayment,
   reorder,
   createDirectOrder,
+  addItemsToOrder,
+  claimGuestOrders,
 } from '../controllers/order.controller';
 
 const router = Router();
@@ -19,9 +21,11 @@ router.get('/razorpay-key', (req, res) => {
 });
 
 router.post('/guest', validate(guestCheckoutSchema), placeGuestOrder);
+router.post('/claim-guest-orders', authenticate, claimGuestOrders);
 router.post('/', authenticate, validate(userCheckoutSchema), placeOrder);
 router.get('/', authenticate, getUserOrders);
 router.get('/:orderId', optionalAuth, getOrderById);
+router.post('/:orderId/add-items', optionalAuth, addItemsToOrder);
 router.post('/verify-payment', optionalAuth, validate(razorpayVerifySchema), verifyPayment);
 router.post('/create-order', optionalAuth, createDirectOrder);
 router.post('/:orderId/reorder', authenticate, reorder);

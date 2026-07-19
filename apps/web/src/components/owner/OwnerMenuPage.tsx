@@ -12,6 +12,7 @@ import api from '@/lib/api';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
+import { WaiterBell } from '@/components/owner/WaiterBell';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
@@ -290,6 +291,7 @@ export function OwnerMenuPage() {
             <h1 className="font-display font-bold text-xl">Menu Management</h1>
           </div>
           <div className="flex items-center gap-2">
+            <WaiterBell />
             <button
               onClick={() => seedDemoMutation.mutate()}
               disabled={seedDemoMutation.isPending}
