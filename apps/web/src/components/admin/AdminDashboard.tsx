@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard, Store, Users, BarChart3, Settings, LogOut,
   Menu, TrendingUp, DollarSign, ShoppingBag, CheckCircle2,
-  XCircle, Clock, ChevronRight, Shield, CreditCard, Ticket, HandCoins
+  XCircle, Clock, ChevronRight, Shield, CreditCard, Ticket, HandCoins, Megaphone, MessageSquare
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -17,6 +17,9 @@ import {
 } from 'recharts';
 import { toast } from 'sonner';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { io } from 'socket.io-client';
+import { SuperAdminBroadcastModal } from './SuperAdminBroadcastModal';
+import { AdminOwnerChatModal } from './AdminOwnerChatModal';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/admin/dashboard' },
@@ -35,6 +38,33 @@ export function AdminDashboard() {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [period, setPeriod] = useState<'7d' | '30d'>('7d');
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [showChatModal, setShowChatModal] = useState(false);
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const socket = io(
+      process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') ?? 'http://localhost:4000',
+      { transports: ['websocket'], withCredentials: true }
+    );
+
+    socket.emit('join:user', user.id);
+
+    socket.on('notification:new', (notif: any) => {
+      toast.info(notif.title || '💬 New Message / Notification', {
+        description: notif.message,
+        duration: 8000,
+        icon: '💬',
+      });
+      queryClient.invalidateQueries({ queryKey: ['chat-messages'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-contacts'] });
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [user?.id, queryClient]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-analytics', period],
@@ -156,6 +186,18 @@ export function AdminDashboard() {
             <h1 className="font-display font-bold text-xl">Platform Overview</h1>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowBroadcastModal(true)}
+              className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-indigo-600 to-purple-600 hover:opacity-95 text-white shadow-md transition-all flex items-center gap-1.5"
+            >
+              <Megaphone className="w-3.5 h-3.5" /> Broadcast Announcement
+            </button>
+            <button
+              onClick={() => setShowChatModal(true)}
+              className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:opacity-95 text-white shadow-md transition-all flex items-center gap-1.5"
+            >
+              <MessageSquare className="w-3.5 h-3.5" /> 1-to-1 Live Support Chat
+            </button>
             {(['7d', '30d'] as const).map((p) => (
               <button
                 key={p}
@@ -255,6 +297,10 @@ export function AdminDashboard() {
           </div>
         </div>
       </main>
+
+      {/* Broadcast & Chat Modals */}
+      <SuperAdminBroadcastModal isOpen={showBroadcastModal} onClose={() => setShowBroadcastModal(false)} />
+      <AdminOwnerChatModal isOpen={showChatModal} onClose={() => setShowChatModal(false)} />
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
-import { Search, Filter, ShoppingCart, Clock, MapPin, Star, Bot, X, ChevronUp, QrCode, ChevronRight, BellRing } from 'lucide-react';
+import { Search, Filter, ShoppingCart, Clock, MapPin, Star, Bot, X, ChevronUp, QrCode, ChevronRight, BellRing, Gift } from 'lucide-react';
 import api from '@/lib/api';
 import { useCartStore } from '@/store/cart.store';
 import { useAuthStore } from '@/store/auth.store';
@@ -16,8 +16,15 @@ import { toast } from 'sonner';
 import Link from 'next/link';
 import { getDetailedStatus, formatTime12h } from '@/utils/operatingHours';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { io } from 'socket.io-client';
 
 const WAITER_COOLDOWN_SECONDS = 30;
+
+function formatTimer(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
 
 interface RestaurantMenuPageProps {
   slug: string;
@@ -47,11 +54,27 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
   const [waiterLoading, setWaiterLoading] = useState(false);
   const [showTableInput, setShowTableInput] = useState(false);
   const [manualTableNumber, setManualTableNumber] = useState('');
+  const [waiterComingTimer, setWaiterComingTimer] = useState(0);
+  const waiterComingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const waiterTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { items: cartItems, itemCount, setRestaurant } = useCartStore();
   const { user: rawUser, logout } = useAuthStore();
-  
+  const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
+
+  // Fetch latest user profile to keep loyalty points synced in real-time
+  const { data: userProfileData } = useQuery({
+    queryKey: ['user-profile-loyalty'],
+    queryFn: async () => {
+      const res = await api.get('/profile');
+      return res.data.data.user as { id: string; loyaltyPoints: number };
+    },
+    enabled: !!rawUser,
+    refetchInterval: 10000,
+  });
+
+  const currentPoints = userProfileData?.loyaltyPoints ?? rawUser?.loyaltyPoints ?? 0;
+
   const activeUser = useMemo(() => {
     if (!rawUser) return null;
     return rawUser;
@@ -324,6 +347,40 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
     }
   }, [slug, tableNumber, waiterCooldown, waiterLoading]);
 
+  useEffect(() => {
+    if (!data?.restaurant?.id) return;
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') ?? 'http://localhost:4000';
+    const socket = io(socketUrl);
+
+    socket.emit('join:restaurant', data.restaurant.id);
+
+    socket.on('waiter:responded', (resData: { tableNumber?: string; message?: string }) => {
+      const currentTable = tableNumber || manualTableNumber;
+      if (!currentTable || String(currentTable) === String(resData.tableNumber)) {
+        toast.success(`👨‍🍳 Waiter is coming in a few minutes!`, {
+          duration: 10000,
+          icon: '🏃',
+        });
+        // Start 2-minute (120s) timer for waiter coming
+        setWaiterComingTimer(120);
+        if (waiterComingRef.current) clearInterval(waiterComingRef.current);
+        waiterComingRef.current = setInterval(() => {
+          setWaiterComingTimer((prev) => {
+            if (prev <= 1) {
+              if (waiterComingRef.current) clearInterval(waiterComingRef.current);
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [data?.restaurant?.id, tableNumber, manualTableNumber]);
+
   const filteredCategories = useMemo(() => {
     if (!data) return [];
     return data.categories
@@ -383,6 +440,20 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
           <span className="font-display font-bold text-sm tracking-tight hidden sm:block">{restaurantName || 'Digital Menu'}</span>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-3">
+          {/* Loyalty Points Header Badge */}
+          <button
+            onClick={() => setShowLoyaltyModal(true)}
+            className="text-[10px] sm:text-xs bg-amber-500/25 hover:bg-amber-500/40 border border-amber-400/50 text-amber-200 px-2.5 py-1.5 rounded-lg backdrop-blur-md font-bold flex items-center gap-1 shadow-sm transition-all active:scale-95"
+            title="Click to view Loyalty Points details"
+          >
+            <Gift className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+            {activeUser ? (
+              <span>⭐ {currentPoints} Pts <span className="text-[10px] opacity-80">(₹{(currentPoints / 50).toFixed(2)})</span></span>
+            ) : (
+              <span>⭐ Loyalty Points</span>
+            )}
+          </button>
+
           {activeUser ? (
             <div className="flex items-center gap-1 sm:gap-2">
               <span className="text-xs text-white/90 font-semibold bg-white/10 px-2.5 py-1.5 rounded-lg backdrop-blur-md hidden sm:inline-block">
@@ -567,6 +638,47 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
               </div>
             )}
           </div>
+
+          {/* Upper Section Extra Big Call Waiter Button */}
+          <div className="pb-2">
+            <motion.button
+              whileHover={{ scale: (waiterCooldown > 0 || waiterComingTimer > 0) ? 1 : 1.05 }}
+              whileTap={{ scale: (waiterCooldown > 0 || waiterComingTimer > 0) ? 1 : 0.95 }}
+              onClick={() => {
+                if (tableNumber) {
+                  handleCallWaiter();
+                } else {
+                  setShowTableInput((v) => !v);
+                }
+              }}
+              disabled={waiterCooldown > 0 || waiterComingTimer > 0 || waiterLoading}
+              className={`px-6 py-3.5 rounded-2xl text-white font-extrabold text-base md:text-lg shadow-2xl flex items-center justify-center gap-2.5 transition-all ${
+                waiterComingTimer > 0
+                  ? 'ring-4 ring-emerald-500/40 shadow-emerald-500/30'
+                  : waiterCooldown > 0
+                  ? 'opacity-60 cursor-not-allowed'
+                  : 'hover:shadow-orange-500/40 ring-4 ring-orange-500/20'
+              }`}
+              style={{
+                background: waiterComingTimer > 0
+                  ? 'linear-gradient(135deg, #10b981, #059669)'
+                  : waiterCooldown > 0
+                  ? 'linear-gradient(135deg, #6b7280, #9ca3af)'
+                  : 'linear-gradient(135deg, #f97316, #f59e0b)',
+              }}
+            >
+              <BellRing className={`w-6 h-6 flex-shrink-0 ${waiterComingTimer > 0 ? 'animate-pulse' : 'animate-bounce'}`} />
+              <span className="tracking-wide">
+                {waiterLoading
+                  ? 'Calling Waiter...'
+                  : waiterComingTimer > 0
+                  ? `Waiter is coming in a few minutes (${formatTimer(waiterComingTimer)})`
+                  : waiterCooldown > 0
+                  ? `Wait (${waiterCooldown}s)`
+                  : 'Call Waiter'}
+              </span>
+            </motion.button>
+          </div>
         </div>
 
         {/* Minimum order info */}
@@ -599,7 +711,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                   onClick={() => setActiveTab('active')}
                   className={`pb-2 font-display font-bold text-sm tracking-tight transition-all border-b-2 ${
                     activeTab === 'active'
-                      ? 'border-primary text-primary'
+                      ? 'border-primary text-primary font-bold'
                       : 'border-transparent text-muted-foreground hover:text-foreground'
                   }`}
                 >
@@ -609,11 +721,11 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                   onClick={() => setActiveTab('history')}
                   className={`pb-2 font-display font-bold text-sm tracking-tight transition-all border-b-2 ${
                     activeTab === 'history'
-                      ? 'border-primary text-primary'
+                      ? 'border-primary text-primary font-bold'
                       : 'border-transparent text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  Order History ({previousOrders?.length ?? 0})
+                  Past Orders ({previousOrders?.length ?? 0})
                 </button>
               </div>
               {activeTab === 'active' && (
@@ -621,9 +733,8 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
               )}
             </div>
           )}
-
           {/* Tab Content: Active Orders */}
-          {activeTab === 'active' && (
+          {(activeTab === 'active' || !activeUser) && (
             <div className="grid gap-3 sm:grid-cols-2">
               {!activeOrdersDetails || activeOrdersDetails.length === 0 ? (
                 <div className="sm:col-span-2 py-8 text-center text-muted-foreground text-sm border border-dashed border-border rounded-2xl bg-card">
@@ -1008,36 +1119,104 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
         >
           <Bot className="w-6 h-6" />
         </button>
-        {/* Call Waiter FAB */}
-        <motion.button
-          whileHover={{ scale: waiterCooldown > 0 ? 1 : 1.1 }}
-          whileTap={{ scale: waiterCooldown > 0 ? 1 : 0.95 }}
-          onClick={() => {
-            if (tableNumber) {
-              handleCallWaiter();
-            } else {
-              setShowTableInput((v) => !v);
-            }
-          }}
-          disabled={waiterCooldown > 0 || waiterLoading}
-          title={waiterCooldown > 0 ? `Wait ${waiterCooldown}s before calling again` : 'Call a waiter'}
-          className={`relative w-12 h-12 rounded-full text-white shadow-2xl flex items-center justify-center transition-all ${
-            waiterCooldown > 0 ? 'opacity-60 cursor-not-allowed' : ''
-          }`}
-          style={{
-            background: waiterCooldown > 0
-              ? 'linear-gradient(135deg, #6b7280, #9ca3af)'
-              : 'linear-gradient(135deg, #f97316, #f59e0b)',
-          }}
-        >
-          <BellRing className="w-5 h-5" />
-          {waiterCooldown > 0 && (
-            <span className="absolute -top-1 -right-1 w-5 h-5 bg-gray-700 text-white rounded-full text-[9px] font-bold flex items-center justify-center">
-              {waiterCooldown}
-            </span>
-          )}
-        </motion.button>
       </div>
+
+      {/* Loyalty Points Instructions & Info Modal */}
+      <AnimatePresence>
+        {showLoyaltyModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-card border border-border rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5 relative overflow-hidden text-foreground"
+            >
+              <button
+                onClick={() => setShowLoyaltyModal(false)}
+                className="absolute top-4 right-4 p-1.5 rounded-full bg-muted hover:bg-muted-foreground/20 text-muted-foreground transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="flex items-center gap-3 border-b border-border pb-4">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white shadow-lg flex-shrink-0">
+                  <Gift className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-display font-bold text-lg text-foreground">⭐ Customer Loyalty Program</h3>
+                  <p className="text-xs text-muted-foreground">Earn rewards on every meal order!</p>
+                </div>
+              </div>
+
+              {/* Current Balance Banner */}
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-500/30 space-y-1">
+                <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Your Balance</p>
+                <div className="flex items-baseline justify-between">
+                  <p className="text-2xl font-black text-amber-600 dark:text-amber-400">
+                    {activeUser ? `${currentPoints} Points` : '0 Points'}
+                  </p>
+                  <p className="text-sm font-bold text-foreground">
+                    ₹{(currentPoints / 50).toFixed(2)} Value
+                  </p>
+                </div>
+                {!activeUser && (
+                  <p className="text-[11px] text-orange-600 dark:text-orange-400 font-semibold mt-1">
+                    🔑 Log in to start earning and redeeming loyalty points!
+                  </p>
+                )}
+              </div>
+
+              {/* Instructions */}
+              <div className="space-y-3 text-xs">
+                <h4 className="font-bold text-foreground uppercase tracking-wider text-[11px]">How Loyalty Points Work:</h4>
+                
+                <div className="p-3 bg-muted/40 rounded-xl space-y-1 border border-border/40">
+                  <p className="font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                    💳 Conversion Ratio
+                  </p>
+                  <p className="text-muted-foreground leading-relaxed">
+                    <strong>50 Loyalty Points = ₹1.00 Discount</strong>. Every 50 points saved gives you ₹1 off your total bill!
+                  </p>
+                </div>
+
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-xl space-y-1 border border-emerald-200 dark:border-emerald-900/40">
+                  <p className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                    📈 How Points Increase (+)
+                  </p>
+                  <p className="text-muted-foreground leading-relaxed">
+                    Earn <strong>1 point for every ₹10 spent</strong>. Points are credited to your account when the restaurant owner completes/confirms payment on your order.
+                  </p>
+                </div>
+
+                <div className="p-3 bg-blue-50 dark:bg-blue-950/30 rounded-xl space-y-1 border border-blue-200 dark:border-blue-900/40">
+                  <p className="font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                    📉 How Points Decrease (-)
+                  </p>
+                  <p className="text-muted-foreground leading-relaxed">
+                    When placing an order, tick <strong>"Redeem Loyalty Points"</strong> on checkout. Points are deducted to give you an instant bill discount!
+                  </p>
+                </div>
+              </div>
+
+              {!activeUser ? (
+                <Link
+                  href={`/login?restaurant=${slug}`}
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-bold text-xs shadow-md block"
+                >
+                  Log In to Access Loyalty Points
+                </Link>
+              ) : (
+                <button
+                  onClick={() => setShowLoyaltyModal(false)}
+                  className="w-full py-3 rounded-xl bg-muted hover:bg-muted/80 text-foreground font-bold text-xs transition-colors"
+                >
+                  Close
+                </button>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -18,6 +18,8 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 import { WaiterBell } from '@/components/owner/WaiterBell';
+import { MessageSquare } from 'lucide-react';
+import { AdminOwnerChatModal } from '@/components/admin/AdminOwnerChatModal';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
@@ -35,6 +37,7 @@ export function OwnerDashboard() {
   const router = useRouter();
   const qc = useQueryClient();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showChatModal, setShowChatModal] = useState(false);
 
 
 
@@ -186,6 +189,16 @@ export function OwnerDashboard() {
             {/* Waiter Calls Bell */}
             <WaiterBell />
 
+            {/* Admin Support Chat Button */}
+            <button
+              onClick={() => setShowChatModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/50 text-indigo-600 dark:text-indigo-400 text-xs font-bold hover:bg-indigo-100 transition-all shadow-sm"
+              title="Chat 1-to-1 with Super Admin"
+            >
+              <MessageSquare className="w-4 h-4 text-indigo-500" />
+              <span className="hidden sm:inline">Admin Support Chat</span>
+            </button>
+
             {/* Pending orders indicator */}
             {(data?.stats?.pendingOrders ?? 0) > 0 && (
               <span className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 text-xs font-semibold">
@@ -334,6 +347,9 @@ export function OwnerDashboard() {
           )}
         </div>
       </main>
+
+      {/* 1-to-1 Live Support Chat Modal */}
+      <AdminOwnerChatModal isOpen={showChatModal} onClose={() => setShowChatModal(false)} />
     </div>
   );
 }

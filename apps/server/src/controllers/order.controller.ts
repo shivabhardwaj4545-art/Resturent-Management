@@ -230,16 +230,6 @@ export async function placeGuestOrder(
     // Notify restaurant via Socket.io
     emitNewOrder(restaurant.id, order);
 
-    if ((paymentMethod === 'PAY_TO_WAITER' || paymentMethod === 'COD') && tableNumber) {
-      const itemsSummary = order.items.map((item: any) => {
-        const addOnsLabel = item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0
-          ? ` (+ ${item.addOns.map((ao: any) => ao.name).join(', ')})`
-          : '';
-        return `${item.menuItem?.name || 'Item'}${addOnsLabel} × ${item.quantity}`;
-      }).join(', ');
-      emitWaiterCall(restaurant.id, tableNumber, 'payment', total, paymentMethod, itemsSummary);
-    }
-
     // Create notification for restaurant
     await prisma.notification.create({
       data: {
@@ -380,11 +370,11 @@ export async function placeOrder(
     let finalTotal = total;
 
     if (usePoints && user && user.loyaltyPoints > 0) {
-      // 10 loyalty points = ₹1 discount
-      const maxPointsVal = user.loyaltyPoints / 10;
+      // 50 loyalty points = ₹1 discount
+      const maxPointsVal = user.loyaltyPoints / 50;
       const pointsVal = Math.min(maxPointsVal, total);
-      pointsDeduction = Math.floor(pointsVal * 10);
-      pointsValue = pointsDeduction / 10;
+      pointsDeduction = Math.floor(pointsVal * 50);
+      pointsValue = pointsDeduction / 50;
       finalTotal = total - pointsValue;
     }
 
@@ -517,15 +507,6 @@ export async function placeOrder(
     // Notify restaurant
     emitNewOrder(restaurant.id, order);
 
-    if ((paymentMethod === 'PAY_TO_WAITER' || paymentMethod === 'COD') && tableNumber) {
-      const itemsSummary = order.items.map((item: any) => {
-        const addOnsLabel = item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0
-          ? ` (+ ${item.addOns.map((ao: any) => ao.name).join(', ')})`
-          : '';
-        return `${item.menuItem?.name || 'Item'}${addOnsLabel} × ${item.quantity}`;
-      }).join(', ');
-      emitWaiterCall(restaurant.id, tableNumber, 'payment', finalTotal, paymentMethod, itemsSummary);
-    }
     emitNotification(userId, {
       type: 'ORDER_PLACED',
       title: 'Order Placed!',
@@ -862,7 +843,7 @@ export async function addItemsToOrder(
         data: itemsToCreate,
       });
 
-      // Update Order totals
+      // Update Order totals & Add-on journey status
       const orderUpdate = await tx.order.update({
         where: { id: orderId },
         data: {
@@ -870,6 +851,8 @@ export async function addItemsToOrder(
           gstAmount: { increment: addedGst },
           total: { increment: addedTotal },
           paymentStatus: order.paymentMethod === 'RAZORPAY' ? order.paymentStatus : 'PENDING',
+          addOnStatus: 'PREPARING',
+          lastAddOnAt: new Date(),
         },
         include: {
           items: { include: { menuItem: true } },
@@ -898,6 +881,8 @@ export async function addItemsToOrder(
     emitOrderStatusUpdate(orderId, order.restaurantId, {
       orderId,
       status: updatedOrder.status,
+      addOnStatus: updatedOrder.addOnStatus,
+      lastAddOnAt: updatedOrder.lastAddOnAt,
       paymentStatus: updatedOrder.paymentStatus,
       updatedAt: updatedOrder.updatedAt.toISOString(),
     });

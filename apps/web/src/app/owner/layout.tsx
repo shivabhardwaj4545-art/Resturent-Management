@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useAuthStore } from '@/store/auth.store';
 import { useRouter } from 'next/navigation';
 import { Loader2, DollarSign, BellRing, Banknote } from 'lucide-react';
@@ -100,6 +100,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
   });
 
   const queryClient = useQueryClient();
+  const socketRef = useRef<Socket | null>(null);
 
   // Global socket connection for waiter calls and new orders
   useEffect(() => {
@@ -109,8 +110,12 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') ?? 'http://localhost:4000',
       { transports: ['websocket'], withCredentials: true }
     );
+    socketRef.current = socket;
 
     socket.emit('join:restaurant', restaurantData.id);
+    if (user?.id) {
+      socket.emit('join:user', user.id);
+    }
 
     // 1. Waiter calls or payment requests
     socket.on('waiter:called', (payload: { 
@@ -170,6 +175,19 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     socket.on('order:status_updated', () => {
       queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
       queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
+    });
+
+    // 4. Broadcast & Direct Chat Notifications
+    socket.on('notification:new', (notif: any) => {
+      playAlertBeep();
+      toast.info(notif.title || '📢 System Announcement', {
+        description: notif.message,
+        duration: 10000,
+        icon: '📢',
+      });
+      queryClient.invalidateQueries({ queryKey: ['owner-notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-messages'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-contacts'] });
     });
 
     return () => {
@@ -340,10 +358,19 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                     Dismiss
                   </button>
                   <button
-                    onClick={() => setActiveWaiterAlert(null)}
-                    className={`flex-1 py-3 rounded-xl text-white text-sm font-semibold bg-gradient-to-r ${gradientClass} hover:opacity-90 transition-opacity`}
+                    onClick={() => {
+                      if (socketRef.current && activeWaiterAlert.tableNumber) {
+                        socketRef.current.emit('waiter:respond', {
+                          restaurantId: restaurantData?.id,
+                          tableNumber: activeWaiterAlert.tableNumber,
+                        });
+                      }
+                      removeWaiterCall(activeWaiterAlert.id);
+                      setActiveWaiterAlert(null);
+                    }}
+                    className={`flex-1 py-3 rounded-xl text-white text-sm font-bold bg-gradient-to-r ${gradientClass} hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5`}
                   >
-                    ✓ Sending Waiter
+                    <span>✓ Send Waiter 🏃</span>
                   </button>
                 </div>
               </motion.div>

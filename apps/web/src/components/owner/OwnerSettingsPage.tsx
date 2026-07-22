@@ -153,18 +153,22 @@ export function OwnerSettingsPage() {
         hasDelivery: form.hasDelivery,
         operatingHours: operatingHours,
         themeColor: form.themeColor,
+        paymentQrCode: form.paymentQrCode,
+        paymentUpiId: form.paymentUpiId,
+        paymentPhone: form.paymentPhone,
+        bankName: form.bankName,
+        bankAccountNumber: form.bankAccountNumber,
+        bankIfsc: form.bankIfsc,
+        bankAccountHolder: form.bankAccountHolder,
       });
       return res.data.data.restaurant;
     },
     onSuccess: (updatedRestaurant) => {
-      // Directly sync the form with what the server confirmed was saved
-      // This prevents the invalidation refetch from overwriting the form
       if (updatedRestaurant) {
         setForm(updatedRestaurant);
         if (updatedRestaurant.operatingHours) {
           setOperatingHours(updatedRestaurant.operatingHours);
         }
-        // Reset the init flag so if user navigates away and back, it re-initializes
         formInitialized.current = true;
       }
       if (updatedRestaurant?.slug && updatedRestaurant.slug !== data?.slug) {
@@ -188,9 +192,16 @@ export function OwnerSettingsPage() {
       if (!logoFile) return;
       const fd = new FormData();
       fd.append('logo', logoFile);
-      await api.post('/owner/restaurant/logo', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const res = await api.post('/owner/restaurant/logo', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      return res.data.data.logo as string;
     },
-    onSuccess: () => { toast.success('Logo uploaded!'); setLogoFile(null); qc.invalidateQueries({ queryKey: ['owner-restaurant'] }); },
+    onSuccess: (newUrl) => {
+      toast.success('Logo uploaded!');
+      setLogoFile(null);
+      setLogoPreviewUrl(null);
+      if (newUrl) setForm(f => ({ ...f, logo: newUrl }));
+      qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
+    },
     onError: () => toast.error('Failed to upload logo'),
   });
 
@@ -199,9 +210,16 @@ export function OwnerSettingsPage() {
       if (!bannerFile) return;
       const fd = new FormData();
       fd.append('banner', bannerFile);
-      await api.post('/owner/restaurant/banner', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const res = await api.post('/owner/restaurant/banner', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      return res.data.data.banner as string;
     },
-    onSuccess: () => { toast.success('Banner uploaded!'); setBannerFile(null); qc.invalidateQueries({ queryKey: ['owner-restaurant'] }); },
+    onSuccess: (newUrl) => {
+      toast.success('Banner uploaded!');
+      setBannerFile(null);
+      setBannerPreviewUrl(null);
+      if (newUrl) setForm(f => ({ ...f, banner: newUrl }));
+      qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
+    },
     onError: () => toast.error('Failed to upload banner'),
   });
 
@@ -210,16 +228,24 @@ export function OwnerSettingsPage() {
       if (!paymentQrFile) return;
       const fd = new FormData();
       fd.append('paymentQr', paymentQrFile);
-      await api.post('/owner/restaurant/payment-qr', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const res = await api.post('/owner/restaurant/payment-qr', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      return res.data.data.paymentQrCode as string;
     },
-    onSuccess: () => { toast.success('Payment QR uploaded!'); setPaymentQrFile(null); setPaymentQrPreviewUrl(null); qc.invalidateQueries({ queryKey: ['owner-restaurant'] }); },
+    onSuccess: (newUrl) => {
+      toast.success('Payment QR uploaded!');
+      setPaymentQrFile(null);
+      setPaymentQrPreviewUrl(null);
+      if (newUrl) setForm(f => ({ ...f, paymentQrCode: newUrl }));
+      qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
+    },
     onError: () => toast.error('Failed to upload payment QR'),
   });
 
   const savePaymentDetailsMutation = useMutation({
     mutationFn: async () => {
-      await api.put('/owner/restaurant', {
+      const res = await api.put('/owner/restaurant', {
         name: form.name ?? '',
+        paymentQrCode: form.paymentQrCode ?? null,
         paymentUpiId: form.paymentUpiId ?? null,
         paymentPhone: form.paymentPhone ?? null,
         bankName: form.bankName ?? null,
@@ -227,8 +253,13 @@ export function OwnerSettingsPage() {
         bankIfsc: form.bankIfsc ?? null,
         bankAccountHolder: form.bankAccountHolder ?? null,
       });
+      return res.data.data.restaurant;
     },
-    onSuccess: () => { toast.success('Payment details saved!'); qc.invalidateQueries({ queryKey: ['owner-restaurant'] }); },
+    onSuccess: (updated) => {
+      toast.success('Payment details saved!');
+      if (updated) setForm(updated);
+      qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
+    },
     onError: () => toast.error('Failed to save payment details'),
   });
 
@@ -551,7 +582,7 @@ export function OwnerSettingsPage() {
                 <div className="space-y-5">
                   <div>
                     <p className="text-sm font-medium text-muted-foreground mb-2">Logo</p>
-                    {(logoPreviewUrl || data?.logo) && <img src={logoPreviewUrl || data?.logo || ''} alt="Logo" className="w-20 h-20 rounded-xl object-cover border border-border mb-2" />}
+                    {(logoPreviewUrl || form.logo || data?.logo) && <img src={logoPreviewUrl || form.logo || data?.logo || ''} alt="Logo" className="w-20 h-20 rounded-xl object-cover border border-border mb-2 bg-white" />}
                     <div className="flex gap-3 items-center">
                       <input type="file" accept="image/*" onChange={(e) => setLogoFile(e.target.files?.[0] ?? null)}
                         className="flex-1 px-3 py-2 text-sm text-muted-foreground border border-dashed border-border rounded-xl" />
@@ -565,7 +596,7 @@ export function OwnerSettingsPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground mb-2">Banner</p>
-                    {(bannerPreviewUrl || data?.banner) && <img src={bannerPreviewUrl || data?.banner || ''} alt="Banner" className="w-full h-28 rounded-xl object-cover border border-border mb-2" />}
+                    {(bannerPreviewUrl || form.banner || data?.banner) && <img src={bannerPreviewUrl || form.banner || data?.banner || ''} alt="Banner" className="w-full h-28 rounded-xl object-cover border border-border mb-2 bg-white" />}
                     <div className="flex gap-3 items-center">
                       <input type="file" accept="image/*" onChange={(e) => setBannerFile(e.target.files?.[0] ?? null)}
                         className="flex-1 px-3 py-2 text-sm text-muted-foreground border border-dashed border-border rounded-xl" />
@@ -598,9 +629,9 @@ export function OwnerSettingsPage() {
                   <div>
                     <p className="text-sm font-semibold text-foreground mb-2 flex items-center gap-1.5"><Smartphone className="w-4 h-4 text-primary" /> UPI / Payment QR Code</p>
                     <div className="flex gap-4 items-start">
-                      {(paymentQrPreviewUrl || data?.paymentQrCode) && (
+                      {(paymentQrPreviewUrl || form.paymentQrCode || data?.paymentQrCode) && (
                         <img
-                          src={paymentQrPreviewUrl || data?.paymentQrCode || ''}
+                          src={paymentQrPreviewUrl || form.paymentQrCode || data?.paymentQrCode || ''}
                           alt="Payment QR"
                           className="w-28 h-28 object-contain border border-border rounded-xl bg-white p-1 flex-shrink-0"
                         />

@@ -138,3 +138,47 @@ export async function sendOrderConfirmationEmail(
   `;
   await sendEmail(to, `Order confirmed - ${restaurantName}`, html);
 }
+
+export async function sendBroadcastEmail(
+  recipients: string[],
+  subject: string,
+  messageHtml: string,
+  senderTitle: string = 'Super Admin Broadcast'
+): Promise<{ success: number; failed: number }> {
+  let successCount = 0;
+  let failedCount = 0;
+
+  for (const recipient of recipients) {
+    try {
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="UTF-8"><style>
+          body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f5f5; margin: 0; padding: 20px; }
+          .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 20px rgba(0,0,0,0.1); }
+          .header { background: linear-gradient(135deg, #4f46e5, #6366f1); padding: 30px; text-align: center; }
+          .header h1 { color: white; margin: 0; font-size: 24px; }
+          .body { padding: 30px; font-size: 15px; color: #333; line-height: 1.6; }
+          .footer { background: #f9f9f9; padding: 20px; text-align: center; color: #888; font-size: 12px; }
+        </style></head>
+        <body>
+          <div class="container">
+            <div class="header"><h1>📢 ${senderTitle}</h1></div>
+            <div class="body">
+              ${messageHtml}
+            </div>
+            <div class="footer"><p>© Digital Restaurant SaaS Platform. Official Broadcast.</p></div>
+          </div>
+        </body>
+        </html>
+      `;
+      await sendEmail(recipient, subject, html);
+      successCount++;
+    } catch (err) {
+      failedCount++;
+      logger.error(`Broadcast email failed for ${recipient}:`, err);
+    }
+  }
+
+  return { success: successCount, failed: failedCount };
+}

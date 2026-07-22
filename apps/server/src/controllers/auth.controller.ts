@@ -20,7 +20,7 @@ function generateAccessToken(payload: {
 }): string {
   const secret = process.env.JWT_ACCESS_SECRET ?? '';
   return jwt.sign(payload, secret, {
-    expiresIn: (process.env.JWT_ACCESS_EXPIRES_IN ?? '15m') as any,
+    expiresIn: (process.env.JWT_ACCESS_EXPIRES_IN ?? '7d') as any,
   });
 }
 
@@ -32,10 +32,11 @@ function generateRefreshToken(userId: string): string {
 }
 
 function setRefreshTokenCookie(res: Response, token: string): void {
+  const isProd = process.env.NODE_ENV === 'production';
   res.cookie('refreshToken', token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     path: '/',
   });
@@ -541,4 +542,79 @@ export async function googleCallback(
   } catch (error) {
     next(error);
   }
+}
+
+export async function googleOneTap(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { credential } = req.body as { credential?: string; token?: string };
+    const idToken = credential || req.body.token;
+
+    if (!idToken) {
+      throw new AppError('Google ID token missing.', 400, 'BAD_REQUEST');
+    }
+
+    // Verify token with Google API endpoint
+    const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+    if (!response.ok) {
+      throw new AppError('Invalid Google credential token.', 401, 'INVALID_TOKEN');
+    }
+
+    const payload = await response.json() as {
+      sub: string;
+      email: string;
+      name: string;
+      picture?: string;
+      email_verified?: string | boolean;
+    };
+
+    if (!payload.email) {
+      throw new AppError('Email not returned by Google.', 400, 'OAUTH_ERROR');
+    }
+
+    let user = await prisma.user.findFirst({
+      where: { OR: [{ googleId: payload.sub }, { email: payload.email }] },
+    });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          name: payload.name || payload.email.split('@')[0],
+          email: payload.email,
+          googleId: payload.sub,
+          isVerified: true,
+          role: 'CUSTOMER',
+        },
+      });
+    } else if (!user.googleId) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { googleId: payload.sub, isVerified: true },
+      });
+    }
+
+    const accessToken = generateAccessToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      name: user.name,
+    });
+    const newRefreshToken = generateRefreshToken(user.id);
+    setRefreshTokenCookie(res, newRefreshToken);
+
+    res.json({
+      success: true,
+      data: {
+        accessToken,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          isVerified: user.isVerified,
+          loyaltyPoints: user.loyaltyPoints,
+          walletBalance: user.walletBalance,
+        },
+      },
+    });
+  } catch (error) { next(error); }
 }

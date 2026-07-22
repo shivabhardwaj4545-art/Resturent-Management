@@ -36,6 +36,11 @@ export function initializeSocketService(socketServer: SocketIOServer): void {
       void socket.join(`user:${userId}`);
     }
 
+    socket.on('join:user', (targetUserId: string) => {
+      void socket.join(`user:${targetUserId}`);
+      logger.debug(`Socket ${socket.id} joined user:${targetUserId}`);
+    });
+
     // Join restaurant room (for restaurant owners)
     socket.on('join:restaurant', (restaurantId: string) => {
       void socket.join(`restaurant:${restaurantId}`);
@@ -63,6 +68,18 @@ export function initializeSocketService(socketServer: SocketIOServer): void {
       });
     });
 
+    // Owner responds to waiter call — notify customer on table
+    socket.on('waiter:respond', (data: { restaurantId: string; tableNumber: string }) => {
+      const { restaurantId, tableNumber } = data;
+      logger.info(`Owner sent waiter for restaurant ${restaurantId}, table ${tableNumber}`);
+      io.to(`restaurant:${restaurantId}`).emit('waiter:responded', {
+        tableNumber,
+        restaurantId,
+        message: `Waiter is on the way to Table ${tableNumber}!`,
+        timestamp: new Date().toISOString(),
+      });
+    });
+
     socket.on('disconnect', () => {
       logger.info(`Socket disconnected: ${socket.id}`);
     });
@@ -73,6 +90,8 @@ export function initializeSocketService(socketServer: SocketIOServer): void {
 export function emitOrderStatusUpdate(orderId: string, restaurantId: string, data: {
   orderId: string;
   status?: string;
+  addOnStatus?: string | null;
+  lastAddOnAt?: Date | string | null;
   paymentStatus?: string;
   updatedAt: string;
   estimatedTime?: number;
@@ -112,6 +131,16 @@ export function emitWaiterCall(
     amount,
     paymentMethod,
     itemsSummary,
+  });
+}
+
+export function emitWaiterResponse(restaurantId: string, tableNumber: string): void {
+  if (!io) return;
+  io.to(`restaurant:${restaurantId}`).emit('waiter:responded', {
+    tableNumber,
+    restaurantId,
+    message: `Waiter is on the way to Table ${tableNumber}!`,
+    timestamp: new Date().toISOString(),
   });
 }
 

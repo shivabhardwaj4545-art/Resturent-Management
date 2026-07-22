@@ -17,6 +17,8 @@ import {
   createAdminCoupon,
   deleteAdminCoupon,
   toggleAdminCoupon,
+  broadcastNotification,
+  broadcastEmail,
 } from '../controllers/admin.controller';
 
 const router = Router();
@@ -49,5 +51,9 @@ router.get('/coupons', getAdminCoupons);
 router.post('/coupons', createAdminCoupon);
 router.delete('/coupons/:id', deleteAdminCoupon);
 router.patch('/coupons/:id/toggle', toggleAdminCoupon);
+
+// Broadcasts
+router.post('/broadcast-notification', broadcastNotification);
+router.post('/broadcast-email', broadcastEmail);
 
 export default router;

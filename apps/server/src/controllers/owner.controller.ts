@@ -507,7 +507,7 @@ export async function updateOrderStatus(req: AuthenticatedRequest, res: Response
   try {
     const restaurant = await getOwnerRestaurant(req.user!.id);
     const id = req.params.id as string;
-    const { status, reason } = req.body as { status: string; reason?: string };
+    const { status, addOnStatus, reason } = req.body as { status?: string; addOnStatus?: string; reason?: string };
 
     const order = await prisma.order.findFirst({
       where: { id, restaurantId: restaurant.id, deletedAt: null },
@@ -526,12 +526,17 @@ export async function updateOrderStatus(req: AuthenticatedRequest, res: Response
       CANCELLED: 'cancelledAt',
     };
 
-    const updateData: Record<string, any> = {
-      status: status as 'CONFIRMED' | 'PREPARING' | 'BAKING' | 'READY' | 'ON_THE_WAY' | 'DELIVERED' | 'CANCELLED',
-    };
-    const dateField = statusDateFields[status];
-    if (dateField) {
-      updateData[dateField] = new Date();
+    const updateData: Record<string, any> = {};
+    if (status) {
+      updateData.status = status;
+      const dateField = statusDateFields[status];
+      if (dateField) {
+        updateData[dateField] = new Date();
+      }
+    }
+
+    if (addOnStatus !== undefined) {
+      updateData.addOnStatus = addOnStatus;
     }
 
     const updatedOrder = await prisma.order.update({
@@ -543,11 +548,13 @@ export async function updateOrderStatus(req: AuthenticatedRequest, res: Response
     emitOrderStatusUpdate(id, restaurant.id, {
       orderId: id,
       status: updatedOrder.status,
+      addOnStatus: updatedOrder.addOnStatus,
+      lastAddOnAt: updatedOrder.lastAddOnAt,
       updatedAt: updatedOrder.updatedAt.toISOString(),
     });
 
     // Notify customer
-    if (order.userId) {
+    if (status && order.userId) {
       const statusMessages: Record<string, string> = {
         CONFIRMED: 'Your order has been confirmed! 🎉',
         PREPARING: 'Your order is being prepared! 👨‍🍳',

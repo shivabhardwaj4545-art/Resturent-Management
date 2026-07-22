@@ -20,6 +20,7 @@ import aiRoutes from './routes/ai.routes';
 import ownerRoutes from './routes/owner.routes';
 import adminRoutes from './routes/admin.routes';
 import webhookRoutes from './routes/webhook.routes';
+import chatRoutes from './routes/chat.routes';
 
 const app = express();
 
@@ -114,6 +115,7 @@ app.use(`${API}/profile`, profileRoutes);
 app.use(`${API}/ai`, aiRoutes);
 app.use(`${API}/owner`, ownerRoutes);
 app.use(`${API}/admin`, adminRoutes);
+app.use(`${API}/chat`, chatRoutes);
 app.use(`${API}/webhooks`, webhookRoutes);
 
 // ── 404 Handler ───────────────────────────────────────────────

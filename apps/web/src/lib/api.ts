@@ -65,7 +65,12 @@ api.interceptors.response.use(
       });
     }
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    const isAuthUrl =
+      originalRequest?.url?.includes('/auth/login') ||
+      originalRequest?.url?.includes('/auth/register') ||
+      originalRequest?.url?.includes('/auth/refresh');
+
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthUrl) {
       if (isRefreshing) {
         if (typeof window !== 'undefined') {
           console.log('🔄 [API Refresh] Already refreshing, queuing request...');
@@ -116,14 +121,18 @@ api.interceptors.response.use(
         }
 
         return api(originalRequest);
-      } catch (refreshError) {
+      } catch (refreshError: any) {
         if (typeof window !== 'undefined') {
-          console.error('❌ [API Refresh] Token refresh failed, logging out:', refreshError);
+          console.error('❌ [API Refresh] Token refresh failed:', refreshError);
         }
         processQueue(refreshError as Error, null);
-        useAuthStore.getState().logout();
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
+        
+        // Only log out if backend explicitly returns 401 (invalid/expired refresh token)
+        if (refreshError.response?.status === 401) {
+          useAuthStore.getState().logout();
+          if (typeof window !== 'undefined') {
+            window.location.href = '/login';
+          }
         }
         return Promise.reject(refreshError);
       } finally {

@@ -15,6 +15,7 @@ import {
   MapPin,
   CreditCard,
   Copy,
+  Sparkles,
 } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
 import api from '@/lib/api';
@@ -71,6 +72,8 @@ interface Order {
   id: string;
   restaurantId: string;
   status: string;
+  addOnStatus?: string | null;
+  lastAddOnAt?: string | null;
   subtotal: number;
   gstAmount: number;
   deliveryFee: number;
@@ -241,6 +244,40 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
       </div>
 
       <div className="max-w-lg mx-auto px-4 space-y-5">
+        {/* Add-on Order Journey Banner */}
+        {order.addOnStatus && (
+          <div className="bg-gradient-to-r from-blue-500/10 via-amber-500/10 to-emerald-500/10 border-2 border-blue-500/30 rounded-2xl p-5 shadow-lg space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 font-display font-bold text-sm text-foreground">
+                <Sparkles className="w-5 h-5 text-blue-500 animate-pulse" />
+                <span>⚡ Add-on Items Journey</span>
+              </div>
+              <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-blue-500 text-white shadow-sm">
+                {order.addOnStatus === 'PREPARING' ? '👨‍🍳 Preparing Add-ons' : order.addOnStatus === 'READY' ? '🍽️ Ready to Serve' : '✅ Add-ons Served'}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {order.addOnStatus === 'PREPARING' 
+                ? 'The kitchen has received your add-on items and is preparing them right now!' 
+                : order.addOnStatus === 'READY' 
+                ? 'Your add-on items are ready and will be served to your table shortly!' 
+                : 'Your add-on items have been served. Enjoy your meal!'}
+            </p>
+            {/* Add-on Progress Steps */}
+            <div className="grid grid-cols-3 gap-2 pt-2 text-center text-[11px] font-bold">
+              <div className={`p-2 rounded-xl border transition-all ${order.addOnStatus === 'PREPARING' ? 'bg-blue-500 text-white border-blue-600 shadow-md scale-105' : 'bg-muted/50 text-muted-foreground border-border'}`}>
+                1. Preparing
+              </div>
+              <div className={`p-2 rounded-xl border transition-all ${order.addOnStatus === 'READY' ? 'bg-amber-500 text-white border-amber-600 shadow-md scale-105' : 'bg-muted/50 text-muted-foreground border-border'}`}>
+                2. Ready to Serve
+              </div>
+              <div className={`p-2 rounded-xl border transition-all ${order.addOnStatus === 'DELIVERED' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md scale-105' : 'bg-muted/50 text-muted-foreground border-border'}`}>
+                3. Served
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Status tracker */}
         <div className="bg-card border border-border rounded-2xl p-5">
           <h2 className="font-display font-semibold mb-5">

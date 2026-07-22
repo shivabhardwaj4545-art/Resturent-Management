@@ -303,7 +303,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
   const grandTotalBeforePoints = Math.max(subtotalAmount + gst + deliveryPlusPackaging - finalCouponDiscount, 0);
 
   const pointsAvailable = profileData?.loyaltyPoints ?? activeUser?.loyaltyPoints ?? 0;
-  const maxPointsDiscount = pointsAvailable / 10;
+  const maxPointsDiscount = pointsAvailable / 50;
   const pointsDiscount = usePoints && !addonOrderId ? Math.min(maxPointsDiscount, grandTotalBeforePoints) : 0;
   const grandTotal = Math.max(grandTotalBeforePoints - pointsDiscount, 0);
 

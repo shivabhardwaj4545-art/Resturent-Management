@@ -3,6 +3,8 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { cacheGet, cacheSet } from '../services/redis.service';
+import { emitNotification, emitWaiterCall } from '../services/socket.service';
+import { sendBroadcastEmail } from '../services/email.service';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
 
 export async function getAllRestaurants(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -419,5 +421,120 @@ export async function toggleAdminCoupon(req: AuthenticatedRequest, res: Response
       data: { isActive: !coupon.isActive },
     });
     res.json({ success: true, data: { isActive: updated.isActive } });
+  } catch (error) { next(error); }
+}
+
+export async function broadcastNotification(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const adminUserId = req.user!.id;
+    const { title, message, targetRole } = req.body as { title: string; message: string; targetRole?: string };
+    if (!title || !message) {
+      throw new AppError('Title and message are required for broadcast.', 400, 'BAD_REQUEST');
+    }
+
+    const whereClause: any = { deletedAt: null };
+    if (targetRole === 'ALL_OWNERS') {
+      whereClause.role = 'RESTAURANT_OWNER';
+    } else if (targetRole === 'ALL_CUSTOMERS') {
+      whereClause.role = 'CUSTOMER';
+    }
+
+    const targetUsers = await prisma.user.findMany({
+      where: whereClause,
+      select: { id: true, role: true, restaurant: { select: { id: true } } },
+    });
+
+    let sentCount = 0;
+    for (const u of targetUsers) {
+      const userRestaurant = u.restaurant && u.restaurant[0];
+
+      // 1. In-app Notification
+      await prisma.notification.create({
+        data: {
+          userId: u.id,
+          restaurantId: userRestaurant?.id ?? null,
+          type: 'BROADCAST',
+          title: `📢 ${title}`,
+          message,
+        },
+      });
+
+      // 2. Insert broadcast directly into 1-to-1 Owner Chat Thread!
+      await prisma.directMessage.create({
+        data: {
+          senderId: adminUserId,
+          receiverId: u.id,
+          message: `📢 [BROADCAST ANNOUNCEMENT]\nTitle: ${title}\n\n${message}`,
+        },
+      });
+
+      // 3. Real-time Sockets
+      emitNotification(u.id, {
+        type: 'BROADCAST',
+        title: `📢 ${title}`,
+        message,
+        createdAt: new Date().toISOString(),
+      });
+
+      if (userRestaurant) {
+        emitWaiterCall(userRestaurant.id, 'Dashboard', 'default', undefined, undefined, `📢 ADMIN BROADCAST: ${title} - ${message}`);
+      }
+      sentCount++;
+    }
+
+    res.json({
+      success: true,
+      message: `Broadcast notification sent & saved to chat history for ${sentCount} users successfully!`,
+      data: { sentCount },
+    });
+  } catch (error) { next(error); }
+}
+
+export async function broadcastEmail(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const adminUserId = req.user!.id;
+    const { subject, message, targetRole } = req.body as { subject: string; message: string; targetRole?: string };
+    if (!subject || !message) {
+      throw new AppError('Subject and email content are required.', 400, 'BAD_REQUEST');
+    }
+
+    const whereClause: any = { deletedAt: null };
+    if (targetRole === 'ALL_OWNERS') {
+      whereClause.role = 'RESTAURANT_OWNER';
+    } else if (targetRole === 'ALL_CUSTOMERS') {
+      whereClause.role = 'CUSTOMER';
+    }
+
+    const users = await prisma.user.findMany({
+      where: whereClause,
+      select: { id: true, email: true },
+    });
+
+    for (const u of users) {
+      // Insert email broadcast directly into 1-to-1 Chat Thread as well!
+      await prisma.directMessage.create({
+        data: {
+          senderId: adminUserId,
+          receiverId: u.id,
+          message: `📧 [MASS EMAIL ANNOUNCEMENT]\nSubject: ${subject}\n\n${message}`,
+        },
+      });
+
+      emitNotification(u.id, {
+        type: 'BROADCAST',
+        title: `📧 ${subject}`,
+        message,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    const recipientEmails = users.map((u) => u.email).filter(Boolean);
+    const result = await sendBroadcastEmail(recipientEmails, subject, message, 'Super Admin Platform Announcement');
+
+    res.json({
+      success: true,
+      message: `Broadcast emails dispatched & saved to chat history: ${result.success} sent, ${result.failed} failed.`,
+      data: result,
+    });
   } catch (error) { next(error); }
 }
