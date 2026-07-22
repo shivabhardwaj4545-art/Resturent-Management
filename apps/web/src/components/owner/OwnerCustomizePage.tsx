@@ -7,7 +7,7 @@ import {
   Palette, GripVertical, Plus, Trash2, Save, Sparkles, LayoutDashboard,
   UtensilsCrossed, ShoppingBag, Tag, BarChart3, Settings, LogOut, Menu,
   Check, Eye, RefreshCw, Layers, ArrowUp, ArrowDown, Info, Smartphone, Loader2,
-  LayoutGrid, Grid, List, Sparkle, Utensils
+  LayoutGrid, Grid, List, Sparkle, Utensils, Star
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -21,6 +21,7 @@ const NAV_ITEMS = [
   { label: 'Menu', icon: UtensilsCrossed, href: '/owner/menu' },
   { label: 'Orders', icon: ShoppingBag, href: '/owner/orders' },
   { label: 'Coupons', icon: Tag, href: '/owner/coupons' },
+  { label: 'Reviews', icon: Star, href: '/owner/reviews' },
   { label: 'Analytics', icon: BarChart3, href: '/owner/analytics' },
   { label: 'Customize', icon: Palette, href: '/owner/customize' },
   { label: 'Settings', icon: Settings, href: '/owner/settings' },

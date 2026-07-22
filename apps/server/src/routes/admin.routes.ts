@@ -19,6 +19,7 @@ import {
   toggleAdminCoupon,
   broadcastNotification,
   broadcastEmail,
+  getAdminReviews,
 } from '../controllers/admin.controller';
 
 const router = Router();
@@ -55,5 +56,8 @@ router.patch('/coupons/:id/toggle', toggleAdminCoupon);
 // Broadcasts
 router.post('/broadcast-notification', broadcastNotification);
 router.post('/broadcast-email', broadcastEmail);
+
+// Reviews
+router.get('/reviews', getAdminReviews);
 
 export default router;

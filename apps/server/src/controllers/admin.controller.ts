@@ -538,3 +538,40 @@ export async function broadcastEmail(req: AuthenticatedRequest, res: Response, n
     });
   } catch (error) { next(error); }
 }
+
+// ── Get Admin Reviews ──────────────────────────────────────────
+
+export async function getAdminReviews(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const reviews = await prisma.review.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: { select: { name: true, email: true } },
+        order: { select: { id: true, guestName: true, total: true } },
+        restaurant: { select: { name: true, slug: true } },
+      },
+    });
+
+    const aggregate = await prisma.review.aggregate({
+      _avg: { rating: true },
+      _count: { rating: true },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        reviews,
+        stats: {
+          avgRating: aggregate._avg.rating ?? 0,
+          totalReviews: aggregate._count.rating ?? 0,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}

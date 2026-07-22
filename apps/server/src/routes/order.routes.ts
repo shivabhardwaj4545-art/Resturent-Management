@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticate, optionalAuth } from '../middlewares/auth.middleware';
 import { validate } from '../middlewares/validate.middleware';
-import { guestCheckoutSchema, userCheckoutSchema, razorpayVerifySchema } from '@qr-restaurant/shared/schemas';
+import { guestCheckoutSchema, userCheckoutSchema, razorpayVerifySchema, submitReviewSchema } from '@qr-restaurant/shared/schemas';
 import {
   placeGuestOrder,
   placeOrder,
@@ -12,6 +12,7 @@ import {
   createDirectOrder,
   addItemsToOrder,
   claimGuestOrders,
+  submitOrderReview,
 } from '../controllers/order.controller';
 
 const router = Router();
@@ -29,5 +30,6 @@ router.post('/:orderId/add-items', optionalAuth, addItemsToOrder);
 router.post('/verify-payment', optionalAuth, validate(razorpayVerifySchema), verifyPayment);
 router.post('/create-order', optionalAuth, createDirectOrder);
 router.post('/:orderId/reorder', authenticate, reorder);
+router.post('/:orderId/review', optionalAuth, validate(submitReviewSchema), submitOrderReview);
 
 export default router;

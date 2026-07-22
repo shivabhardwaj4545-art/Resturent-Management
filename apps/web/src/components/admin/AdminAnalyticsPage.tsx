@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   BarChart3, Store, Users, LayoutDashboard, Settings, LogOut, Menu, Shield,
-  TrendingUp, DollarSign, ShoppingBag, CreditCard, Ticket, HandCoins
+  TrendingUp, DollarSign, ShoppingBag, CreditCard, Ticket, HandCoins, Star
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/admin/dashboard' },
   { label: 'Restaurants', icon: Store, href: '/admin/restaurants' },
   { label: 'Users', icon: Users, href: '/admin/users' },
+  { label: 'Reviews', icon: Star, href: '/admin/reviews' },
   { label: 'Subscriptions', icon: CreditCard, href: '/admin/subscriptions' },
   { label: 'Coupons', icon: Ticket, href: '/admin/coupons' },
   { label: 'Payouts', icon: HandCoins, href: '/admin/payouts' },

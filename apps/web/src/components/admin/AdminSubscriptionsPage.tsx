@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Settings, Store, Users, BarChart3, LayoutDashboard, LogOut, Menu,
-  Shield, CreditCard, Ticket, HandCoins, Plus, CheckCircle2, RefreshCw, Trash2
+  Shield, CreditCard, Ticket, HandCoins, Plus, CheckCircle2, RefreshCw, Trash2, Star
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/admin/dashboard' },
   { label: 'Restaurants', icon: Store, href: '/admin/restaurants' },
   { label: 'Users', icon: Users, href: '/admin/users' },
+  { label: 'Reviews', icon: Star, href: '/admin/reviews' },
   { label: 'Subscriptions', icon: CreditCard, href: '/admin/subscriptions' },
   { label: 'Coupons', icon: Ticket, href: '/admin/coupons' },
   { label: 'Payouts', icon: HandCoins, href: '/admin/payouts' },

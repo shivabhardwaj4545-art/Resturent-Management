@@ -41,6 +41,7 @@ export const userCheckoutSchema = z.object({
   couponCode: z.string().optional(),
   restaurantSlug: z.string().min(1),
   useWallet: z.boolean().default(false),
+  usePoints: z.boolean().optional().default(false),
   cartItems: z.array(
     z.object({
       menuItemId: z.string().cuid(),
@@ -66,7 +67,17 @@ export const updateOrderStatusSchema = z.object({
     'ON_THE_WAY',
     'DELIVERED',
     'CANCELLED',
-  ]),
+  ]).optional(),
+  addOnStatus: z.enum([
+    'PENDING',
+    'CONFIRMED',
+    'PREPARING',
+    'BAKING',
+    'READY',
+    'ON_THE_WAY',
+    'DELIVERED',
+    'CANCELLED',
+  ]).optional(),
   reason: z.string().max(500).optional(),
 });
 
@@ -88,9 +99,15 @@ export const walletVerifySchema = z.object({
   amount: z.number().positive(),
 });
 
+export const submitReviewSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().max(1000).optional(),
+});
+
 export type GuestCheckoutInput = z.infer<typeof guestCheckoutSchema>;
 export type UserCheckoutInput = z.infer<typeof userCheckoutSchema>;
 export type UpdateOrderStatusInput = z.infer<typeof updateOrderStatusSchema>;
 export type RazorpayVerifyInput = z.infer<typeof razorpayVerifySchema>;
 export type WalletTopUpInput = z.infer<typeof walletTopUpSchema>;
 export type WalletVerifyInput = z.infer<typeof walletVerifySchema>;
+export type SubmitReviewInput = z.infer<typeof submitReviewSchema>;

@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   UtensilsCrossed, LayoutDashboard, ShoppingBag, Tag, BarChart3, Settings, LogOut,
-  Menu, Plus, Trash2, Edit2, Eye, EyeOff, Image, Leaf, X, Check, ChevronDown, Palette, Sparkles
+  Menu, Plus, Trash2, Edit2, Eye, EyeOff, Image, Leaf, X, Check, ChevronDown, Palette, Sparkles, Star
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { label: 'Menu', icon: UtensilsCrossed, href: '/owner/menu' },
   { label: 'Orders', icon: ShoppingBag, href: '/owner/orders' },
   { label: 'Coupons', icon: Tag, href: '/owner/coupons' },
+  { label: 'Reviews', icon: Star, href: '/owner/reviews' },
   { label: 'Analytics', icon: BarChart3, href: '/owner/analytics' },
   { label: 'Customize', icon: Palette, href: '/owner/customize' },
   { label: 'Settings', icon: Settings, href: '/owner/settings' },

@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma';
 import { isRestaurantOpen } from '../utils/operatingHours';
 import { AppError } from '../utils/AppError';
 import { createRazorpayOrder, verifyRazorpaySignature } from '../services/payment.razorpay.service';
-import { emitNewOrder, emitNotification, emitWaiterCall, emitOrderStatusUpdate } from '../services/socket.service';
+import { emitNewOrder, emitNotification, emitWaiterCall, emitOrderStatusUpdate, emitUserLoyaltyUpdate } from '../services/socket.service';
 import { sendOrderConfirmationEmail } from '../services/email.service';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { verifyTableSignature } from '../utils/tableSignature';
@@ -504,6 +504,15 @@ export async function placeOrder(
       return newOrder;
     });
 
+    // Fetch updated user profile to get real-time points
+    const updatedUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { loyaltyPoints: true },
+    });
+    if (updatedUser) {
+      emitUserLoyaltyUpdate(userId, updatedUser.loyaltyPoints);
+    }
+
     // Notify restaurant
     emitNewOrder(restaurant.id, order);
 
@@ -578,6 +587,7 @@ export async function getOrderById(
         },
         address: true,
         user: { select: { name: true, email: true, phone: true } },
+        review: true,
       },
     });
 
@@ -945,6 +955,59 @@ export async function claimGuestOrders(
     res.json({
       success: true,
       message: 'Guest orders successfully claimed.',
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ── Submit Order Review ──────────────────────────────────────────
+
+export async function submitOrderReview(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const orderId = req.params.orderId as string;
+    const { rating, comment } = req.body as { rating: number; comment?: string };
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId, deletedAt: null },
+    });
+
+    if (!order) {
+      throw new AppError('Order not found.', 404, 'ORDER_NOT_FOUND');
+    }
+
+    if (order.status !== 'DELIVERED') {
+      throw new AppError('You can only review completed/delivered orders.', 400, 'ORDER_NOT_DELIVERED');
+    }
+
+    // Check if review already exists
+    const existingReview = await prisma.review.findUnique({
+      where: { orderId },
+    });
+
+    if (existingReview) {
+      throw new AppError('You have already submitted a review for this order.', 400, 'REVIEW_ALREADY_EXISTS');
+    }
+
+    // Create the review. userId is optional.
+    const review = await prisma.review.create({
+      data: {
+        orderId,
+        userId: order.userId || req.user?.id || null,
+        restaurantId: order.restaurantId,
+        rating,
+        comment: comment || null,
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      data: { review },
+      message: 'Thank you for your feedback!',
     });
   } catch (error) {
     next(error);

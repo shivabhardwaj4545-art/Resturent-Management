@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import {
   ShoppingBag, UtensilsCrossed, LayoutDashboard, Tag, BarChart3, Settings, LogOut,
   Menu, Search, Clock, ChevronDown, RefreshCw, User, MapPin, Palette,
-  Mail, Phone, CreditCard, Receipt, Check, Wallet, Banknote, Sparkles
+  Mail, Phone, CreditCard, Receipt, Check, Wallet, Banknote, Sparkles, Star
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { label: 'Menu', icon: UtensilsCrossed, href: '/owner/menu' },
   { label: 'Orders', icon: ShoppingBag, href: '/owner/orders' },
   { label: 'Coupons', icon: Tag, href: '/owner/coupons' },
+  { label: 'Reviews', icon: Star, href: '/owner/reviews' },
   { label: 'Analytics', icon: BarChart3, href: '/owner/analytics' },
   { label: 'Customize', icon: Palette, href: '/owner/customize' },
   { label: 'Settings', icon: Settings, href: '/owner/settings' },
@@ -457,35 +458,37 @@ export function OwnerOrdersPage() {
                                     </span>
                                   )}
                                 </div>
-                                <div className="flex gap-2 flex-wrap">
-                                  {(order as any).addOnStatus !== 'PREPARING' && (
-                                    <button
-                                      onClick={() => updateStatusMutation.mutate({ id: order.id, addOnStatus: 'PREPARING' })}
-                                      disabled={updateStatusMutation.isPending}
-                                      className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-sm flex items-center gap-1"
-                                    >
-                                      👨‍🍳 Mark Add-ons Preparing
-                                    </button>
-                                  )}
-                                  {(order as any).addOnStatus !== 'READY' && (
-                                    <button
-                                      onClick={() => updateStatusMutation.mutate({ id: order.id, addOnStatus: 'READY' })}
-                                      disabled={updateStatusMutation.isPending}
-                                      className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition-all shadow-sm flex items-center gap-1"
-                                    >
-                                      🍽️ Mark Add-ons Ready
-                                    </button>
-                                  )}
-                                  {(order as any).addOnStatus !== 'DELIVERED' && (
-                                    <button
-                                      onClick={() => updateStatusMutation.mutate({ id: order.id, addOnStatus: 'DELIVERED' })}
-                                      disabled={updateStatusMutation.isPending}
-                                      className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow-sm flex items-center gap-1"
-                                    >
-                                      ✅ Mark Add-ons Served
-                                    </button>
-                                  )}
-                                </div>
+                                 {order.status !== 'DELIVERED' && order.status !== 'CANCELLED' && (order as any).addOnStatus !== 'DELIVERED' && (
+                                   <div className="flex gap-2 flex-wrap">
+                                     {(order as any).addOnStatus !== 'PREPARING' && (order as any).addOnStatus !== 'READY' && (order as any).addOnStatus !== 'DELIVERED' && (
+                                       <button
+                                         onClick={() => updateStatusMutation.mutate({ id: order.id, addOnStatus: 'PREPARING' })}
+                                         disabled={updateStatusMutation.isPending}
+                                         className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-sm flex items-center gap-1"
+                                       >
+                                         👨‍🍳 Mark Add-ons Preparing
+                                       </button>
+                                     )}
+                                     {(order as any).addOnStatus !== 'READY' && (order as any).addOnStatus !== 'DELIVERED' && (
+                                       <button
+                                         onClick={() => updateStatusMutation.mutate({ id: order.id, addOnStatus: 'READY' })}
+                                         disabled={updateStatusMutation.isPending}
+                                         className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition-all shadow-sm flex items-center gap-1"
+                                       >
+                                         🍽️ Mark Add-ons Ready
+                                       </button>
+                                     )}
+                                     {(order as any).addOnStatus !== 'DELIVERED' && (
+                                       <button
+                                         onClick={() => updateStatusMutation.mutate({ id: order.id, addOnStatus: 'DELIVERED' })}
+                                         disabled={updateStatusMutation.isPending}
+                                         className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow-sm flex items-center gap-1"
+                                       >
+                                         ✅ Mark Add-ons Served
+                                       </button>
+                                     )}
+                                   </div>
+                                 )}
                               </div>
                             )}
 

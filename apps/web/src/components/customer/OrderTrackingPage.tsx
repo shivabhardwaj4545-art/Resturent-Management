@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   CheckCircle2,
@@ -109,6 +109,7 @@ interface Order {
     variant: { name: string } | null;
     addOns?: any;
   }>;
+  review?: { rating: number; comment?: string | null } | null;
 }
 
 interface OrderTrackingPageProps {
@@ -123,6 +124,22 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
   const [currentStatus, setCurrentStatus] = useState<string>('PENDING');
   const [showRating, setShowRating] = useState(false);
   const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState('');
+
+  const qc = useQueryClient();
+  const submitReviewMutation = useMutation({
+    mutationFn: async () => {
+      await api.post(`/orders/${orderId}/review`, { rating, comment });
+    },
+    onSuccess: () => {
+      toast.success('Thank you for your feedback!');
+      qc.invalidateQueries({ queryKey: ['order', orderId] });
+    },
+    onError: (err: any) => {
+      const msg = err.response?.data?.message || 'Failed to submit rating';
+      toast.error(msg);
+    },
+  });
 
   const handleAddMoreItems = () => {
     if (!order) return;
@@ -160,6 +177,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
         if (data.status === 'DELIVERED') {
           setShowRating(true);
         }
+        qc.invalidateQueries({ queryKey: ['order', orderId] });
       }
     });
 
@@ -538,32 +556,63 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
         </div>
 
         {/* Rating — shown when order is completed */}
-        {(showRating || isCompleted) && (
+        {(order.review || (showRating || isCompleted)) && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-card border border-border rounded-2xl p-4"
+            className="bg-card border border-border rounded-2xl p-4 shadow-sm"
           >
-            <h2 className="font-display font-semibold mb-3">Rate Your Experience</h2>
-            <div className="flex gap-2 justify-center mb-4">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button
-                  key={star}
-                  onClick={() => setRating(star)}
-                  className="text-3xl transition-transform hover:scale-110"
-                >
-                  {star <= rating ? '⭐' : '☆'}
-                </button>
-              ))}
-            </div>
-            {rating > 0 && (
-              <button
-                className="w-full py-3 rounded-xl text-white font-semibold"
-                style={{ backgroundColor: themeColor }}
-                onClick={() => toast.success('Thanks for your feedback!')}
-              >
-                Submit Rating
-              </button>
+            {order.review ? (
+              <div className="text-center py-2">
+                <span className="text-emerald-500 font-semibold block mb-1 text-sm">🎉 Thank you for your feedback!</span>
+                <div className="flex gap-1 justify-center mb-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <span key={star} className="text-xl">
+                      {star <= order.review!.rating ? '★' : '☆'}
+                    </span>
+                  ))}
+                </div>
+                {order.review.comment && (
+                  <p className="text-xs text-muted-foreground italic bg-muted/40 p-2 rounded-lg max-w-xs mx-auto">
+                    "{order.review.comment}"
+                  </p>
+                )}
+              </div>
+            ) : (
+              <>
+                <h2 className="font-display font-semibold mb-2 text-sm text-center">Rate Your Experience</h2>
+                <div className="flex gap-2 justify-center mb-3">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      onClick={() => setRating(star)}
+                      className="text-3xl transition-transform hover:scale-110 focus:outline-none"
+                    >
+                      {star <= rating ? '★' : '☆'}
+                    </button>
+                  ))}
+                </div>
+                {rating > 0 && (
+                  <div className="space-y-3">
+                    <textarea
+                      placeholder="Write an optional review message (Max 500 chars)..."
+                      value={comment}
+                      onChange={(e) => setComment(e.target.value)}
+                      className="w-full text-xs p-2.5 rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                      rows={2}
+                      maxLength={500}
+                    />
+                    <button
+                      className="w-full py-2.5 rounded-xl text-white font-semibold text-sm transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      style={{ backgroundColor: themeColor }}
+                      onClick={() => submitReviewMutation.mutate()}
+                      disabled={submitReviewMutation.isPending}
+                    >
+                      {submitReviewMutation.isPending ? 'Submitting...' : 'Submit Rating'}
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </motion.div>
         )}

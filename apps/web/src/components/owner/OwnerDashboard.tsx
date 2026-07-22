@@ -26,6 +26,7 @@ const NAV_ITEMS = [
   { label: 'Menu', icon: UtensilsCrossed, href: '/owner/menu' },
   { label: 'Orders', icon: ShoppingBag, href: '/owner/orders' },
   { label: 'Coupons', icon: Tag, href: '/owner/coupons' },
+  { label: 'Reviews', icon: Star, href: '/owner/reviews' },
   { label: 'Analytics', icon: BarChart3, href: '/owner/analytics' },
   { label: 'Customize', icon: Palette, href: '/owner/customize' },
   { label: 'Settings', icon: Settings, href: '/owner/settings' },
@@ -47,7 +48,7 @@ export function OwnerDashboard() {
       const response = await api.get('/owner/dashboard');
       return response.data.data as {
         restaurant: { id: string; name: string; isOpen: boolean; themeColor: string | null };
-        stats: { todayRevenue: number; todayOrders: number; pendingOrders: number; avgOrderValue: number };
+        stats: { todayRevenue: number; todayOrders: number; pendingOrders: number; avgOrderValue: number; avgRating: number; totalReviews: number };
         recentOrders: Array<{
           id: string; status: string; total: number; createdAt: string;
           guestName: string | null; user: { name: string } | null;
@@ -212,15 +213,15 @@ export function OwnerDashboard() {
         {/* Dashboard content */}
         <div className="flex-1 overflow-y-auto p-5 space-y-6">
           {isLoading ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {[1, 2, 3, 4].map((i) => (
+            <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
                 <div key={i} className="h-28 skeleton rounded-2xl" />
               ))}
             </div>
           ) : (
             <>
               {/* Stats */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
                 {[
                   {
                     label: "Today's Revenue",
@@ -253,6 +254,22 @@ export function OwnerDashboard() {
                     color: 'from-purple-500/20 to-pink-500/20',
                     border: 'border-purple-500/20',
                     text: 'text-purple-600 dark:text-purple-400',
+                  },
+                  {
+                    label: 'Avg. Rating',
+                    value: data?.stats.avgRating ? `${(data.stats.avgRating as number).toFixed(1)} ★` : '0.0 ★',
+                    icon: Star,
+                    color: 'from-amber-500/20 to-orange-500/20',
+                    border: 'border-amber-500/20',
+                    text: 'text-amber-600 dark:text-amber-400',
+                  },
+                  {
+                    label: 'Total Reviews',
+                    value: data?.stats.totalReviews ?? 0,
+                    icon: MessageSquare,
+                    color: 'from-teal-500/20 to-emerald-500/20',
+                    border: 'border-teal-500/20',
+                    text: 'text-teal-600 dark:text-teal-400',
                   },
                 ].map((stat, i) => {
                   const Icon = stat.icon;

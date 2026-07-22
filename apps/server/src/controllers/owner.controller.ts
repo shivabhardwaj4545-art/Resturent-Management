@@ -2,7 +2,7 @@ import { Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { uploadMenuItemImage, uploadRestaurantLogo, uploadRestaurantBanner, uploadRestaurantPaymentQr } from '../services/cloudinary.service';
-import { emitOrderStatusUpdate, emitNotification } from '../services/socket.service';
+import { emitOrderStatusUpdate, emitNotification, emitUserLoyaltyUpdate } from '../services/socket.service';
 import { cacheDelPattern, cacheSet } from '../services/redis.service';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { generateTableSignature } from '../utils/tableSignature';
@@ -24,7 +24,7 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response, nex
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const [todayStats, recentOrders, orderStatusBreakdown, last7DaysRevenue] = await Promise.all([
+    const [todayStats, recentOrders, orderStatusBreakdown, last7DaysRevenue, reviewStats] = await Promise.all([
       prisma.order.aggregate({
         where: { restaurantId: restaurant.id, createdAt: { gte: today } },
         _count: { id: true },
@@ -59,6 +59,11 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response, nex
         GROUP BY DATE("createdAt")
         ORDER BY date ASC
       `,
+      prisma.review.aggregate({
+        where: { restaurantId: restaurant.id },
+        _avg: { rating: true },
+        _count: { rating: true },
+      }),
     ]);
 
     const pendingOrders = orderStatusBreakdown.find((s) => s.status === 'PENDING')?._count.status ?? 0;
@@ -77,6 +82,8 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response, nex
           todayOrders: todayStats._count.id,
           pendingOrders,
           avgOrderValue: todayStats._avg.total ?? 0,
+          avgRating: reviewStats._avg.rating ?? 0,
+          totalReviews: reviewStats._count.rating ?? 0,
         },
         recentOrders,
         orderStatusBreakdown,
@@ -526,6 +533,83 @@ export async function updateOrderStatus(req: AuthenticatedRequest, res: Response
       CANCELLED: 'cancelledAt',
     };
 
+    if (status === 'CANCELLED' && order.status !== 'CANCELLED') {
+      // 1. Refund redeemed loyalty points
+      const redeemedTx = await prisma.loyaltyTransaction.findFirst({
+        where: { orderId: id, type: 'REDEEMED' },
+      });
+      if (redeemedTx && order.userId) {
+        await prisma.$transaction(async (tx) => {
+          await tx.user.update({
+            where: { id: order.userId! },
+            data: { loyaltyPoints: { increment: redeemedTx.points } },
+          });
+          await tx.loyaltyTransaction.create({
+            data: {
+              userId: order.userId!,
+              orderId: id,
+              points: redeemedTx.points,
+              type: 'EARNED',
+            },
+          });
+        });
+      }
+
+      // 2. Deduct earned loyalty points
+      const earnedTx = await prisma.loyaltyTransaction.findFirst({
+        where: { orderId: id, type: 'EARNED', points: { gt: 0 } },
+      });
+      if (earnedTx && order.userId) {
+        await prisma.$transaction(async (tx) => {
+          await tx.user.update({
+            where: { id: order.userId! },
+            data: { loyaltyPoints: { decrement: earnedTx.points } },
+          });
+          await tx.loyaltyTransaction.create({
+            data: {
+              userId: order.userId!,
+              orderId: id,
+              points: earnedTx.points,
+              type: 'REDEEMED',
+            },
+          });
+        });
+      }
+
+      // 3. Refund wallet balance
+      const walletDebit = await prisma.walletTransaction.findFirst({
+        where: { orderId: id, type: 'DEBIT' },
+      });
+      if (walletDebit && order.userId) {
+        await prisma.$transaction(async (tx) => {
+          await tx.user.update({
+            where: { id: order.userId! },
+            data: { walletBalance: { increment: walletDebit.amount } },
+          });
+          await tx.walletTransaction.create({
+            data: {
+              userId: order.userId!,
+              orderId: id,
+              amount: walletDebit.amount,
+              type: 'CREDIT',
+              reference: `Refund for Cancelled Order #${order.id.slice(-8).toUpperCase()}`,
+            },
+          });
+        });
+      }
+
+      // 4. Emit the updated user points to the frontend socket in real-time
+      if (order.userId) {
+        const updatedUser = await prisma.user.findUnique({
+          where: { id: order.userId },
+          select: { loyaltyPoints: true },
+        });
+        if (updatedUser) {
+          emitUserLoyaltyUpdate(order.userId, updatedUser.loyaltyPoints);
+        }
+      }
+    }
+
     const updateData: Record<string, any> = {};
     if (status) {
       updateData.status = status;
@@ -637,6 +721,16 @@ export async function confirmPayment(req: AuthenticatedRequest, res: Response, n
         });
       }
     });
+
+    if (order.userId && pointsEarned > 0) {
+      const updatedUser = await prisma.user.findUnique({
+        where: { id: order.userId },
+        select: { loyaltyPoints: true },
+      });
+      if (updatedUser) {
+        emitUserLoyaltyUpdate(order.userId, updatedUser.loyaltyPoints);
+      }
+    }
 
     // Emit real-time socket update to customer
     emitOrderStatusUpdate(id, restaurant.id, {
@@ -807,6 +901,61 @@ export async function signTable(req: AuthenticatedRequest, res: Response, next: 
     }
     const signature = generateTableSignature(restaurant.id, table);
     res.json({ success: true, data: { signature } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ── Get Restaurant Reviews ──────────────────────────────────────────
+
+export async function getRestaurantReviews(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+
+    const reviews = await prisma.review.findMany({
+      where: { restaurantId: restaurant.id },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: { select: { name: true, email: true } },
+        order: { select: { id: true, guestName: true, total: true } },
+      },
+    });
+
+    const aggregate = await prisma.review.aggregate({
+      where: { restaurantId: restaurant.id },
+      _avg: { rating: true },
+      _count: { rating: true },
+    });
+
+    const breakdown = await prisma.review.groupBy({
+      by: ['rating'],
+      where: { restaurantId: restaurant.id },
+      _count: { rating: true },
+    });
+
+    const starBreakdown = {
+      1: breakdown.find((b) => b.rating === 1)?._count.rating ?? 0,
+      2: breakdown.find((b) => b.rating === 2)?._count.rating ?? 0,
+      3: breakdown.find((b) => b.rating === 3)?._count.rating ?? 0,
+      4: breakdown.find((b) => b.rating === 4)?._count.rating ?? 0,
+      5: breakdown.find((b) => b.rating === 5)?._count.rating ?? 0,
+    };
+
+    res.json({
+      success: true,
+      data: {
+        reviews,
+        stats: {
+          avgRating: aggregate._avg.rating ?? 0,
+          totalReviews: aggregate._count.rating ?? 0,
+          starBreakdown,
+        },
+      },
+    });
   } catch (error) {
     next(error);
   }

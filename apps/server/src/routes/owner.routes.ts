@@ -41,6 +41,7 @@ import {
   confirmPayment,
   getAnalytics,
   signTable,
+  getRestaurantReviews,
 } from '../controllers/owner.controller';
 import { upload } from '../services/cloudinary.service';
 
@@ -88,6 +89,7 @@ router.get('/orders', getOrders);
 router.get('/orders/:id', getOrderDetail);
 router.patch('/orders/:id/status', validate(updateOrderStatusSchema), updateOrderStatus);
 router.patch('/orders/:id/payment', confirmPayment);
+router.get('/reviews', getRestaurantReviews);
 
 // Analytics
 router.get('/analytics', getAnalytics);

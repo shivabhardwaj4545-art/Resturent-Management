@@ -113,6 +113,12 @@ export function emitNotification(userId: string, notification: unknown): void {
   io.to(`user:${userId}`).emit('notification:new', notification);
 }
 
+// Emit loyalty update to user
+export function emitUserLoyaltyUpdate(userId: string, points: number): void {
+  if (!io) return;
+  io.to(`user:${userId}`).emit('user:loyalty_updated', { userId, points });
+}
+
 // Emit waiter call notification to restaurant
 export function emitWaiterCall(
   restaurantId: string,

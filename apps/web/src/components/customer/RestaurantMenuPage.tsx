@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import { Search, Filter, ShoppingCart, Clock, MapPin, Star, Bot, X, ChevronUp, QrCode, ChevronRight, BellRing, Gift } from 'lucide-react';
@@ -44,6 +44,7 @@ interface RestaurantMenuPageProps {
 }
 
 export function RestaurantMenuPage({ slug, tableNumber, searchParams }: RestaurantMenuPageProps) {
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'VEG' | 'NON_VEG' | 'VEGAN'>('ALL');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -353,6 +354,9 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
     const socket = io(socketUrl);
 
     socket.emit('join:restaurant', data.restaurant.id);
+    if (activeUser?.id) {
+      socket.emit('join:user', activeUser.id);
+    }
 
     socket.on('waiter:responded', (resData: { tableNumber?: string; message?: string }) => {
       const currentTable = tableNumber || manualTableNumber;
@@ -376,10 +380,19 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       }
     });
 
+    socket.on('user:loyalty_updated', () => {
+      queryClient.invalidateQueries({ queryKey: ['user-profile-loyalty'] });
+    });
+
+    socket.on('order:status_updated', () => {
+      queryClient.invalidateQueries({ queryKey: ['active-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['previous-orders'] });
+    });
+
     return () => {
       socket.disconnect();
     };
-  }, [data?.restaurant?.id, tableNumber, manualTableNumber]);
+  }, [data?.restaurant?.id, tableNumber, manualTableNumber, activeUser?.id, queryClient]);
 
   const filteredCategories = useMemo(() => {
     if (!data) return [];

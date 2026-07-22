@@ -12,7 +12,7 @@ import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 declare global {
   interface Window {
@@ -92,6 +92,7 @@ const saveOrderToRecent = (orderId: string, restaurantSlug: string) => {
 export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: CheckoutPageProps) {
   const router = useRouter();
   const { user: rawUser, logout } = useAuthStore();
+  const queryClient = useQueryClient();
 
   const activeUser = useMemo(() => {
     if (!rawUser) return null;
@@ -352,6 +353,8 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
             razorpayPaymentId: response.razorpay_payment_id || `pay_${Date.now()}`,
             razorpaySignature: response.razorpay_signature || 'direct_signature',
           });
+          queryClient.invalidateQueries({ queryKey: ['user-profile'] });
+          queryClient.invalidateQueries({ queryKey: ['user-profile-loyalty'] });
           saveOrderToRecent(orderId, restaurantSlug);
           clearCart();
           toast.success('Payment successful! 🎉');
@@ -395,6 +398,8 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
         razorpayPaymentId: `pay_mock_${Math.random().toString(36).substring(2, 15)}`,
         razorpaySignature: 'mock_signature',
       });
+      queryClient.invalidateQueries({ queryKey: ['user-profile'] });
+      queryClient.invalidateQueries({ queryKey: ['user-profile-loyalty'] });
       saveOrderToRecent(mockPaymentData.orderId, restaurantSlug);
       clearCart();
       toast.success('Payment simulated successfully! 🎉');
@@ -496,6 +501,8 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
       if (selectedPayment === 'RAZORPAY' && order.razorpayOrderId && onlinePaymentType === 'RAZORPAY') {
         await handleRazorpayPayment(order.id, order.razorpayOrderId, order.total, activeUser!.name, activeUser!.phone ?? '');
       } else {
+        queryClient.invalidateQueries({ queryKey: ['user-profile'] });
+        queryClient.invalidateQueries({ queryKey: ['user-profile-loyalty'] });
         saveOrderToRecent(order.id, restaurantSlug);
         clearCart();
         const hasDirectPayment = !!(restaurant?.paymentQrCode || restaurant?.paymentUpiId || restaurant?.paymentPhone || restaurant?.bankAccountNumber);
