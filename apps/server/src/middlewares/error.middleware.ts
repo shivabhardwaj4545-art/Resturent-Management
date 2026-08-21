@@ -57,6 +57,16 @@ export function errorHandler(
       });
       return;
     }
+
+    if (error.code === 'P2022' || error.code === 'P2021') {
+      logger.error('Database schema missing column/table error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Database schema update in progress. Please try again in a moment.',
+        code: 'DATABASE_SCHEMA_MISMATCH',
+      });
+      return;
+    }
   }
 
   if (error instanceof Prisma.PrismaClientValidationError) {

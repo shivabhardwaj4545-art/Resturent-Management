@@ -18,18 +18,21 @@ export async function getAllRestaurants(req: AuthenticatedRequest, res: Response
       status?: string; page?: string; limit?: string; search?: string;
     };
 
-    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+    const pageNum = Math.max(1, parseInt(String(page), 10) || 1);
+    const limitNum = Math.max(1, parseInt(String(limit), 10) || 20);
+    const skip = (pageNum - 1) * limitNum;
     const where: Record<string, unknown> = { deletedAt: null };
 
     if (status === 'pending') { where.isApproved = false; where.isSuspended = false; }
     else if (status === 'approved') { where.isApproved = true; where.isSuspended = false; }
     else if (status === 'suspended') { where.isSuspended = true; }
 
-    if (search) {
+    if (search && typeof search === 'string' && search.trim().length > 0) {
+      const cleanSearch = search.trim();
       where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { slug: { contains: search, mode: 'insensitive' } },
-        { city: { contains: search, mode: 'insensitive' } },
+        { name: { contains: cleanSearch, mode: 'insensitive' } },
+        { slug: { contains: cleanSearch, mode: 'insensitive' } },
+        { city: { contains: cleanSearch, mode: 'insensitive' } },
       ];
     }
 
@@ -37,7 +40,7 @@ export async function getAllRestaurants(req: AuthenticatedRequest, res: Response
       prisma.restaurant.findMany({
         where,
         skip,
-        take: parseInt(limit, 10),
+        take: limitNum,
         orderBy: { createdAt: 'desc' },
         include: {
           owner: { select: { name: true, email: true, phone: true } },
@@ -47,10 +50,25 @@ export async function getAllRestaurants(req: AuthenticatedRequest, res: Response
       prisma.restaurant.count({ where }),
     ]);
 
+    const formattedRestaurants = restaurants.map((r) => ({
+      ...r,
+      owner: r.owner
+        ? {
+            ...r.owner,
+            email: r.owner.email && r.owner.email.includes(':') ? r.owner.email.split(':')[1] : (r.owner.email ?? ''),
+          }
+        : null,
+    }));
+
     res.json({
       success: true,
-      data: { restaurants },
-      pagination: { total, page: parseInt(page, 10), limit: parseInt(limit, 10), totalPages: Math.ceil(total / parseInt(limit, 10)) },
+      data: { restaurants: formattedRestaurants },
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum) || 1,
+      },
     });
   } catch (error) { next(error); }
 }
@@ -135,18 +153,21 @@ export async function getAllUsers(req: AuthenticatedRequest, res: Response, next
       role?: string; page?: string; limit?: string; search?: string;
     };
 
-    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+    const pageNum = Math.max(1, parseInt(String(page), 10) || 1);
+    const limitNum = Math.max(1, parseInt(String(limit), 10) || 15);
+    const skip = (pageNum - 1) * limitNum;
     const where: Record<string, unknown> = { deletedAt: null };
 
     if (role && role !== 'all') {
       where.role = role;
     }
 
-    if (search) {
+    if (search && typeof search === 'string' && search.trim().length > 0) {
+      const cleanSearch = search.trim();
       where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-        { phone: { contains: search } },
+        { name: { contains: cleanSearch, mode: 'insensitive' } },
+        { email: { contains: cleanSearch, mode: 'insensitive' } },
+        { phone: { contains: cleanSearch } },
       ];
     }
 
@@ -154,7 +175,7 @@ export async function getAllUsers(req: AuthenticatedRequest, res: Response, next
       prisma.user.findMany({
         where,
         skip,
-        take: parseInt(limit, 10),
+        take: limitNum,
         orderBy: { createdAt: 'desc' },
         select: {
           id: true, name: true, email: true, phone: true, role: true,
@@ -178,14 +199,19 @@ export async function getAllUsers(req: AuthenticatedRequest, res: Response, next
         restaurantName: activeRest?.name ?? null,
         restaurantSlug: activeRest?.slug ?? null,
         restaurantId: activeRest?.id ?? null,
-        email: u.email.includes(':') ? u.email.split(':')[1] : u.email,
+        email: u.email && u.email.includes(':') ? u.email.split(':')[1] : (u.email ?? ''),
       };
     });
 
     res.json({
       success: true,
       data: { users: mappedUsers },
-      pagination: { total, page: parseInt(page, 10), limit: parseInt(limit, 10), totalPages: Math.ceil(total / parseInt(limit, 10)) },
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum) || 1,
+      },
     });
   } catch (error) { next(error); }
 }

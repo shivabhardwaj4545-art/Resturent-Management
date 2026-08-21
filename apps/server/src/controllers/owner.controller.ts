@@ -7,12 +7,21 @@ import { cacheDelPattern, cacheSet } from '../services/redis.service';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { generateTableSignature } from '../utils/tableSignature';
 import { sortOperatingHours } from '../utils/operatingHours';
+import { logger } from '../utils/logger';
 
 async function getOwnerRestaurant(ownerId: string) {
-  const restaurant = await prisma.restaurant.findFirst({
+  let restaurant = await prisma.restaurant.findFirst({
     where: { ownerId, deletedAt: null },
     orderBy: { createdAt: 'asc' },
   });
+
+  if (!restaurant) {
+    restaurant = await prisma.restaurant.findFirst({
+      where: { ownerId },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
   if (!restaurant) throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
   return restaurant;
 }
@@ -142,8 +151,12 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response, nex
 export async function getRestaurant(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const restaurant = await getOwnerRestaurant(req.user!.id);
-    if (restaurant.operatingHours) {
-      restaurant.operatingHours = sortOperatingHours(restaurant.operatingHours);
+    if (restaurant && restaurant.operatingHours) {
+      try {
+        restaurant.operatingHours = sortOperatingHours(restaurant.operatingHours);
+      } catch (err) {
+        logger.warn('Failed to sort operating hours:', err);
+      }
     }
     res.json({ success: true, data: { restaurant } });
   } catch (error) { next(error); }

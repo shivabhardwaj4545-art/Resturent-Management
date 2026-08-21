@@ -229,27 +229,30 @@ export function OwnerSettingsPage() {
 
   const uploadPaymentQrMutation = useMutation({
     mutationFn: async () => {
-      if (!paymentQrFile) return;
+      if (!paymentQrFile) return null;
       const fd = new FormData();
       fd.append('paymentQr', paymentQrFile);
       const res = await api.post('/owner/restaurant/payment-qr', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       return res.data.data.paymentQrCode as string;
     },
     onSuccess: (newUrl) => {
-      toast.success('Payment QR uploaded!');
-      setPaymentQrFile(null);
-      setPaymentQrPreviewUrl(null);
-      if (newUrl) setForm(f => ({ ...f, paymentQrCode: newUrl }));
-      qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
+      if (newUrl) {
+        toast.success('Payment QR uploaded!');
+        setForm(f => ({ ...f, paymentQrCode: newUrl }));
+        setPaymentQrFile(null);
+        setPaymentQrPreviewUrl(null);
+        qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
+      }
     },
     onError: () => toast.error('Failed to upload payment QR'),
   });
 
   const savePaymentDetailsMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (overrideQrCode?: string) => {
+      const qrCodeToSave = overrideQrCode !== undefined ? overrideQrCode : (form.paymentQrCode ?? null);
       const res = await api.put('/owner/restaurant', {
         name: form.name ?? '',
-        paymentQrCode: form.paymentQrCode ?? null,
+        paymentQrCode: qrCodeToSave,
         paymentUpiId: form.paymentUpiId ?? null,
         paymentPhone: form.paymentPhone ?? null,
         bankName: form.bankName ?? null,
@@ -266,6 +269,19 @@ export function OwnerSettingsPage() {
     },
     onError: () => toast.error('Failed to save payment details'),
   });
+
+  const handleSavePaymentDetails = async () => {
+    try {
+      let qrUrl = form.paymentQrCode;
+      if (paymentQrFile) {
+        const uploadedUrl = await uploadPaymentQrMutation.mutateAsync();
+        if (uploadedUrl) qrUrl = uploadedUrl;
+      }
+      await savePaymentDetailsMutation.mutateAsync(qrUrl ?? undefined);
+    } catch {
+      // Error handled by mutation handlers
+    }
+  };
 
   const handleLogout = async () => {
     try { await api.post('/auth/logout'); } finally { logout(); router.push('/login'); }
@@ -637,6 +653,9 @@ export function OwnerSettingsPage() {
                           src={paymentQrPreviewUrl || getImageUrl(form.paymentQrCode || data?.paymentQrCode || '')}
                           alt="Payment QR"
                           className="w-28 h-28 object-contain border border-border rounded-xl bg-white p-1 flex-shrink-0"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
                         />
                       )}
                       <div className="flex-1 space-y-2">
@@ -732,12 +751,12 @@ export function OwnerSettingsPage() {
                   </div>
 
                   <button
-                    onClick={() => savePaymentDetailsMutation.mutate()}
-                    disabled={savePaymentDetailsMutation.isPending}
+                    onClick={handleSavePaymentDetails}
+                    disabled={savePaymentDetailsMutation.isPending || uploadPaymentQrMutation.isPending}
                     className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-xl text-sm font-bold disabled:opacity-60 hover:opacity-90 transition-opacity shadow-md shadow-orange-500/20"
                   >
                     <Save className="w-4 h-4" />
-                    {savePaymentDetailsMutation.isPending ? 'Saving...' : 'Save Payment Details'}
+                    {savePaymentDetailsMutation.isPending || uploadPaymentQrMutation.isPending ? 'Saving...' : 'Save Payment Details'}
                   </button>
                 </div>
               </motion.div>

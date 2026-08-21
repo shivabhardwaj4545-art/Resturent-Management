@@ -3,8 +3,36 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { logger } from './logger';
 
+export async function syncDatabaseSchema(): Promise<void> {
+  try {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "paymentQrCode" TEXT;
+      ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "paymentUpiId" TEXT;
+      ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "paymentPhone" TEXT;
+      ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "bankName" TEXT;
+      ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "bankAccountNumber" TEXT;
+      ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "bankIfsc" TEXT;
+      ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "bankAccountHolder" TEXT;
+      ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "isSuspended" BOOLEAN DEFAULT false;
+      ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "deletedAt" TIMESTAMP;
+      ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "hasDelivery" BOOLEAN DEFAULT true;
+
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "verifyToken" TEXT;
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "verifyTokenExp" TIMESTAMP;
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "deletedAt" TIMESTAMP;
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "loyaltyPoints" INT DEFAULT 0;
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "walletBalance" DOUBLE PRECISION DEFAULT 0;
+    `);
+    logger.info('✅ Database schema auto-synchronized successfully.');
+  } catch (err) {
+    logger.warn('Schema auto-sync warning (non-fatal):', err);
+  }
+}
+
 export async function ensureDatabaseSeeded(): Promise<void> {
   try {
+    await syncDatabaseSchema();
+
     const adminEmail = process.env.SUPER_ADMIN_EMAIL ?? 'admin@qrrestaurant.com';
     const adminExists = await prisma.user.findFirst({
       where: { email: adminEmail },
