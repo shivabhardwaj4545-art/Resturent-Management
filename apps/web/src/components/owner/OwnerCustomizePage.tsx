@@ -90,6 +90,8 @@ type Restaurant = {
   slug: string;
   description: string | null;
   themeColor: string | null;
+  menuTemplate: string | null;
+  customFields: CustomField[] | null;
   logo: string | null;
   banner: string | null;
 };
@@ -110,7 +112,7 @@ export function OwnerCustomizePage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'THEME' | 'DESIGN_TEMPLATES' | 'DRAG_MENU' | 'CUSTOM_FIELDS'>('DESIGN_TEMPLATES');
 
-  // Theme State
+  // Theme & Layout State
   const [selectedThemeColor, setSelectedThemeColor] = useState('#E85D04');
   const [selectedLayout, setSelectedLayout] = useState<'modern' | 'compact' | 'bistro' | 'showcase'>('modern');
   
@@ -150,6 +152,12 @@ export function OwnerCustomizePage() {
     if (restaurant?.themeColor) {
       setSelectedThemeColor(restaurant.themeColor);
     }
+    if (restaurant?.menuTemplate) {
+      setSelectedLayout(restaurant.menuTemplate as any);
+    }
+    if (restaurant?.customFields && Array.isArray(restaurant.customFields) && restaurant.customFields.length > 0) {
+      setCustomFields(restaurant.customFields as CustomField[]);
+    }
   }, [restaurant]);
 
   useEffect(() => {
@@ -166,9 +174,35 @@ export function OwnerCustomizePage() {
     onSuccess: () => {
       toast.success('Theme color updated successfully! 🎨');
       qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
-      qc.invalidateQueries({ queryKey: ['owner-restaurant-layout'] });
+      qc.invalidateQueries({ queryKey: ['menu'] });
     },
     onError: () => toast.error('Failed to update theme'),
+  });
+
+  // Save Layout Mutation
+  const saveLayoutMutation = useMutation({
+    mutationFn: async (layout: string) => {
+      await api.put('/owner/restaurant', { menuTemplate: layout });
+    },
+    onSuccess: () => {
+      toast.success('Menu design template activated! ✨');
+      qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
+      qc.invalidateQueries({ queryKey: ['menu'] });
+    },
+    onError: () => toast.error('Failed to update design template'),
+  });
+
+  // Save Custom Fields Mutation
+  const saveCustomFieldsMutation = useMutation({
+    mutationFn: async (fields: CustomField[]) => {
+      await api.put('/owner/restaurant', { customFields: fields });
+    },
+    onSuccess: () => {
+      toast.success('Custom info fields saved! 📝');
+      qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
+      qc.invalidateQueries({ queryKey: ['menu'] });
+    },
+    onError: () => toast.error('Failed to save custom fields'),
   });
 
   // Save Category Order Mutation
@@ -179,6 +213,7 @@ export function OwnerCustomizePage() {
     onSuccess: () => {
       toast.success('Menu section order saved! 🔀');
       qc.invalidateQueries({ queryKey: ['owner-categories'] });
+      qc.invalidateQueries({ queryKey: ['menu'] });
     },
     onError: () => toast.error('Failed to save section order'),
   });
@@ -234,15 +269,17 @@ export function OwnerCustomizePage() {
       value: newValue.trim(),
       icon: newIcon || '✨',
     };
-    setCustomFields([...customFields, item]);
+    const updated = [...customFields, item];
+    setCustomFields(updated);
     setNewKey('');
     setNewValue('');
-    toast.success('Field added! Saved locally.');
+    saveCustomFieldsMutation.mutate(updated);
   };
 
   const handleRemoveField = (id: string) => {
-    setCustomFields(customFields.filter((f) => f.id !== id));
-    toast.info('Field removed');
+    const updated = customFields.filter((f) => f.id !== id);
+    setCustomFields(updated);
+    saveCustomFieldsMutation.mutate(updated);
   };
 
   const handleLogout = async () => {
@@ -265,8 +302,8 @@ export function OwnerCustomizePage() {
       <aside className={`fixed lg:relative left-0 top-0 h-full z-30 w-64 bg-card border-r border-border flex flex-col transition-transform lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-5 border-b border-border">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center">
-              <UtensilsCrossed className="w-4 h-4 text-white" />
+            <div className="w-9 h-9 rounded-xl bg-primary text-primary-foreground flex items-center justify-center shadow-md">
+              <UtensilsCrossed className="w-4 h-4" />
             </div>
             <div>
               <p className="font-display font-bold text-sm">Restaurant</p>
@@ -384,7 +421,7 @@ export function OwnerCustomizePage() {
                             key={tmpl.id}
                             onClick={() => {
                               setSelectedLayout(tmpl.id as any);
-                              toast.success(`Activated "${tmpl.name}" layout! Preview updated. ✨`);
+                              saveLayoutMutation.mutate(tmpl.id);
                             }}
                             className={`relative cursor-pointer p-5 rounded-2xl border transition-all duration-200 ${
                               isSelected

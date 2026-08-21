@@ -313,8 +313,14 @@ export function AdminRestaurantsPage() {
                               </div>
                             </td>
                             <td className="px-4 py-3 hidden sm:table-cell">
-                              <p className="text-sm">{r.owner.name}</p>
-                              <p className="text-xs text-muted-foreground">{r.owner.email}</p>
+                              <Link
+                                href={`/admin/users?search=${encodeURIComponent(r.owner.email)}`}
+                                className="hover:underline block group"
+                                title="View owner in Users tab"
+                              >
+                                <p className="text-sm font-semibold group-hover:text-primary transition-colors">{r.owner.name}</p>
+                                <p className="text-xs text-muted-foreground">{r.owner.email}</p>
+                              </Link>
                             </td>
                             <td className="px-4 py-3 hidden md:table-cell">
                               <p className="text-sm text-muted-foreground">{r.city ?? '—'}</p>

@@ -19,43 +19,49 @@ export async function getRecommendations(
   next: NextFunction
 ): Promise<void> {
   try {
-    const userId = req.user!.id;
+    const userId = req.user?.id;
     const { restaurantId } = req.body as { restaurantId: string };
 
     if (!restaurantId) throw new AppError('restaurantId is required', 400, 'MISSING_PARAMS');
 
-    const cacheKey = `ai:recommend:${userId}:${restaurantId}`;
+    const cacheKey = `ai:recommend:${userId ?? 'guest'}:${restaurantId}`;
     const cached = await cacheGet(cacheKey);
     if (cached) {
       res.json({ success: true, data: { recommendations: cached }, fromCache: true });
       return;
     }
 
-    // Get customer order history
-    const orderHistory = await prisma.orderItem.groupBy({
-      by: ['menuItemId'],
-      where: { order: { userId } },
-      _count: { menuItemId: true },
-      orderBy: { _count: { menuItemId: 'desc' } },
-      take: 10,
-    });
+    // Get customer order history if logged in
+    const orderHistory = userId
+      ? await prisma.orderItem.groupBy({
+          by: ['menuItemId'],
+          where: { order: { userId } },
+          _count: { menuItemId: true },
+          orderBy: { _count: { menuItemId: 'desc' } },
+          take: 10,
+        })
+      : [];
 
     const menuItemIds = orderHistory.map((o) => o.menuItemId);
-    const menuItems = await prisma.menuItem.findMany({
-      where: { id: { in: menuItemIds } },
-      select: { id: true, name: true },
-    });
+    const menuItems = menuItemIds.length > 0
+      ? await prisma.menuItem.findMany({
+          where: { id: { in: menuItemIds } },
+          select: { id: true, name: true },
+        })
+      : [];
 
     const customerOrderHistory = orderHistory.map((o) => ({
       itemName: menuItems.find((m) => m.id === o.menuItemId)?.name ?? 'Unknown',
       count: o._count.menuItemId,
     }));
 
-    // Get favorites
-    const favorites = await prisma.favoriteItem.findMany({
-      where: { userId },
-      include: { menuItem: { select: { name: true } } },
-    });
+    // Get favorites if logged in
+    const favorites = userId
+      ? await prisma.favoriteItem.findMany({
+          where: { userId },
+          include: { menuItem: { select: { name: true } } },
+        })
+      : [];
 
     // Get available menu items for this restaurant
     const availableMenu = await prisma.menuItem.findMany({
@@ -89,14 +95,16 @@ export async function getRecommendations(
     // Cache for 30 minutes
     await cacheSet(cacheKey, result, 1800);
 
-    // Save to DB for history
-    await prisma.aiRecommendation.create({
-      data: {
-        userId,
-        restaurantId,
-        recommendedItems: result,
-      },
-    });
+    // Save to DB for history if logged in
+    if (userId) {
+      await prisma.aiRecommendation.create({
+        data: {
+          userId,
+          restaurantId,
+          recommendedItems: result,
+        },
+      });
+    }
 
     res.json({ success: true, data: { recommendations: result } });
   } catch (error) {

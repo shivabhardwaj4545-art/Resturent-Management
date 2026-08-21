@@ -1,23 +1,45 @@
 import Redis from 'ioredis';
 import { logger } from '../utils/logger';
 
+let isLoggedFallback = false;
+
 export const redisClient = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
   maxRetriesPerRequest: null,
   enableOfflineQueue: false,
   lazyConnect: true,
   retryStrategy: (times) => {
-    const isDev = process.env.NODE_ENV !== 'production';
-    if (!isDev && times > 3) {
-      logger.warn('Redis: max retries reached. Stopping reconnection attempts.');
-      return null;
+    if (times > 3) {
+      if (!isLoggedFallback) {
+        isLoggedFallback = true;
+        logger.info('ℹ️ Redis server unavailable — using built-in in-memory cache.');
+      }
+      return null; // Stop reconnection loop when Redis is not running
     }
-    return Math.min(times * 200, 2000);
+    return 500;
   },
 });
 
-redisClient.on('connect', () => logger.info('Redis: connected'));
-redisClient.on('error', (err) => logger.error('Redis error:', err));
-redisClient.on('reconnecting', () => logger.warn('Redis: reconnecting...'));
+redisClient.on('connect', () => {
+  isLoggedFallback = false;
+  logger.info('Redis: connected');
+});
+
+redisClient.on('error', (err: any) => {
+  if (err?.code === 'ECONNREFUSED' || err?.message?.includes('ECONNREFUSED') || err?.name === 'AggregateError') {
+    if (!isLoggedFallback) {
+      isLoggedFallback = true;
+      logger.info('ℹ️ Redis is not running locally. App is running seamlessly with in-memory fallback.');
+    }
+    return;
+  }
+  logger.error('Redis error:', err);
+});
+
+redisClient.on('reconnecting', () => {
+  if (!isLoggedFallback) {
+    logger.warn('Redis: attempting connection...');
+  }
+});
 
 export function isRedisReady(): boolean {
   return redisClient.status === 'ready';

@@ -1,10 +1,14 @@
 import { Router } from 'express';
 import { getRestaurantMenu, callWaiter, getPublicRestaurants } from '../controllers/menu.controller';
+import { getLoyaltySettings } from '../controllers/admin.controller';
 
 const router = Router();
 
 // Public list of restaurants (for landing page demo button)
 router.get('/restaurants', getPublicRestaurants);
+
+// Public loyalty program settings and rules
+router.get('/loyalty-settings', getLoyaltySettings as any);
 
 /**
  * @swagger

@@ -163,6 +163,53 @@ export async function sendPasswordResetEmail(
   await sendEmail(to, 'Reset your EZ- Restaurant password', html);
 }
 
+export async function sendPasswordResetConfirmationEmail(
+  to: string,
+  name: string
+): Promise<void> {
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:3001';
+  const loginUrl = `${clientUrl}/login`;
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px; color: #1e293b; }
+        .container { max-width: 580px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
+        .header { background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); padding: 36px 30px; text-align: center; color: #ffffff; }
+        .header h1 { margin: 0; font-size: 24px; font-weight: 800; }
+        .body { padding: 36px 30px; font-size: 15px; line-height: 1.6; color: #334155; }
+        .btn { display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: #ffffff !important; padding: 14px 34px; border-radius: 10px; text-decoration: none; font-weight: 700; font-size: 15px; box-shadow: 0 4px 14px rgba(22, 163, 74, 0.3); margin-top: 10px; }
+        .footer { background-color: #f8fafc; border-top: 1px solid #f1f5f9; padding: 24px 30px; text-align: center; color: #94a3b8; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>✅ Password Reset Confirmation</h1>
+        </div>
+        <div class="body">
+          <h2 style="margin-top:0; color: #0f172a; font-size: 20px;">Hello ${name},</h2>
+          <p>The password for your <strong>EZ- Restaurant Platform</strong> account has been reset successfully.</p>
+          <p>You can now log in to your dashboard using your new password.</p>
+          <p style="color: #dc2626; font-size: 13px; font-weight: 600; margin-top: 20px;">⚠️ If you did NOT initiate this password reset, please contact support immediately.</p>
+          <p style="text-align: center; margin: 32px 0;">
+            <a href="${loginUrl}" class="btn">Login to Your Account</a>
+          </p>
+        </div>
+        <div class="footer">
+          <p>© 2026 EZ- Restaurant Platform. Account Security Notification.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+  await sendEmail(to, 'Password Reset Confirmation - EZ- Restaurant', html);
+}
+
 export async function sendOrderConfirmationEmail(
   to: string,
   name: string,
@@ -534,3 +581,49 @@ export async function sendRestaurantApprovalEmail(
   `;
   await sendEmail(to, `Restaurant Approval Update - ${restaurantName}`, html);
 }
+
+export async function sendCustomerWelcomeEmail(
+  to: string,
+  name: string
+): Promise<void> {
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:3001';
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px; color: #1e293b; }
+        .container { max-width: 580px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
+        .header { background: linear-gradient(135deg, #E85D04 0%, #F48C06 100%); padding: 36px 30px; text-align: center; color: #ffffff; }
+        .header h1 { margin: 0; font-size: 26px; font-weight: 800; }
+        .body { padding: 36px 30px; font-size: 15px; line-height: 1.6; color: #334155; }
+        .btn { display: inline-block; background: linear-gradient(135deg, #E85D04 0%, #F48C06 100%); color: #ffffff !important; padding: 14px 34px; border-radius: 10px; text-decoration: none; font-weight: 700; font-size: 15px; box-shadow: 0 4px 14px rgba(232, 93, 4, 0.3); margin-top: 10px; }
+        .footer { background-color: #f8fafc; border-top: 1px solid #f1f5f9; padding: 24px 30px; text-align: center; color: #94a3b8; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>🍽️ Welcome to EZ- Restaurant!</h1>
+        </div>
+        <div class="body">
+          <h2 style="margin-top:0; color: #0f172a; font-size: 20px;">Welcome aboard, ${name}! 👋</h2>
+          <p>Thank you for joining the <strong>EZ- Restaurant Platform</strong>. Your account has been registered successfully and is ready to use.</p>
+          <p>You can now browse restaurant menus, scan QR codes at dining tables, place instant digital orders, and track your orders in real-time.</p>
+          <p style="text-align: center; margin: 32px 0;">
+            <a href="${clientUrl}" class="btn">Explore Restaurants & Start Ordering</a>
+          </p>
+        </div>
+        <div class="footer">
+          <p>© 2026 EZ- Restaurant Platform. All rights reserved.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+  await sendEmail(to, 'Welcome to EZ- Restaurant Platform! 🍽️', html);
+}
+

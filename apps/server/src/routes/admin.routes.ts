@@ -9,6 +9,7 @@ import {
   deleteRestaurant,
   getAllUsers,
   suspendUser,
+  deleteUser,
   getGlobalAnalytics,
   getConfig,
   updateConfig,
@@ -21,6 +22,8 @@ import {
   broadcastNotification,
   broadcastEmail,
   getAdminReviews,
+  getLoyaltySettings,
+  updateLoyaltySettings,
 } from '../controllers/admin.controller';
 
 const router = Router();
@@ -37,6 +40,7 @@ router.delete('/restaurants/:id', deleteRestaurant);
 // User management
 router.get('/users', getAllUsers);
 router.patch('/users/:id/suspend', suspendUser);
+router.delete('/users/:id', deleteUser);
 
 // Global analytics
 router.get('/analytics', getGlobalAnalytics);
@@ -44,6 +48,10 @@ router.get('/analytics', getGlobalAnalytics);
 // Configuration
 router.get('/config', getConfig);
 router.put('/config', updateConfig);
+
+// Loyalty Program Settings
+router.get('/loyalty-settings', getLoyaltySettings as any);
+router.put('/loyalty-settings', updateLoyaltySettings as any);
 
 // Subscriptions
 router.get('/subscriptions', getSubscriptionPlans);

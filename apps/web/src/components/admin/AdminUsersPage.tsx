@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Users, Search, Store, LayoutDashboard, BarChart3, Settings,
-  LogOut, Menu, Shield, UserX, Mail, Phone, Calendar, CreditCard, Ticket, HandCoins, Star
+  LogOut, Menu, Shield, UserX, UserCheck, Trash2, Mail, Phone, Calendar, CreditCard, Ticket, HandCoins, Star
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -33,6 +33,9 @@ type User = {
   role: string;
   isVerified: boolean;
   isSuspended: boolean;
+  restaurantName?: string | null;
+  restaurantSlug?: string | null;
+  restaurantId?: string | null;
   createdAt: string;
   _count?: { orders: number };
 };
@@ -78,10 +81,21 @@ export function AdminUsersPage() {
       await api.patch(`/admin/users/${id}/suspend`);
     },
     onSuccess: () => {
-      toast.success('User suspended');
+      toast.success('User suspension status updated');
       qc.invalidateQueries({ queryKey: ['admin-users'] });
     },
-    onError: () => toast.error('Failed to suspend user'),
+    onError: () => toast.error('Failed to update user suspension'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/admin/users/${id}`);
+    },
+    onSuccess: () => {
+      toast.success('User deleted successfully and blocked from logging in.');
+      qc.invalidateQueries({ queryKey: ['admin-users'] });
+    },
+    onError: () => toast.error('Failed to delete user'),
   });
 
   const handleLogout = async () => {
@@ -189,7 +203,16 @@ export function AdminUsersPage() {
                               </div>
                               <div>
                                 <p className="font-semibold text-sm">{u.name}</p>
-                                {u.isSuspended && <span className="text-xs text-red-500">Suspended</span>}
+                                {u.restaurantName && (
+                                  <Link
+                                    href={`/admin/restaurants?search=${encodeURIComponent(u.restaurantSlug || u.restaurantName)}`}
+                                    className="inline-flex items-center gap-1 text-xs text-orange-500 hover:underline font-medium"
+                                  >
+                                    <Store className="w-3 h-3" />
+                                    {u.restaurantName}
+                                  </Link>
+                                )}
+                                {u.isSuspended && <span className="text-xs text-red-500 block">Suspended</span>}
                               </div>
                             </div>
                           </td>
@@ -211,15 +234,35 @@ export function AdminUsersPage() {
                             </span>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="flex justify-end">
-                              {u.role !== 'SUPER_ADMIN' && !u.isSuspended && (
-                                <button
-                                  onClick={() => suspendMutation.mutate(u.id)}
-                                  className="p-1.5 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                                  title="Suspend user"
-                                >
-                                  <UserX className="w-4 h-4" />
-                                </button>
+                            <div className="flex justify-end items-center gap-1.5">
+                              {u.role !== 'SUPER_ADMIN' && (
+                                <>
+                                  <button
+                                    onClick={() => suspendMutation.mutate(u.id)}
+                                    className={`p-1.5 rounded-lg transition-colors ${
+                                      u.isSuspended
+                                        ? 'text-emerald-500 hover:bg-emerald-100 dark:hover:bg-emerald-900/20'
+                                        : 'text-amber-500 hover:bg-amber-100 dark:hover:bg-amber-900/20'
+                                    }`}
+                                    title={u.isSuspended ? 'Reactivate user' : 'Suspend user'}
+                                  >
+                                    {u.isSuspended ? <UserCheck className="w-4 h-4" /> : <UserX className="w-4 h-4" />}
+                                  </button>
+
+                                  {u.isSuspended && (
+                                    <button
+                                      onClick={() => {
+                                        if (confirm(`Are you sure you want to delete user "${u.name}"? They will be permanently removed and blocked from logging in.`)) {
+                                          deleteMutation.mutate(u.id);
+                                        }
+                                      }}
+                                      className="p-1.5 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                      title="Delete user"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                </>
                               )}
                             </div>
                           </td>

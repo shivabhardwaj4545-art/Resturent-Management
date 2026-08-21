@@ -200,8 +200,18 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       const res = await api.get('/profile');
       return res.data.data.user as { id: string; loyaltyPoints: number };
     },
-    enabled: !!rawUser,
+    enabled: !!rawUser && !!rawUser.id,
+    retry: false,
     refetchInterval: 10000,
+  });
+
+  // Fetch dynamic loyalty program rules configured by Super Admin
+  const { data: loyaltySettings } = useQuery({
+    queryKey: ['loyalty-settings'],
+    queryFn: async () => {
+      const res = await api.get('/menu/loyalty-settings');
+      return res.data.data?.settings || {};
+    },
   });
 
   // Fetch unread notifications count for customer
@@ -211,7 +221,8 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       const res = await api.get('/profile/notifications');
       return res.data.data as { unreadCount: number };
     },
-    enabled: !!rawUser,
+    enabled: !!rawUser && !!rawUser.id,
+    retry: false,
     refetchInterval: 12000,
   });
 
@@ -430,6 +441,8 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
           operatingHours: Record<string, { open: string; close: string; closed: boolean }> | null;
           minOrderValue: number;
           themeColor: string | null;
+          menuTemplate?: string | null;
+          customFields?: Array<{ id: string; key: string; value: string; icon: string }> | null;
         };
         categories: Array<{
           id: string;
@@ -641,7 +654,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       {/* Floating Navigation Header */}
       <div className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-3 sm:px-4 py-3 bg-gradient-to-b from-black/80 via-black/40 to-transparent gap-2 min-w-0 max-w-full">
         <div className="flex items-center gap-1.5 text-white drop-shadow-md shrink-0 select-none">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-md">
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center shadow-md text-white" style={{ backgroundColor: themeColor }}>
             <QrCode className="w-4 h-4 text-white" />
           </div>
           <span className="font-display font-bold text-xs sm:text-sm tracking-tight hidden sm:block truncate max-w-[120px] md:max-w-none">{restaurantName || 'Digital Menu'}</span>
@@ -751,7 +764,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
         {restaurantBanner ? (
           <img src={restaurantBanner} alt={restaurantName || 'Banner'} className="w-full h-full object-cover" />
         ) : (
-          <div className="w-full h-full bg-gradient-to-r from-orange-600 via-amber-600 to-yellow-600" />
+          <div className="w-full h-full" style={{ backgroundColor: themeColor }} />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/20 to-transparent" />
       </div>
@@ -856,6 +869,20 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                   Table {displayTableNumber}
                 </div>
               )}
+              {restaurant.customFields && Array.isArray(restaurant.customFields) && restaurant.customFields.length > 0 && (
+                <div className="flex items-center gap-2 mt-2.5 overflow-x-auto no-scrollbar py-1 flex-wrap">
+                  {restaurant.customFields.map((field: { id: string; key: string; value: string; icon: string }) => (
+                    <div
+                      key={field.id}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card/80 border border-border text-xs font-medium shadow-xs text-foreground shrink-0 backdrop-blur-sm"
+                    >
+                      <span className="text-base">{field.icon}</span>
+                      <span className="font-semibold">{field.key}:</span>
+                      <span className="text-muted-foreground">{field.value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -874,6 +901,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                 }
               }}
               disabled={waiterStatus !== 'IDLE' || waiterLoading}
+              style={waiterStatus === 'IDLE' ? { backgroundColor: themeColor } : {}}
               className={`w-full sm:w-auto px-5 py-3 rounded-2xl sm:rounded-full text-white font-bold text-sm sm:text-base shadow-xl flex items-center justify-center gap-2 transition-all border whitespace-nowrap ${
                 waiterStatus === 'COMING'
                   ? 'bg-[#10b981] border-[#047857] shadow-emerald-500/30 ring-4 ring-emerald-500/20'
@@ -881,7 +909,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                   ? 'bg-[#313d4f] border-[#222c3a] text-white opacity-95 cursor-not-allowed shadow-lg'
                   : waiterStatus === 'PENDING'
                   ? 'bg-amber-500 border-amber-600 animate-pulse text-white shadow-amber-500/20 ring-4 ring-amber-500/20 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-orange-500 to-amber-500 border-orange-600 hover:shadow-orange-500/40 ring-4 ring-orange-500/20'
+                  : 'text-white border-transparent hover:opacity-95 shadow-lg'
               }`}
             >
               <BellRing className={`w-4 h-4 sm:w-5 sm:h-5 shrink-0 ${waiterStatus === 'COMING' || waiterStatus === 'PENDING' ? 'animate-pulse' : waiterStatus === 'OCCUPIED' ? '' : 'animate-bounce'}`} />
@@ -928,9 +956,10 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
               <div className="flex gap-4">
                 <button
                   onClick={() => setActiveTab('active')}
+                  style={activeTab === 'active' ? { borderColor: themeColor, color: themeColor } : {}}
                   className={`pb-2 font-display font-bold text-sm tracking-tight transition-all border-b-2 ${
                     activeTab === 'active'
-                      ? 'border-primary text-primary font-bold'
+                      ? 'font-bold'
                       : 'border-transparent text-muted-foreground hover:text-foreground'
                   }`}
                 >
@@ -938,9 +967,10 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                 </button>
                 <button
                   onClick={() => setActiveTab('history')}
+                  style={activeTab === 'history' ? { borderColor: themeColor, color: themeColor } : {}}
                   className={`pb-2 font-display font-bold text-sm tracking-tight transition-all border-b-2 ${
                     activeTab === 'history'
-                      ? 'border-primary text-primary font-bold'
+                      ? 'font-bold'
                       : 'border-transparent text-muted-foreground hover:text-foreground'
                   }`}
                 >
@@ -1209,7 +1239,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                     themeColor={themeColor}
                     restaurantId={restaurant.id}
                     restaurantSlug={slug}
-                    layoutStyle={(searchParams?.layout as any) || 'modern'}
+                    layoutStyle={(searchParams?.layout as any) || (restaurant.menuTemplate as any) || 'modern'}
                   />
                 ))}
               </div>
@@ -1230,7 +1260,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
             <button
               onClick={() => setCartOpen(true)}
               className="w-full flex items-center justify-between px-5 py-4 rounded-2xl text-white shadow-2xl"
-              style={{ background: `linear-gradient(135deg, ${themeColor}, #F48C06)` }}
+              style={{ backgroundColor: themeColor }}
             >
               <div className="flex items-center gap-3">
                 <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center text-sm font-bold">
@@ -1280,7 +1310,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
             >
               <div className="flex items-center justify-between border-b border-border pb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-9 h-9 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-500 font-bold">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold" style={{ backgroundColor: themeColor }}>
                     <BellRing className="w-5 h-5" />
                   </div>
                   <div>
@@ -1308,7 +1338,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                       handleCallWaiter(manualTableNumber.trim());
                     }
                   }}
-                  className="w-full px-4 py-3 bg-muted border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 text-foreground font-semibold"
+                  className="w-full px-4 py-3 bg-muted border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground font-semibold"
                   autoFocus
                 />
               </div>
@@ -1322,7 +1352,8 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                   handleCallWaiter(manualTableNumber.trim());
                 }}
                 disabled={!manualTableNumber.trim() || waiterLoading}
-                className="w-full py-3.5 rounded-xl text-white font-bold text-sm bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20 active:scale-95"
+                style={{ backgroundColor: themeColor }}
+                className="w-full py-3.5 rounded-xl text-white font-bold text-sm hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg active:scale-95"
               >
                 <BellRing className="w-4 h-4" />
                 {waiterLoading ? 'Sending Call...' : 'Confirm & Call Waiter'}
@@ -1387,7 +1418,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                     {activeUser ? `${currentPoints} Points` : '0 Points'}
                   </p>
                   <p className="text-sm font-bold text-foreground">
-                    ₹{(currentPoints / 50).toFixed(2)} Value
+                    ₹{(currentPoints / (Number(loyaltySettings?.pointsPerDiscountRupee) || 50)).toFixed(2)} Value
                   </p>
                 </div>
                 {!activeUser && (
@@ -1406,7 +1437,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                     💳 Conversion Ratio
                   </p>
                   <p className="text-muted-foreground leading-relaxed">
-                    <strong>50 Loyalty Points = ₹1.00 Discount</strong>. Every 50 points saved gives you ₹1 off your total bill!
+                    {loyaltySettings?.conversionRuleText || '50 Loyalty Points = ₹1.00 Discount. Every 50 points saved gives you ₹1 off your total bill!'}
                   </p>
                 </div>
 
@@ -1415,7 +1446,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                     📈 How Points Increase (+)
                   </p>
                   <p className="text-muted-foreground leading-relaxed">
-                    Earn <strong>1 point for every ₹10 spent</strong>. Points are credited to your account when the restaurant owner completes/confirms payment on your order.
+                    {loyaltySettings?.increaseRuleText || 'Earn 1 point for every ₹10 spent. Points are credited to your account when the restaurant owner completes/confirms payment on your order.'}
                   </p>
                 </div>
 
@@ -1424,7 +1455,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                     📉 How Points Decrease (-)
                   </p>
                   <p className="text-muted-foreground leading-relaxed">
-                    When placing an order, tick <strong>"Redeem Loyalty Points"</strong> on checkout. Points are deducted to give you an instant bill discount!
+                    {loyaltySettings?.decreaseRuleText || 'When placing an order, tick "Redeem Loyalty Points" on checkout. Points are deducted to give you an instant bill discount!'}
                   </p>
                 </div>
               </div>

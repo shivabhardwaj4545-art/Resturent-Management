@@ -141,6 +141,8 @@ model Restaurant {
   isApproved      Boolean  @default(false)
   isSuspended     Boolean  @default(false)
   themeColor      String?
+  menuTemplate    String?  @default("modern")
+  customFields    Json?
   commissionRate  Float    @default(5)
   ownerId         String
 
@@ -606,4 +608,14 @@ model DirectMessage {
   @@index([receiverId])
   @@index([createdAt])
   @@map("direct_messages")
+}
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
 }

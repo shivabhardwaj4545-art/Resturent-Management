@@ -113,19 +113,31 @@ export async function suspendRestaurant(req: AuthenticatedRequest, res: Response
       data: { isSuspended, ...(isSuspended && { isOpen: false }) },
     });
 
+    // Also update connected owner user suspension status (keep deletedAt null so user stays visible as Suspended)
+    if (restaurant.ownerId) {
+      await prisma.user.update({
+        where: { id: restaurant.ownerId },
+        data: { verifyToken: isSuspended ? 'SUSPENDED' : null, deletedAt: null },
+      }).catch((err) => logger.warn('Failed to update owner user suspension:', err));
+    }
+
     res.json({ success: true, data: { isSuspended: updated.isSuspended }, message: `Restaurant ${isSuspended ? 'suspended' : 'reactivated'}` });
   } catch (error) { next(error); }
 }
 
 export async function getAllUsers(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { role, page = '1', limit = '20', search } = req.query as {
+    const { role, page = '1', limit = '15', search } = req.query as {
       role?: string; page?: string; limit?: string; search?: string;
     };
 
     const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
     const where: Record<string, unknown> = { deletedAt: null };
-    if (role) where.role = role;
+
+    if (role && role !== 'all') {
+      where.role = role;
+    }
+
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
@@ -142,17 +154,33 @@ export async function getAllUsers(req: AuthenticatedRequest, res: Response, next
         orderBy: { createdAt: 'desc' },
         select: {
           id: true, name: true, email: true, phone: true, role: true,
-          isVerified: true, loyaltyPoints: true, walletBalance: true,
+          isVerified: true, verifyToken: true, loyaltyPoints: true, walletBalance: true,
           createdAt: true, deletedAt: true,
+          restaurant: {
+            select: { id: true, name: true, slug: true, isSuspended: true, deletedAt: true },
+          },
           _count: { select: { orders: true } },
         },
       }),
       prisma.user.count({ where }),
     ]);
 
+    const mappedUsers = users.map((u) => {
+      const activeRest = u.restaurant?.find((r) => r.deletedAt === null) || u.restaurant?.[0];
+      const isAnyRestSuspended = u.restaurant?.some((r) => r.isSuspended);
+      return {
+        ...u,
+        isSuspended: Boolean(isAnyRestSuspended) || u.verifyToken === 'SUSPENDED',
+        restaurantName: activeRest?.name ?? null,
+        restaurantSlug: activeRest?.slug ?? null,
+        restaurantId: activeRest?.id ?? null,
+        email: u.email.includes(':') ? u.email.split(':')[1] : u.email,
+      };
+    });
+
     res.json({
       success: true,
-      data: { users },
+      data: { users: mappedUsers },
       pagination: { total, page: parseInt(page, 10), limit: parseInt(limit, 10), totalPages: Math.ceil(total / parseInt(limit, 10)) },
     });
   } catch (error) { next(error); }
@@ -161,19 +189,58 @@ export async function getAllUsers(req: AuthenticatedRequest, res: Response, next
 export async function suspendUser(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const id = req.params.id as string;
-    const { suspend } = req.body as { suspend: boolean };
+    const { suspend } = req.body as { suspend?: boolean };
 
     if (id === req.user!.id) throw new AppError('You cannot suspend your own account.', 400, 'CANNOT_SELF_SUSPEND');
+
+    const user = await prisma.user.findFirst({ where: { id, deletedAt: null } });
+    if (!user) throw new AppError('User not found.', 404, 'USER_NOT_FOUND');
+
+    const rest = await prisma.restaurant.findFirst({ where: { ownerId: id, deletedAt: null } });
+    const isCurrentlySuspended = Boolean(rest?.isSuspended) || user.verifyToken === 'SUSPENDED';
+    const shouldSuspend = typeof suspend === 'boolean' ? suspend : !isCurrentlySuspended;
+
+    await prisma.user.update({
+      where: { id },
+      data: { verifyToken: shouldSuspend ? 'SUSPENDED' : null },
+    });
+
+    if (user.role === 'RESTAURANT_OWNER') {
+      await prisma.restaurant.updateMany({
+        where: { ownerId: id },
+        data: { isSuspended: shouldSuspend, isOpen: !shouldSuspend },
+      });
+    }
+
+    res.json({ success: true, data: null, message: `User ${shouldSuspend ? 'suspended' : 'reactivated'} successfully` });
+  } catch (error) { next(error); }
+}
+
+export async function deleteUser(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    if (id === req.user!.id) throw new AppError('You cannot delete your own account.', 400, 'CANNOT_SELF_DELETE');
 
     const user = await prisma.user.findFirst({ where: { id } });
     if (!user) throw new AppError('User not found.', 404, 'USER_NOT_FOUND');
 
+    const timestamp = Date.now();
     await prisma.user.update({
       where: { id },
-      data: { deletedAt: suspend ? new Date() : null },
+      data: {
+        deletedAt: new Date(),
+        email: `deleted_${timestamp}_${user.email}`,
+        googleId: user.googleId ? `deleted_${timestamp}_${user.googleId}` : null,
+      },
     });
 
-    res.json({ success: true, data: null, message: `User ${suspend ? 'suspended' : 'reactivated'}` });
+    // Also soft-delete and suspend any restaurant owned by this user
+    await prisma.restaurant.updateMany({
+      where: { ownerId: id },
+      data: { deletedAt: new Date(), isApproved: false, isSuspended: true, isOpen: false },
+    });
+
+    res.json({ success: true, message: `User ${user.name} deleted successfully.` });
   } catch (error) { next(error); }
 }
 
@@ -319,9 +386,14 @@ export async function createRestaurant(req: AuthenticatedRequest, res: Response,
 
     const normalizedOwnerEmail = ownerEmail.toLowerCase().trim();
 
-    // 1. Find or create owner user
+    // 1. Find existing user (active or soft-deleted)
     let owner = await prisma.user.findFirst({
-      where: { email: normalizedOwnerEmail, deletedAt: null },
+      where: {
+        OR: [
+          { email: normalizedOwnerEmail },
+          { email: { endsWith: `:${normalizedOwnerEmail}` } },
+        ],
+      },
     });
 
     let finalPassword: string | undefined = undefined;
@@ -338,14 +410,20 @@ export async function createRestaurant(req: AuthenticatedRequest, res: Response,
           isVerified: true,
         },
       });
-    } else if (ownerPassword?.trim()) {
-      finalPassword = ownerPassword.trim();
+    } else {
+      // User exists (whether active or soft-deleted) -> Reactivate and assign RESTAURANT_OWNER role
+      finalPassword = ownerPassword?.trim() || 'Owner@123456';
       const passwordHash = await bcrypt.hash(finalPassword, 12);
       owner = await prisma.user.update({
         where: { id: owner.id },
         data: {
-          passwordHash,
+          name: ownerName || owner.name,
+          email: normalizedOwnerEmail,
+          phone: ownerPhone || owner.phone,
           role: owner.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'RESTAURANT_OWNER',
+          passwordHash,
+          isVerified: true,
+          deletedAt: null, // Unsuspend & reactivate account!
         },
       });
     }
@@ -437,6 +515,17 @@ export async function deleteRestaurant(req: AuthenticatedRequest, res: Response,
       },
     });
 
+    if (restaurant.ownerId) {
+      const timestamp = Date.now();
+      await prisma.user.update({
+        where: { id: restaurant.ownerId },
+        data: {
+          deletedAt: new Date(),
+          email: `deleted_${timestamp}_owner`,
+        },
+      }).catch((err) => logger.warn('Failed to soft delete restaurant owner on restaurant deletion:', err));
+    }
+
     await cacheDelPattern(`menu:${restaurant.slug}*`);
 
     res.json({
@@ -520,7 +609,7 @@ export async function broadcastNotification(req: AuthenticatedRequest, res: Resp
 
     const targetUsers = await prisma.user.findMany({
       where: whereClause,
-      select: { id: true, role: true, restaurant: { select: { id: true } } },
+      select: { id: true, role: true, email: true, restaurant: { select: { id: true } } },
     });
 
     let sentCount = 0;
@@ -559,9 +648,28 @@ export async function broadcastNotification(req: AuthenticatedRequest, res: Resp
       sentCount++;
     }
 
+    // 4. Send Email Broadcast to all recipients
+    const recipientEmails = Array.from(
+      new Set(
+        targetUsers
+          .map((u) => {
+            if (!u.email) return '';
+            const email = u.email.includes(':') ? u.email.split(':')[1] : u.email;
+            return email.toLowerCase().trim();
+          })
+          .filter((email) => email && email.includes('@') && email.includes('.'))
+      )
+    );
+
+    if (recipientEmails.length > 0) {
+      sendBroadcastEmail(recipientEmails, `📢 ${title}`, message, 'Super Admin Platform Broadcast')
+        .then((result) => logger.info(`Broadcast notification email dispatch complete: ${result.success} sent, ${result.failed} failed.`))
+        .catch((err) => logger.error('Failed to send broadcast notification emails:', err));
+    }
+
     res.json({
       success: true,
-      message: `Broadcast notification sent & saved to chat history for ${sentCount} users successfully!`,
+      message: `Broadcast notification & emails sent successfully to ${sentCount} users!`,
       data: { sentCount },
     });
   } catch (error) { next(error); }
@@ -710,4 +818,63 @@ export async function getAdminReviews(
   } catch (error) {
     next(error);
   }
+}
+
+// ── Loyalty Settings Management ──────────────────────────────
+
+export const DEFAULT_LOYALTY_SETTINGS = {
+  pointsPerSpendRupees: 10,
+  pointsPerDiscountRupee: 50,
+  minPointsToRedeem: 50,
+  conversionRuleText: '50 Loyalty Points = ₹1.00 Discount. Every 50 points saved gives you ₹1 off your total bill!',
+  increaseRuleText: 'Earn 1 point for every ₹10 spent. Points are credited to your account when the restaurant owner completes/confirms payment on your order.',
+  decreaseRuleText: 'When placing an order, tick "Redeem Loyalty Points" on checkout. Points are deducted to give you an instant bill discount!',
+};
+
+export async function getLoyaltySettings(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const setting = await prisma.systemSetting.findUnique({
+      where: { key: 'loyalty_settings' },
+    });
+
+    const value = setting?.value ? { ...DEFAULT_LOYALTY_SETTINGS, ...(setting.value as object) } : DEFAULT_LOYALTY_SETTINGS;
+    res.json({ success: true, data: { settings: value } });
+  } catch (error) { next(error); }
+}
+
+export async function updateLoyaltySettings(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const {
+      pointsPerSpendRupees,
+      pointsPerDiscountRupee,
+      minPointsToRedeem,
+      conversionRuleText,
+      increaseRuleText,
+      decreaseRuleText,
+    } = req.body as Record<string, any>;
+
+    const existing = await prisma.systemSetting.findUnique({
+      where: { key: 'loyalty_settings' },
+    });
+
+    const currentVal = existing?.value ? (existing.value as Record<string, any>) : DEFAULT_LOYALTY_SETTINGS;
+
+    const updatedValue = {
+      ...currentVal,
+      ...(pointsPerSpendRupees !== undefined && { pointsPerSpendRupees: Number(pointsPerSpendRupees) || 10 }),
+      ...(pointsPerDiscountRupee !== undefined && { pointsPerDiscountRupee: Number(pointsPerDiscountRupee) || 50 }),
+      ...(minPointsToRedeem !== undefined && { minPointsToRedeem: Number(minPointsToRedeem) || 50 }),
+      ...(conversionRuleText && { conversionRuleText: String(conversionRuleText) }),
+      ...(increaseRuleText && { increaseRuleText: String(increaseRuleText) }),
+      ...(decreaseRuleText && { decreaseRuleText: String(decreaseRuleText) }),
+    };
+
+    const setting = await prisma.systemSetting.upsert({
+      where: { key: 'loyalty_settings' },
+      update: { value: updatedValue },
+      create: { key: 'loyalty_settings', value: updatedValue },
+    });
+
+    res.json({ success: true, data: { settings: setting.value }, message: 'Loyalty settings updated successfully' });
+  } catch (error) { next(error); }
 }

@@ -7,7 +7,7 @@ const operatingHoursDaySchema = z.object({
 });
 
 export const restaurantProfileSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters').max(200),
+  name: z.string().min(2, 'Name must be at least 2 characters').max(200).optional(),
   slug: z
     .string()
     .min(3, 'URL code must be at least 3 characters')
@@ -29,6 +29,18 @@ export const restaurantProfileSchema = z.object({
     .string()
     .regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, 'Must be a valid hex color')
     .optional(),
+  menuTemplate: z.string().optional(),
+  customFields: z
+    .array(
+      z.object({
+        id: z.string(),
+        key: z.string(),
+        value: z.string(),
+        icon: z.string(),
+      })
+    )
+    .optional()
+    .nullable(),
   operatingHours: z
     .object({
       monday: operatingHoursDaySchema,

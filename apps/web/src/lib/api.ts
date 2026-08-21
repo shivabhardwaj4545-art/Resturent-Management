@@ -101,7 +101,9 @@ api.interceptors.response.use(
       originalRequest?.url?.includes('/auth/register') ||
       originalRequest?.url?.includes('/auth/refresh');
 
-    if (error.response?.status === 401 && !originalRequest._retry && !isAuthUrl) {
+    const hasSession = typeof window !== 'undefined' && (!!useAuthStore.getState().accessToken || !!useAuthStore.getState().user);
+
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthUrl && hasSession) {
       if (isRefreshing) {
         if (typeof window !== 'undefined') {
           console.log('🔄 [API Refresh] Already refreshing, queuing request...');
@@ -154,11 +156,11 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch (refreshError: any) {
         if (typeof window !== 'undefined') {
-          console.error('❌ [API Refresh] Token refresh failed:', refreshError);
+          console.warn('⚠️ [API Refresh] Refresh token expired or unavailable.');
         }
         processQueue(refreshError as Error, null);
         
-        // Only log out & redirect if on owner/admin dashboard routes
+        // Log out & redirect if on owner/admin dashboard routes
         if (refreshError.response?.status === 401) {
           useAuthStore.getState().logout();
           if (typeof window !== 'undefined') {
@@ -168,7 +170,7 @@ api.interceptors.response.use(
             }
           }
         }
-        return Promise.reject(refreshError);
+        return Promise.reject(error);
       } finally {
         isRefreshing = false;
       }

@@ -56,7 +56,7 @@ router.get('/dashboard', getDashboard);
 
 // Restaurant management
 router.get('/restaurant', getRestaurant);
-router.put('/restaurant', validate(restaurantProfileSchema), updateRestaurant);
+router.put('/restaurant', validate(restaurantProfileSchema.partial()), updateRestaurant);
 router.patch('/restaurant/toggle', validate(restaurantToggleSchema), toggleRestaurant);
 router.post('/restaurant/logo', upload.single('logo'), uploadLogo);
 router.post('/restaurant/banner', upload.single('banner'), uploadBanner);

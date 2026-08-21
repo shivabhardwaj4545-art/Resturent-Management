@@ -12,7 +12,7 @@ import { requireOwnerOrAdmin } from '../middlewares/rbac.middleware';
 
 const router = Router();
 
-router.post('/recommend', aiLimiter, authenticate, getRecommendations);
+router.post('/recommend', aiLimiter, optionalAuth, getRecommendations);
 router.post('/chat', aiLimiter, optionalAuth, chatWithBot);
 router.post('/coupon-suggest', aiLimiter, optionalAuth, getCouponSuggestion);
 router.get('/forecast/:restaurantId', aiLimiter, authMiddleware, requireOwnerOrAdmin, getDemandForecast);

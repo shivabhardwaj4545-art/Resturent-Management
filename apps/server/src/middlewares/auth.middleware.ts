@@ -50,13 +50,14 @@ export async function authenticate(
         id: decoded.id,
         deletedAt: null,
       },
-      select: { id: true, email: true, role: true, name: true },
+      select: { id: true, email: true, role: true, name: true, verifyToken: true },
     });
 
     console.log('[AUTH MIDDLEWARE] fetched user from DB:', user);
 
-    if (!user) {
-      throw new AppError('User account not found or has been deactivated.', 401, 'USER_NOT_FOUND');
+    if (!user || user.verifyToken === 'SUSPENDED') {
+      console.log('[AUTH MIDDLEWARE] User deleted or suspended in DB:', decoded.id);
+      throw new AppError('Account has been suspended or deleted. Please contact support.', 401, 'ACCOUNT_DELETED');
     }
 
     req.user = user;

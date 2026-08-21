@@ -367,16 +367,21 @@ export async function placeOrder(
       select: { walletBalance: true, loyaltyPoints: true }
     });
 
+    const loyaltySetting = await prisma.systemSetting.findUnique({
+      where: { key: 'loyalty_settings' },
+    });
+    const loyaltyVal = (loyaltySetting?.value as Record<string, any>) ?? {};
+    const pointsPerDiscountRupee = Number(loyaltyVal.pointsPerDiscountRupee) || 50;
+
     let pointsDeduction = 0;
     let pointsValue = 0;
     let finalTotal = total;
 
     if (usePoints && user && user.loyaltyPoints > 0) {
-      // 50 loyalty points = ₹1 discount
-      const maxPointsVal = user.loyaltyPoints / 50;
+      const maxPointsVal = user.loyaltyPoints / pointsPerDiscountRupee;
       const pointsVal = Math.min(maxPointsVal, total);
-      pointsDeduction = Math.floor(pointsVal * 50);
-      pointsValue = pointsDeduction / 50;
+      pointsDeduction = Math.floor(pointsVal * pointsPerDiscountRupee);
+      pointsValue = pointsDeduction / pointsPerDiscountRupee;
       finalTotal = total - pointsValue;
     }
 

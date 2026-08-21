@@ -53,12 +53,12 @@ export function WaiterBell() {
         title="Notifications & Waiter Calls"
       >
         {totalUnreadCount > 0 ? (
-          <BellRing className="w-5 h-5 text-orange-500 animate-[ring_1s_ease-in-out_3]" />
+          <BellRing className="w-5 h-5 text-primary animate-[ring_1s_ease-in-out_3]" />
         ) : (
           <Bell className="w-5 h-5 text-foreground" />
         )}
         {totalUnreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-orange-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center animate-bounce">
+          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-primary text-primary-foreground rounded-full text-[10px] font-bold flex items-center justify-center animate-bounce">
             {totalUnreadCount}
           </span>
         )}
@@ -86,10 +86,10 @@ export function WaiterBell() {
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  <BellRing className="w-3.5 h-3.5 text-orange-500" />
+                  <BellRing className="w-3.5 h-3.5 text-primary" />
                   <span>Waiter Calls</span>
                   {waiterCalls.length > 0 && (
-                    <span className="px-1.5 py-0.2 bg-orange-500 text-white rounded-full text-[10px]">
+                    <span className="px-1.5 py-0.2 bg-primary text-primary-foreground rounded-full text-[10px]">
                       {waiterCalls.length}
                     </span>
                   )}

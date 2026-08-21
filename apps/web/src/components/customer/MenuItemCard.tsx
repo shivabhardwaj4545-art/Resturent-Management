@@ -133,12 +133,24 @@ export function MenuItemCard({ item, themeColor, restaurantId, restaurantSlug, l
     });
   };
 
+  const getLayoutClasses = () => {
+    switch (layoutStyle) {
+      case 'compact':
+        return 'bg-card border border-border/80 rounded-xl p-3 shadow-xs';
+      case 'bistro':
+        return 'bg-card border-l-4 border-amber-500 border-border/60 rounded-2xl p-4 shadow-sm font-serif';
+      case 'showcase':
+        return 'bg-card border border-border rounded-2xl overflow-hidden shadow-md';
+      case 'modern':
+      default:
+        return 'bg-card border border-border rounded-2xl overflow-hidden transition-all shadow-sm';
+    }
+  };
+
   return (
     <motion.div
       layout
-      className={`bg-card border border-border rounded-2xl overflow-hidden transition-all ${
-        !item.isAvailable ? 'opacity-60' : ''
-      }`}
+      className={`${getLayoutClasses()} ${!item.isAvailable ? 'opacity-60' : ''}`}
     >
       <div className="flex gap-3 p-4">
         {/* Left: Info */}

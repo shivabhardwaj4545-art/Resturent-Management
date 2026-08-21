@@ -117,8 +117,8 @@ export function OwnerDashboard() {
       }`}>
         <div className="p-5 border-b border-border">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center">
-              <UtensilsCrossed className="w-4.5 h-4.5 text-white" />
+            <div className="w-9 h-9 rounded-xl bg-primary text-primary-foreground flex items-center justify-center shadow-md">
+              <UtensilsCrossed className="w-4.5 h-4.5" />
             </div>
             <div>
               <p className="font-display font-bold text-sm">Restaurant</p>
@@ -321,11 +321,11 @@ export function OwnerDashboard() {
                       <div className="flex items-center justify-between mb-4">
                         <div>
                           <h2 className="font-display font-bold text-base text-foreground flex items-center gap-2">
-                            <Clock className="w-4 h-4 text-orange-500" /> Today's Hourly Earnings
+                            <Clock className="w-4 h-4 text-primary" /> Today's Hourly Earnings
                           </h2>
                           <p className="text-xs text-muted-foreground">Earnings broken down by hour (12 AM - 11 PM)</p>
                         </div>
-                        <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20">
+                        <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-primary/10 text-primary border border-primary/20">
                           Today: ₹{(data?.stats.todayRevenue ?? 0).toLocaleString('en-IN')}
                         </span>
                       </div>

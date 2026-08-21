@@ -30,6 +30,11 @@ export default function LoginClient() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    const errorParam = searchParams.get('error');
+    if (errorParam === 'oauth_failed') {
+      toast.error('Google authentication failed. Please try again.');
+    }
+
     if (isAuthenticated && user) {
       if (user.role === 'SUPER_ADMIN') {
         router.push('/admin/dashboard');
@@ -41,7 +46,7 @@ export default function LoginClient() {
         router.push('/');
       }
     }
-  }, [isAuthenticated, user, router, restaurantSlug]);
+  }, [isAuthenticated, user, router, restaurantSlug, searchParams]);
 
   const handleGoogleAuth = () => {
     window.location.href = `${API_BASE_URL}/auth/google`;

@@ -91,8 +91,8 @@ export function OwnerReviewsPage() {
       >
         <div className="p-5 border-b border-border">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center">
-              <UtensilsCrossed className="w-4 h-4 text-white" />
+            <div className="w-9 h-9 rounded-xl bg-primary text-primary-foreground flex items-center justify-center shadow-md">
+              <UtensilsCrossed className="w-4 h-4" />
             </div>
             <div>
               <p className="font-display font-bold text-sm">Restaurant</p>

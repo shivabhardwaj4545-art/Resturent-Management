@@ -205,6 +205,17 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     };
   }, [restaurantData?.id, queryClient]);
 
+  const themeColor = restaurantData?.themeColor ?? '#E85D04';
+  const { primary: primaryHsl, foreground: foregroundHsl } = hexToHsl(themeColor);
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.style.setProperty('--primary', primaryHsl);
+      document.documentElement.style.setProperty('--primary-foreground', foregroundHsl);
+      document.documentElement.style.setProperty('--ring', primaryHsl);
+    }
+  }, [primaryHsl, foregroundHsl]);
+
   if (!mounted || !user || user.role !== 'RESTAURANT_OWNER') {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -212,9 +223,6 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       </div>
     );
   }
-
-  const themeColor = restaurantData?.themeColor ?? '#E85D04';
-  const { primary: primaryHsl, foreground: foregroundHsl } = hexToHsl(themeColor);
 
   return (
     <div

@@ -7,7 +7,9 @@ import { AppError } from '../utils/AppError';
 import {
   sendVerificationEmail,
   sendPasswordResetEmail,
+  sendPasswordResetConfirmationEmail,
   sendRestaurantWelcomeEmail,
+  sendCustomerWelcomeEmail,
 } from '../services/email.service';
 import { logger } from '../utils/logger';
 import { ensureDatabaseSeeded } from '../utils/autoSeed';
@@ -61,23 +63,22 @@ export async function register(req: Request, res: Response, next: NextFunction):
     const normalizedEmail = (email || '').toLowerCase().trim();
     const finalRole = (role as 'CUSTOMER' | 'RESTAURANT_OWNER') ?? 'CUSTOMER';
 
-    // Scoped email for customers
-    const dbEmail = (finalRole === 'CUSTOMER' && restaurantSlug)
-      ? `${restaurantSlug}:${normalizedEmail}`
-      : normalizedEmail;
-
-    // Check if email already exists
+    // 1-to-1 Email Check for active accounts
     const existingUser = await prisma.user.findFirst({
       where: {
         OR: [
-          { email: dbEmail },
           { email: normalizedEmail },
+          { email: { endsWith: `:${normalizedEmail}` } },
         ],
+        deletedAt: null,
       },
     });
 
     if (existingUser) {
-      throw new AppError('An account with this email already exists.', 409, 'EMAIL_EXISTS');
+      if (existingUser.verifyToken === 'SUSPENDED') {
+        throw new AppError('Your account has been suspended by an administrator. Login or registration is not allowed.', 403, 'ACCOUNT_SUSPENDED');
+      }
+      throw new AppError('An account with this email address already exists. Please sign in.', 409, 'EMAIL_EXISTS');
     }
 
     // Hash password
@@ -87,11 +88,11 @@ export async function register(req: Request, res: Response, next: NextFunction):
     const verifyToken = crypto.randomBytes(32).toString('hex');
     const verifyTokenExp = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
-    // Create user
+    // Create user with clean unique email
     const user = await prisma.user.create({
       data: {
         name,
-        email: dbEmail,
+        email: normalizedEmail,
         passwordHash,
         phone,
         role: finalRole,
@@ -146,6 +147,11 @@ export async function register(req: Request, res: Response, next: NextFunction):
         }
       ).catch((err) => {
         logger.error(`Failed to send restaurant welcome email on registration to ${userEmail}:`, err);
+      });
+    } else {
+      const userEmail = user.email.includes(':') ? user.email.split(':')[1] : user.email;
+      sendCustomerWelcomeEmail(userEmail, name).catch((err) => {
+        logger.error(`Failed to send customer welcome email on registration to ${userEmail}:`, err);
       });
     }
 
@@ -209,9 +215,28 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
       throw new AppError('Invalid email or password.', 401, 'INVALID_CREDENTIALS');
     }
 
+    // 5. Auto-clear suspension on login if account was previously suspended
+    if (user.verifyToken === 'SUSPENDED') {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { verifyToken: null },
+      });
+    }
+
+    if (!user.passwordHash) {
+      throw new AppError('Invalid email or password.', 401, 'INVALID_CREDENTIALS');
+    }
+
     const isValidPassword = await bcrypt.compare(password, user.passwordHash);
     if (!isValidPassword) {
       throw new AppError('Invalid email or password.', 401, 'INVALID_CREDENTIALS');
+    }
+
+    if (user.role === 'RESTAURANT_OWNER') {
+      await prisma.restaurant.updateMany({
+        where: { ownerId: user.id },
+        data: { isSuspended: false, deletedAt: null, isApproved: true },
+      });
     }
 
     const tokenPayload = {
@@ -293,23 +318,20 @@ export async function forgotPassword(
   next: NextFunction
 ): Promise<void> {
   try {
-    const { email, restaurantSlug } = req.body as { email: string; restaurantSlug?: string };
-
+    const { email } = req.body as { email: string };
     const normalizedEmail = (email || '').toLowerCase().trim();
 
-    let user = restaurantSlug
-      ? await prisma.user.findFirst({ where: { email: `${restaurantSlug}:${normalizedEmail}`, deletedAt: null } })
-      : null;
+    // Find user across all roles (Customer, Restaurant Owner, Super Admin)
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: normalizedEmail },
+          { email: { endsWith: `:${normalizedEmail}` } },
+        ],
+        deletedAt: null,
+      },
+    });
 
-    if (!user) {
-      user = await prisma.user.findFirst({ where: { email: normalizedEmail, deletedAt: null } });
-    }
-
-    if (!user && !restaurantSlug) {
-      user = await prisma.user.findFirst({ where: { email: { endsWith: `:${normalizedEmail}` }, deletedAt: null } });
-    }
-
-    // Always respond with success (don't leak user existence)
     if (user) {
       const resetToken = crypto.randomBytes(32).toString('hex');
       const resetTokenExp = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
@@ -319,16 +341,10 @@ export async function forgotPassword(
         data: { resetToken, resetTokenExp },
       });
 
-      try {
-        await sendPasswordResetEmail(email, user.name, resetToken);
-      } catch (emailError: any) {
-        if (process.env.NODE_ENV === 'production') {
-          throw emailError;
-        }
-        console.warn(`[DEV ONLY] Failed to send password reset email: ${emailError.message}`);
-        const resetUrl = `${process.env.CLIENT_URL ?? 'http://localhost:3000'}/reset-password?token=${resetToken}`;
-        console.log(`[DEV ONLY] Reset password link: ${resetUrl}`);
-      }
+      const recipientEmail = user.email.includes(':') ? user.email.split(':')[1] : user.email;
+      sendPasswordResetEmail(recipientEmail, user.name, resetToken).catch((err) => {
+        logger.error(`Failed to send password reset email to ${recipientEmail}:`, err);
+      });
     }
 
     res.json({
@@ -355,12 +371,13 @@ export async function resetPassword(
       where: {
         resetToken: token,
         resetTokenExp: { gt: new Date() },
+        deletedAt: null,
       },
     });
 
     if (!user) {
       throw new AppError(
-        'Invalid or expired password reset token.',
+        'Invalid or expired password reset token. Please request a new link.',
         400,
         'INVALID_RESET_TOKEN'
       );
@@ -377,11 +394,20 @@ export async function resetPassword(
       },
     });
 
+    const recipientEmail = user.email.includes(':') ? user.email.split(':')[1] : user.email;
+    sendPasswordResetConfirmationEmail(recipientEmail, user.name).catch((err) => {
+      logger.error(`Failed to send password reset confirmation email to ${recipientEmail}:`, err);
+    });
+
     // Invalidate all existing refresh tokens by clearing cookies on client
     res.clearCookie('refreshToken', { path: '/' });
     res.clearCookie('refreshToken', { path: '/api/v1/auth' });
 
-    res.json({ success: true, data: null, message: 'Password reset successfully! Please log in with your new password.' });
+    res.json({
+      success: true,
+      data: null,
+      message: 'Password reset successfully! A confirmation email has been sent. Please log in with your new password.',
+    });
   } catch (error) {
     next(error);
   }
@@ -490,7 +516,7 @@ export async function getMe(req: AuthenticatedRequest, res: Response, next: Next
   }
 }
 
-// ── Google OAuth (placeholder handlers) ──────────────────────
+// ── Google OAuth Handlers ──────────────────────────────────────
 
 export async function googleAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -503,7 +529,7 @@ export async function googleAuth(req: Request, res: Response, next: NextFunction
     const origin = req.get('origin');
     const clientUrl = process.env.CLIENT_URL || (referer ? new URL(referer).origin : null) || (origin ? new URL(origin).origin : null) || `${protocol}://${host}`;
 
-    // 1. If real Google Client ID is configured, redirect to Google OAuth consent page
+    // 1. Redirect to Google OAuth consent page when GOOGLE_CLIENT_ID is set
     if (clientId && !clientId.startsWith('your-google-client-id') && clientId.trim().length > 10) {
       const scope = 'openid email profile';
       const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&prompt=select_account`;
@@ -511,21 +537,32 @@ export async function googleAuth(req: Request, res: Response, next: NextFunction
       return;
     }
 
-    // 2. Seamless Google Sign-In (when GCP OAuth credentials are not set/placeholder)
-    // Instantly authenticate user with Google user account
+    // 2. Dev mode Google Sign-In fallback for local testing when GOOGLE_CLIENT_ID is not configured
     let googleUser = await prisma.user.findFirst({
-      where: { email: 'shivabhardwaj4545@gmail.com', deletedAt: null },
+      where: {
+        email: 'google.customer@example.com',
+      },
     });
+
+    if (googleUser && (googleUser.verifyToken === 'SUSPENDED' || googleUser.deletedAt)) {
+      googleUser = await prisma.user.update({
+        where: { id: googleUser.id },
+        data: { deletedAt: null, verifyToken: null },
+      });
+    }
 
     if (!googleUser) {
       googleUser = await prisma.user.create({
         data: {
-          name: 'Shiva Bhardwaj',
-          email: 'shivabhardwaj4545@gmail.com',
-          googleId: 'google-oauth-shivabhardwaj',
+          name: 'Google Customer',
+          email: 'google.customer@example.com',
+          googleId: 'google-oauth-demo-customer',
           isVerified: true,
           role: 'CUSTOMER',
         },
+      });
+      sendCustomerWelcomeEmail(googleUser.email, googleUser.name).catch((err) => {
+        logger.error('Failed to send Google welcome email on registration:', err);
       });
     }
 
@@ -547,19 +584,24 @@ export async function googleAuth(req: Request, res: Response, next: NextFunction
 export async function googleCallback(
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ): Promise<void> {
+  const host = req.get('host');
+  const protocol = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+  const referer = req.get('referer');
+  const origin = req.get('origin');
+  const clientUrl = process.env.CLIENT_URL || (referer ? new URL(referer).origin : null) || (origin ? new URL(origin).origin : null) || `${protocol}://${host}`;
+
   try {
     const code = req.query.code as string;
     if (!code) {
-      throw new AppError('Authorization code missing', 400, 'OAUTH_ERROR');
+      res.redirect(`${clientUrl.replace(/\/$/, '')}/login?error=oauth_failed`);
+      return;
     }
 
-    const host = req.get('host');
-    const protocol = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
     const redirectUri = process.env.GOOGLE_CALLBACK_URL || `${protocol}://${host}/api/v1/auth/google/callback`;
 
-    // Exchange code for tokens with Google
+    // Exchange authorization code for tokens with Google
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -572,33 +614,68 @@ export async function googleCallback(
       }),
     });
 
-    const tokenData = await tokenResponse.json() as {
+    const tokenData = (await tokenResponse.json()) as {
       access_token?: string;
       error?: string;
     };
 
     if (!tokenData.access_token) {
-      throw new AppError('Failed to get Google access token', 400, 'OAUTH_ERROR');
+      logger.error('Google Token Exchange Failed:', tokenData);
+      res.redirect(`${clientUrl.replace(/\/$/, '')}/login?error=oauth_failed`);
+      return;
     }
 
-    // Get user info from Google
     const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
 
-    const googleUser = await userInfoResponse.json() as {
-      id: string;
-      email: string;
-      name: string;
-      picture: string;
+    const info = (await userInfoResponse.json()) as {
+      id?: string;
+      email?: string;
+      name?: string;
+      picture?: string;
     };
 
-    // Find or create user
+    if (!info.email) {
+      logger.error('Google Userinfo returned no email:', info);
+      res.redirect(`${clientUrl.replace(/\/$/, '')}/login?error=oauth_failed`);
+      return;
+    }
+
+    const googleUser = {
+      id: info.id || `google-oauth-${info.email}`,
+      email: info.email.toLowerCase().trim(),
+      name: info.name || info.email.split('@')[0],
+      picture: info.picture || '',
+    };
+
+    // Find or create user among active/soft-deleted accounts using the actual Google email
     let user = await prisma.user.findFirst({
-      where: { OR: [{ googleId: googleUser.id }, { email: googleUser.email }] },
+      where: {
+        OR: [{ googleId: googleUser.id }, { email: googleUser.email }],
+      },
     });
 
-    if (!user) {
+    if (user) {
+      if (user.verifyToken === 'SUSPENDED' || user.deletedAt) {
+        // Account was suspended or soft-deleted: reactivate & un-suspend on Google sign-in
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            deletedAt: null,
+            verifyToken: null,
+            email: googleUser.email,
+            googleId: googleUser.id,
+            isVerified: true,
+          },
+        });
+      } else if (!user.googleId) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: { googleId: googleUser.id, isVerified: true },
+        });
+      }
+    } else {
       user = await prisma.user.create({
         data: {
           name: googleUser.name,
@@ -608,10 +685,9 @@ export async function googleCallback(
           role: 'CUSTOMER',
         },
       });
-    } else if (!user.googleId) {
-      user = await prisma.user.update({
-        where: { id: user.id },
-        data: { googleId: googleUser.id, isVerified: true },
+
+      sendCustomerWelcomeEmail(googleUser.email, user.name).catch((err) => {
+        logger.error(`Failed to send Google login welcome email to ${googleUser.email}:`, err);
       });
     }
 
@@ -626,12 +702,10 @@ export async function googleCallback(
     setRefreshTokenCookie(res, newRefreshToken);
 
     // Redirect to frontend with token
-    const referer = req.get('referer');
-    const origin = req.get('origin');
-    const clientUrl = process.env.CLIENT_URL || (referer ? new URL(referer).origin : null) || (origin ? new URL(origin).origin : null) || `${protocol}://${host}`;
     res.redirect(`${clientUrl.replace(/\/$/, '')}/auth/callback?token=${accessToken}`);
-  } catch (error) {
-    next(error);
+  } catch (error: any) {
+    logger.error('Google Callback Error:', error);
+    res.redirect(`${clientUrl.replace(/\/$/, '')}/login?error=oauth_failed`);
   }
 }
 
@@ -666,7 +740,25 @@ export async function googleOneTap(req: Request, res: Response, next: NextFuncti
       where: { OR: [{ googleId: payload.sub }, { email: payload.email }] },
     });
 
-    if (!user) {
+    if (user) {
+      if (user.verifyToken === 'SUSPENDED' || user.deletedAt) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            deletedAt: null,
+            verifyToken: null,
+            email: payload.email,
+            googleId: payload.sub,
+            isVerified: true,
+          },
+        });
+      } else if (!user.googleId) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: { googleId: payload.sub, isVerified: true },
+        });
+      }
+    } else {
       user = await prisma.user.create({
         data: {
           name: payload.name || payload.email.split('@')[0],
@@ -675,11 +767,6 @@ export async function googleOneTap(req: Request, res: Response, next: NextFuncti
           isVerified: true,
           role: 'CUSTOMER',
         },
-      });
-    } else if (!user.googleId) {
-      user = await prisma.user.update({
-        where: { id: user.id },
-        data: { googleId: payload.sub, isVerified: true },
       });
     }
 

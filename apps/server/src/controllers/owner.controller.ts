@@ -778,8 +778,13 @@ export async function confirmPayment(req: AuthenticatedRequest, res: Response, n
       throw new AppError('Payment is already marked as paid.', 400, 'ALREADY_PAID');
     }
 
-    const LOYALTY_POINTS_PER_RUPEE = 1;
-    const pointsEarned = Math.floor(Number(order.total) / 10) * LOYALTY_POINTS_PER_RUPEE;
+    const loyaltySetting = await prisma.systemSetting.findUnique({
+      where: { key: 'loyalty_settings' },
+    });
+    const loyaltyVal = (loyaltySetting?.value as Record<string, any>) ?? {};
+    const pointsPerSpendRupees = Number(loyaltyVal.pointsPerSpendRupees) || 10;
+
+    const pointsEarned = Math.floor(Number(order.total) / pointsPerSpendRupees);
 
     await prisma.$transaction(async (tx) => {
       await tx.order.update({
