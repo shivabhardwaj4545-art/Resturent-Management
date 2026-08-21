@@ -3,6 +3,8 @@ import { logger } from '../utils/logger';
 import { AppError } from '../utils/AppError';
 import { Prisma } from '@prisma/client';
 
+import { syncDatabaseSchema } from '../utils/autoSeed';
+
 export function errorHandler(
   error: Error,
   req: Request,
@@ -60,9 +62,10 @@ export function errorHandler(
 
     if (error.code === 'P2022' || error.code === 'P2021') {
       logger.error('Database schema missing column/table error:', error);
+      syncDatabaseSchema().catch((err) => logger.error('On-demand schema sync failed:', err));
       res.status(500).json({
         success: false,
-        error: 'Database schema update in progress. Please try again in a moment.',
+        error: 'Database schema updated. Please refresh the page now.',
         code: 'DATABASE_SCHEMA_MISMATCH',
       });
       return;

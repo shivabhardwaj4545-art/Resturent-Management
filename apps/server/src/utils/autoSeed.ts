@@ -4,29 +4,49 @@ import { prisma } from '../lib/prisma';
 import { logger } from './logger';
 
 export async function syncDatabaseSchema(): Promise<void> {
-  try {
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "paymentQrCode" TEXT;
-      ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "paymentUpiId" TEXT;
-      ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "paymentPhone" TEXT;
-      ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "bankName" TEXT;
-      ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "bankAccountNumber" TEXT;
-      ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "bankIfsc" TEXT;
-      ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "bankAccountHolder" TEXT;
-      ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "isSuspended" BOOLEAN DEFAULT false;
-      ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "deletedAt" TIMESTAMP;
-      ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "hasDelivery" BOOLEAN DEFAULT true;
+  const statements = [
+    // Restaurant columns
+    'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "paymentQrCode" TEXT',
+    'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "paymentUpiId" TEXT',
+    'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "paymentPhone" TEXT',
+    'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "bankName" TEXT',
+    'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "bankAccountNumber" TEXT',
+    'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "bankIfsc" TEXT',
+    'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "bankAccountHolder" TEXT',
+    'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "isSuspended" BOOLEAN DEFAULT false',
+    'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "deletedAt" TIMESTAMP',
+    'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "hasDelivery" BOOLEAN DEFAULT true',
+    'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "themeColor" TEXT',
+    'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "menuTemplate" TEXT DEFAULT \'modern\'',
+    'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "customFields" JSONB',
+    'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "commissionRate" DOUBLE PRECISION DEFAULT 5',
 
-      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "verifyToken" TEXT;
-      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "verifyTokenExp" TIMESTAMP;
-      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "deletedAt" TIMESTAMP;
-      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "loyaltyPoints" INT DEFAULT 0;
-      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "walletBalance" DOUBLE PRECISION DEFAULT 0;
-    `);
-    logger.info('✅ Database schema auto-synchronized successfully.');
-  } catch (err) {
-    logger.warn('Schema auto-sync warning (non-fatal):', err);
+    // User columns
+    'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "verifyToken" TEXT',
+    'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "verifyTokenExp" TIMESTAMP',
+    'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "resetToken" TEXT',
+    'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "resetTokenExp" TIMESTAMP',
+    'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "googleId" TEXT',
+    'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "deletedAt" TIMESTAMP',
+    'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "loyaltyPoints" INT DEFAULT 0',
+    'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "walletBalance" DOUBLE PRECISION DEFAULT 0',
+
+    // Order columns
+    'ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "tableToken" TEXT',
+    'ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "guestName" TEXT',
+    'ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "guestPhone" TEXT',
+    'ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "commissionAmount" DOUBLE PRECISION DEFAULT 0',
+    'ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "deletedAt" TIMESTAMP',
+  ];
+
+  for (const sql of statements) {
+    try {
+      await prisma.$executeRawUnsafe(sql);
+    } catch (err: any) {
+      logger.warn(`Schema sync statement warning (${sql}):`, err?.message || err);
+    }
   }
+  logger.info('✅ Database schema auto-synchronized successfully.');
 }
 
 export async function ensureDatabaseSeeded(): Promise<void> {
