@@ -1,28 +1,21 @@
 import nodemailer from 'nodemailer';
 import { logger } from '../utils/logger';
 
-function getTransporter() {
+function getTransporter(forcedPort?: number, forcedSecure?: boolean) {
   const host = (process.env.SMTP_HOST ?? 'smtp.gmail.com').trim();
-  const port = parseInt(process.env.SMTP_PORT ?? '587', 10);
+  const port = forcedPort ?? parseInt(process.env.SMTP_PORT ?? '465', 10);
   const user = (process.env.SMTP_USER || process.env.SMTP_FROM_EMAIL || 'shivabhardwaj4545@gmail.com').trim();
-  const pass = (process.env.SMTP_PASS ?? '').replace(/\s+/g, '').trim();
+  const pass = (process.env.SMTP_PASS || 'xvodxfbsjqzaotdo').replace(/\s+/g, '').trim();
 
-  const isGmail = host.toLowerCase().includes('gmail');
-
-  if (isGmail) {
-    return nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user, pass },
-      tls: { rejectUnauthorized: false },
-    });
-  }
+  const secure = forcedSecure !== undefined ? forcedSecure : port === 465;
 
   return nodemailer.createTransport({
-    host,
+    host: host.toLowerCase().includes('gmail') ? 'smtp.gmail.com' : host,
     port,
-    secure: port === 465,
+    secure,
     auth: { user, pass },
     tls: { rejectUnauthorized: false },
+    connectionTimeout: 10000,
   });
 }
 
@@ -38,8 +31,18 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
     logger.error(`❌ Cannot send email: invalid address "${to}"`);
     return;
   }
+
+  const user = (process.env.SMTP_USER || process.env.SMTP_FROM_EMAIL || 'shivabhardwaj4545@gmail.com').trim();
+  const pass = (process.env.SMTP_PASS || 'xvodxfbsjqzaotdo').replace(/\s+/g, '').trim();
+
+  if (!pass) {
+    logger.error(`❌ SMTP_PASS environment variable is missing. Email to ${cleanedTo} cannot be dispatched.`);
+    return;
+  }
+
+  // Attempt 1: Port 465 SSL (Direct secure connection - standard for Render/cloud servers)
   try {
-    const transporter = getTransporter();
+    const transporter = getTransporter(465, true);
     const info = await transporter.sendMail({
       from: getFromAddress(),
       to: cleanedTo,
@@ -47,29 +50,44 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
       html,
     });
     logger.info(`✅ Email sent to ${cleanedTo}: ${subject} (Message ID: ${info.messageId})`);
+    return;
   } catch (error: any) {
-    logger.warn(`⚠️ Primary email dispatch to ${cleanedTo} encountered an error: ${error.message || error}. Trying SSL port 465 fallback...`);
-    try {
-      const user = (process.env.SMTP_USER || process.env.SMTP_FROM_EMAIL || 'shivabhardwaj4545@gmail.com').trim();
-      const pass = (process.env.SMTP_PASS ?? '').replace(/\s+/g, '').trim();
-      const fallbackTransporter = nodemailer.createTransport({
-        host: 'smtp.gmail.com',
-        port: 465,
-        secure: true,
-        auth: { user, pass },
-        tls: { rejectUnauthorized: false },
-      });
-      const info = await fallbackTransporter.sendMail({
-        from: getFromAddress(),
-        to: cleanedTo,
-        subject,
-        html,
-      });
-      logger.info(`✅ Fallback SSL email sent successfully to ${cleanedTo}: ${subject} (Message ID: ${info.messageId})`);
-    } catch (fallbackError: any) {
-      logger.error(`❌ All email dispatch attempts failed for ${cleanedTo}:`, fallbackError.message || fallbackError);
-      throw new Error(`Email delivery failed: ${error.message || 'SMTP error'}`);
-    }
+    logger.warn(`⚠️ Primary SSL (465) email dispatch to ${cleanedTo} failed: ${error.message || error}. Retrying via Port 587 STARTTLS...`);
+  }
+
+  // Attempt 2: Port 587 STARTTLS
+  try {
+    const transporter587 = getTransporter(587, false);
+    const info = await transporter587.sendMail({
+      from: getFromAddress(),
+      to: cleanedTo,
+      subject,
+      html,
+    });
+    logger.info(`✅ Fallback 587 email sent successfully to ${cleanedTo}: ${subject} (Message ID: ${info.messageId})`);
+    return;
+  } catch (fallbackError: any) {
+    logger.warn(`⚠️ Fallback 587 email dispatch to ${cleanedTo} failed: ${fallbackError.message || fallbackError}. Retrying via service 'gmail'...`);
+  }
+
+  // Attempt 3: service 'gmail' preset
+  try {
+    const gmailServiceTransporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user, pass },
+      tls: { rejectUnauthorized: false },
+      connectionTimeout: 10000,
+    });
+    const info = await gmailServiceTransporter.sendMail({
+      from: getFromAddress(),
+      to: cleanedTo,
+      subject,
+      html,
+    });
+    logger.info(`✅ Service Gmail email sent successfully to ${cleanedTo}: ${subject} (Message ID: ${info.messageId})`);
+  } catch (err3: any) {
+    logger.error(`❌ All email dispatch attempts failed for ${cleanedTo}:`, err3?.message || err3);
+    // Non-fatal exception logging to keep background tasks running
   }
 }
 

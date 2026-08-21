@@ -31,6 +31,9 @@ export async function syncDatabaseSchema(): Promise<void> {
     'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "loyaltyPoints" INT DEFAULT 0',
     'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "walletBalance" DOUBLE PRECISION DEFAULT 0',
 
+    // System settings table
+    'CREATE TABLE IF NOT EXISTS "system_settings" ("id" TEXT NOT NULL PRIMARY KEY, "key" TEXT NOT NULL UNIQUE, "value" JSONB NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+
     // Order columns
     'ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "tableToken" TEXT',
     'ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "guestName" TEXT',

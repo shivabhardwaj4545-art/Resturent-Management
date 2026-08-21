@@ -951,7 +951,7 @@ export function OwnerSettingsPage() {
                   </span>
                 </div>
                 
-                <div className="relative mx-auto w-[290px] h-[580px] rounded-[3rem] border-[10px] border-zinc-950 bg-zinc-950 shadow-2xl overflow-hidden">
+                <div className="relative mx-auto w-[335px] sm:w-[365px] h-[650px] max-w-full rounded-[2.8rem] border-[8px] border-zinc-950 bg-zinc-950 shadow-2xl overflow-hidden ring-1 ring-white/10">
                   {/* Speaker Notch */}
                   <div className="absolute top-0 left-1/2 -translate-x-1/2 h-4 w-32 bg-zinc-950 rounded-b-2xl z-45 flex items-center justify-center">
                     <div className="w-10 h-1 bg-zinc-800 rounded-full" />

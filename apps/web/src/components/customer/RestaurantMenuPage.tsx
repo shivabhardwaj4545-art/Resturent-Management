@@ -651,6 +651,13 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
 
   return (
     <div className="min-h-screen bg-background pb-24 relative w-full max-w-full overflow-x-hidden min-w-0">
+      {isPreview && (
+        <style>{`
+          [data-sonner-toaster], .data-sonner-toaster {
+            display: none !important;
+          }
+        `}</style>
+      )}
       {/* Floating Navigation Header */}
       <div className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-3 sm:px-4 py-3 bg-gradient-to-b from-black/80 via-black/40 to-transparent gap-2 min-w-0 max-w-full">
         <div className="flex items-center gap-1.5 text-white drop-shadow-md shrink-0 select-none">
@@ -784,14 +791,16 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
               </div>
             )}
             <div className="flex-1 min-w-0 pb-1">
-              <div className="flex items-center gap-2 flex-wrap relative">
-                <h1 className="font-display text-xl sm:text-2xl md:text-3xl font-bold text-foreground truncate">{restaurantName}</h1>
+              <div className="flex items-center gap-2 flex-wrap relative min-w-0">
+                <h1 className="font-display text-lg sm:text-2xl md:text-3xl font-bold text-foreground truncate max-w-[170px] min-[400px]:max-w-[240px] sm:max-w-none">
+                  {restaurantName}
+                </h1>
                 
                 {/* Interactive Status Badge & Weekly Hours Dropdown */}
-                <div className="relative">
+                <div className="relative shrink-0">
                   <button
                     onClick={() => setShowHours(!showHours)}
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-semibold shadow-sm transition-all whitespace-nowrap hover:scale-105 active:scale-95 ${
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold shadow-sm transition-all whitespace-nowrap hover:scale-105 active:scale-95 ${
                       statusInfo.status === 'OPEN'
                         ? 'bg-green-500/10 text-green-600 border border-green-500/20 dark:bg-green-500/20 dark:text-green-400'
                         : statusInfo.status === 'TEMPORARILY_CLOSED'

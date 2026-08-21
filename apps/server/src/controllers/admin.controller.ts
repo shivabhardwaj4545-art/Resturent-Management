@@ -868,11 +868,17 @@ export const DEFAULT_LOYALTY_SETTINGS = {
 
 export async function getLoyaltySettings(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const setting = await prisma.systemSetting.findUnique({
-      where: { key: 'loyalty_settings' },
-    });
-
-    const value = setting?.value ? { ...DEFAULT_LOYALTY_SETTINGS, ...(setting.value as object) } : DEFAULT_LOYALTY_SETTINGS;
+    let value = DEFAULT_LOYALTY_SETTINGS;
+    try {
+      const setting = await prisma.systemSetting.findUnique({
+        where: { key: 'loyalty_settings' },
+      });
+      if (setting?.value) {
+        value = { ...DEFAULT_LOYALTY_SETTINGS, ...(setting.value as object) };
+      }
+    } catch (dbErr) {
+      logger.warn('Failed to fetch system_settings for loyalty, returning defaults:', dbErr);
+    }
     res.json({ success: true, data: { settings: value } });
   } catch (error) { next(error); }
 }
