@@ -58,13 +58,15 @@ export async function getAllRestaurants(req: AuthenticatedRequest, res: Response
 export async function approveRestaurant(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const id = req.params.id as string;
-    const { isApproved } = req.body as { isApproved: boolean };
+    const body = (req.body || {}) as { isApproved?: boolean };
 
     const restaurant = await prisma.restaurant.findFirst({
       where: { id, deletedAt: null },
       include: { owner: true },
     });
     if (!restaurant) throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
+
+    const isApproved = typeof body.isApproved === 'boolean' ? body.isApproved : !restaurant.isApproved;
 
     const updated = await prisma.restaurant.update({
       where: { id },
@@ -103,10 +105,12 @@ export async function approveRestaurant(req: AuthenticatedRequest, res: Response
 export async function suspendRestaurant(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const id = req.params.id as string;
-    const { isSuspended } = req.body as { isSuspended: boolean };
+    const body = (req.body || {}) as { isSuspended?: boolean };
 
     const restaurant = await prisma.restaurant.findFirst({ where: { id, deletedAt: null } });
     if (!restaurant) throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
+
+    const isSuspended = typeof body.isSuspended === 'boolean' ? body.isSuspended : !restaurant.isSuspended;
 
     const updated = await prisma.restaurant.update({
       where: { id },
@@ -189,12 +193,17 @@ export async function getAllUsers(req: AuthenticatedRequest, res: Response, next
 export async function suspendUser(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const id = req.params.id as string;
-    const { suspend } = req.body as { suspend?: boolean };
+    const body = (req.body || {}) as { suspend?: boolean };
+    const { suspend } = body;
 
     if (id === req.user!.id) throw new AppError('You cannot suspend your own account.', 400, 'CANNOT_SELF_SUSPEND');
 
     const user = await prisma.user.findFirst({ where: { id, deletedAt: null } });
     if (!user) throw new AppError('User not found.', 404, 'USER_NOT_FOUND');
+
+    if (user.role === 'SUPER_ADMIN') {
+      throw new AppError('Super Admin accounts cannot be suspended.', 400, 'CANNOT_SUSPEND_SUPER_ADMIN');
+    }
 
     const rest = await prisma.restaurant.findFirst({ where: { ownerId: id, deletedAt: null } });
     const isCurrentlySuspended = Boolean(rest?.isSuspended) || user.verifyToken === 'SUSPENDED';
@@ -208,11 +217,11 @@ export async function suspendUser(req: AuthenticatedRequest, res: Response, next
     if (user.role === 'RESTAURANT_OWNER') {
       await prisma.restaurant.updateMany({
         where: { ownerId: id },
-        data: { isSuspended: shouldSuspend, isOpen: !shouldSuspend },
+        data: { isSuspended: shouldSuspend, ...(shouldSuspend && { isOpen: false }) },
       });
     }
 
-    res.json({ success: true, data: null, message: `User ${shouldSuspend ? 'suspended' : 'reactivated'} successfully` });
+    res.json({ success: true, data: { id, isSuspended: shouldSuspend }, message: `User ${shouldSuspend ? 'suspended' : 'reactivated'} successfully` });
   } catch (error) { next(error); }
 }
 

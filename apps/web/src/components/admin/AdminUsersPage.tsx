@@ -77,8 +77,8 @@ export function AdminUsersPage() {
   });
 
   const suspendMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await api.patch(`/admin/users/${id}/suspend`);
+    mutationFn: async ({ id, suspend }: { id: string; suspend?: boolean }) => {
+      await api.patch(`/admin/users/${id}/suspend`, { suspend });
     },
     onSuccess: () => {
       toast.success('User suspension status updated');
@@ -238,7 +238,7 @@ export function AdminUsersPage() {
                               {u.role !== 'SUPER_ADMIN' && (
                                 <>
                                   <button
-                                    onClick={() => suspendMutation.mutate(u.id)}
+                                    onClick={() => suspendMutation.mutate({ id: u.id, suspend: !u.isSuspended })}
                                     className={`p-1.5 rounded-lg transition-colors ${
                                       u.isSuspended
                                         ? 'text-emerald-500 hover:bg-emerald-100 dark:hover:bg-emerald-900/20'
