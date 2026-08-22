@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { AnimatePresence, motion } from 'framer-motion';
 import { io, Socket } from 'socket.io-client';
 import { useWaiterStore, WaiterCall } from '@/store/waiter.store';
+import { playNewOrderSound, playWaiterCallSound } from '@/utils/audio';
 
 // Play attention beep using Web Audio API
 function playAlertBeep() {
@@ -130,7 +131,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       itemsSummary?: string;
     }) => {
       useWaiterStore.getState().addWaiterCall(payload);
-      playAlertBeep();
+      playWaiterCallSound();
       
       const isPayOnCounter = payload.paymentMethod === 'COD';
       const isPayToWaiter = payload.paymentMethod === 'PAY_TO_WAITER';
@@ -163,7 +164,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
 
     // 2. New order received
     socket.on('order:new', (order: any) => {
-      playAlertBeep();
+      playNewOrderSound();
       setActiveNewOrderAlert(order);
       
       const orderIdShort = order.id ? order.id.slice(-8).toUpperCase() : 'NEW';

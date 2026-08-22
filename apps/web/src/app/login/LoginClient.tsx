@@ -40,6 +40,8 @@ export default function LoginClient() {
         router.push('/admin/dashboard');
       } else if (user.role === 'RESTAURANT_OWNER') {
         router.push('/owner/dashboard');
+      } else if (user.role === 'KITCHEN') {
+        router.push('/kitchen/dashboard');
       } else if (restaurantSlug) {
         router.push(`/r/${restaurantSlug}`);
       } else {
@@ -95,6 +97,8 @@ export default function LoginClient() {
         router.push('/admin/dashboard');
       } else if (user.role === 'RESTAURANT_OWNER') {
         router.push('/owner/dashboard');
+      } else if (user.role === 'KITCHEN') {
+        router.push('/kitchen/dashboard');
       } else if (restaurantSlug) {
         router.push(`/r/${restaurantSlug}`);
       } else {

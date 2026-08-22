@@ -1,4 +1,5 @@
 import { Response, NextFunction } from 'express';
+import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { uploadMenuItemImage, uploadRestaurantLogo, uploadRestaurantBanner, uploadRestaurantPaymentQr } from '../services/cloudinary.service';
@@ -1206,6 +1207,110 @@ export async function getRestaurantReviews(
           starBreakdown,
         },
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ── Kitchen Staff Management ─────────────────────────────────────
+
+export async function createKitchenStaff(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const { name, email, password } = req.body as { name?: string; email?: string; password?: string };
+
+    if (!name || !email || !password) {
+      throw new AppError('Name, email, and password are required.', 400, 'MISSING_FIELDS');
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+
+    const existingUser = await prisma.user.findFirst({ where: { email: cleanEmail } });
+    if (existingUser) {
+      throw new AppError('User with this email already exists.', 400, 'USER_EXISTS');
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const kitchenUser = await prisma.user.create({
+      data: {
+        name: name.trim(),
+        email: cleanEmail,
+        passwordHash,
+        role: 'KITCHEN',
+        isVerified: true,
+        kitchenRestaurantId: restaurant.id,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        kitchenRestaurantId: true,
+        createdAt: true,
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Kitchen staff account created successfully.',
+      data: { staff: kitchenUser },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getKitchenStaff(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const staff = await prisma.user.findMany({
+      where: {
+        kitchenRestaurantId: restaurant.id,
+        role: 'KITCHEN',
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json({
+      success: true,
+      data: { staff },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deleteKitchenStaff(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const id = req.params.id as string;
+
+    const staffUser = await prisma.user.findFirst({
+      where: { id, kitchenRestaurantId: restaurant.id, role: 'KITCHEN', deletedAt: null },
+    });
+
+    if (!staffUser) {
+      throw new AppError('Kitchen staff member not found.', 404, 'STAFF_NOT_FOUND');
+    }
+
+    await prisma.user.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+
+    res.json({
+      success: true,
+      message: 'Kitchen staff account deleted successfully.',
     });
   } catch (error) {
     next(error);

@@ -21,7 +21,8 @@ export async function syncDatabaseSchema(): Promise<void> {
     'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "customFields" JSONB',
     'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "commissionRate" DOUBLE PRECISION DEFAULT 5',
 
-    // User columns
+    // User columns & Enum values
+    'ALTER TYPE "UserRole" ADD VALUE IF NOT EXISTS \'KITCHEN\'',
     'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "verifyToken" TEXT',
     'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "verifyTokenExp" TIMESTAMP',
     'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "resetToken" TEXT',
@@ -30,6 +31,7 @@ export async function syncDatabaseSchema(): Promise<void> {
     'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "deletedAt" TIMESTAMP',
     'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "loyaltyPoints" INT DEFAULT 0',
     'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "walletBalance" DOUBLE PRECISION DEFAULT 0',
+    'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "kitchenRestaurantId" TEXT',
 
     // System settings table
     'CREATE TABLE IF NOT EXISTS "system_settings" ("id" TEXT NOT NULL PRIMARY KEY, "key" TEXT NOT NULL UNIQUE, "value" JSONB NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)',

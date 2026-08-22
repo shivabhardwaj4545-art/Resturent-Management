@@ -243,7 +243,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
             BAKING: '🔥 Order is in the kitchen!',
             READY: '🍽️ Order Ready!',
             ON_THE_WAY: '🚴 Order is on the way!',
-            DELIVERED: '✅ Order Served / Delivered!',
+            DELIVERED: '✅ Order Served!',
             CANCELLED: '❌ Order Cancelled',
           };
           if (data.status === 'CANCELLED') {

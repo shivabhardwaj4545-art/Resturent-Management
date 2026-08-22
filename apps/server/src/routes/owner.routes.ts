@@ -43,6 +43,9 @@ import {
   getAnalytics,
   signTable,
   getRestaurantReviews,
+  getKitchenStaff,
+  createKitchenStaff,
+  deleteKitchenStaff,
 } from '../controllers/owner.controller';
 import { upload } from '../services/cloudinary.service';
 
@@ -53,6 +56,11 @@ router.use(authenticate, requireOwner);
 
 // Dashboard
 router.get('/dashboard', getDashboard);
+
+// Kitchen Staff Account Management
+router.get('/kitchen-staff', getKitchenStaff);
+router.post('/kitchen-staff', createKitchenStaff);
+router.delete('/kitchen-staff/:id', deleteKitchenStaff);
 
 // Restaurant management
 router.get('/restaurant', getRestaurant);

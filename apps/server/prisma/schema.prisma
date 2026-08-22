@@ -18,6 +18,7 @@ enum UserRole {
   CUSTOMER
   RESTAURANT_OWNER
   SUPER_ADMIN
+  KITCHEN
 }
 
 enum OrderStatus {
@@ -99,6 +100,8 @@ model User {
 
   // Relations
   restaurant        Restaurant[]
+  kitchenRestaurantId String?
+  kitchenRestaurant   Restaurant? @relation("KitchenStaff", fields: [kitchenRestaurantId], references: [id])
   orders            Order[]
   cartItems         CartItem[]
   addresses         Address[]
@@ -161,6 +164,7 @@ model Restaurant {
 
   // Relations
   owner          User                   @relation(fields: [ownerId], references: [id])
+  kitchenStaff   User[]                 @relation("KitchenStaff")
   categories     MenuCategory[]
   menuItems      MenuItem[]
   orders         Order[]

@@ -19,6 +19,7 @@ import profileRoutes from './routes/profile.routes';
 import aiRoutes from './routes/ai.routes';
 import ownerRoutes from './routes/owner.routes';
 import adminRoutes from './routes/admin.routes';
+import kitchenRoutes from './routes/kitchen.routes';
 import webhookRoutes from './routes/webhook.routes';
 import chatRoutes from './routes/chat.routes';
 
@@ -129,6 +130,7 @@ app.use(`${API}/orders`, orderRoutes);
 app.use(`${API}/profile`, profileRoutes);
 app.use(`${API}/ai`, aiRoutes);
 app.use(`${API}/owner`, ownerRoutes);
+app.use(`${API}/kitchen`, kitchenRoutes);
 app.use(`${API}/admin`, adminRoutes);
 app.use(`${API}/chat`, chatRoutes);
 app.use(`${API}/webhooks`, webhookRoutes);

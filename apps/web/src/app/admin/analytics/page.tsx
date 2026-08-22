@@ -1,11 +1,7 @@
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
+import { AdminAnalyticsPage } from '@/components/admin/AdminAnalyticsPage';
 
-export const metadata: Metadata = { title: 'Analytics' };
-
-const AdminAnalyticsPage = dynamic(
-  () => import('@/components/admin/AdminAnalyticsPage').then((mod) => mod.AdminAnalyticsPage)
-);
+export const metadata: Metadata = { title: 'Platform Analytics' };
 
 export default function AdminAnalytics() {
   return <AdminAnalyticsPage />;

@@ -9,6 +9,7 @@ export interface AuthenticatedRequest extends Request {
     email: string;
     role: string;
     name: string;
+    kitchenRestaurantId?: string | null;
   };
 }
 
@@ -50,7 +51,7 @@ export async function authenticate(
         id: decoded.id,
         deletedAt: null,
       },
-      select: { id: true, email: true, role: true, name: true, verifyToken: true },
+      select: { id: true, email: true, role: true, name: true, verifyToken: true, kitchenRestaurantId: true },
     });
 
     console.log('[AUTH MIDDLEWARE] fetched user from DB:', user);

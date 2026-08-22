@@ -159,15 +159,11 @@ api.interceptors.response.use(
           console.warn('⚠️ [API Refresh] Refresh token expired or unavailable.');
         }
         processQueue(refreshError as Error, null);
-        
-        // Log out & redirect if on owner/admin dashboard routes
-        if (refreshError.response?.status === 401) {
-          useAuthStore.getState().logout();
-          if (typeof window !== 'undefined') {
-            const currentPath = window.location.pathname;
-            if (currentPath.startsWith('/owner') || currentPath.startsWith('/admin')) {
-              window.location.href = '/login';
-            }
+        useAuthStore.getState().logout();
+        if (typeof window !== 'undefined') {
+          const currentPath = window.location.pathname;
+          if ((currentPath.startsWith('/owner') || currentPath.startsWith('/admin')) && !currentPath.includes('/login')) {
+            window.location.href = '/login';
           }
         }
         return Promise.reject(error);

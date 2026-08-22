@@ -1,11 +1,7 @@
-import { Metadata } from 'next';
-import dynamic from 'next/dynamic';
+import type { Metadata } from 'next';
+import { AdminSubscriptionsPage } from '@/components/admin/AdminSubscriptionsPage';
 
-export const metadata: Metadata = { title: 'Manage Subscriptions' };
-
-const AdminSubscriptionsPage = dynamic(
-  () => import('@/components/admin/AdminSubscriptionsPage').then((mod) => mod.AdminSubscriptionsPage)
-);
+export const metadata: Metadata = { title: 'Subscriptions Management' };
 
 export default function AdminSubscriptions() {
   return <AdminSubscriptionsPage />;

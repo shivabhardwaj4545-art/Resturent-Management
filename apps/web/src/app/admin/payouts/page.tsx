@@ -1,11 +1,7 @@
-import { Metadata } from 'next';
-import dynamic from 'next/dynamic';
+import type { Metadata } from 'next';
+import { AdminPayoutsPage } from '@/components/admin/AdminPayoutsPage';
 
-export const metadata: Metadata = { title: 'Manage Payouts' };
-
-const AdminPayoutsPage = dynamic(
-  () => import('@/components/admin/AdminPayoutsPage').then((mod) => mod.AdminPayoutsPage)
-);
+export const metadata: Metadata = { title: 'Payouts Management' };
 
 export default function AdminPayouts() {
   return <AdminPayoutsPage />;

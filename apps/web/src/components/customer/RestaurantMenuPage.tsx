@@ -416,7 +416,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       case 'ON_THE_WAY':
         return { label: 'Out for Delivery', color: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20', progress: 90 };
       case 'DELIVERED':
-        return { label: 'Served/Delivered', color: 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20', progress: 100 };
+        return { label: 'Served & Completed', color: 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20', progress: 100 };
       case 'CANCELLED':
         return { label: 'Cancelled', color: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20', progress: 100 };
       default:

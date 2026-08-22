@@ -1,12 +1,8 @@
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
+import { AdminReviewsPage } from '@/components/admin/AdminReviewsPage';
 
-export const metadata: Metadata = { title: 'Reviews' };
+export const metadata: Metadata = { title: 'Reviews Management' };
 
-const AdminReviewsPage = dynamic(
-  () => import('@/components/admin/AdminReviewsPage').then((mod) => mod.AdminReviewsPage)
-);
-
-export default function AdminReviewsRouting() {
+export default function AdminReviews() {
   return <AdminReviewsPage />;
 }

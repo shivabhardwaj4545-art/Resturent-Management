@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, UtensilsCrossed, ShoppingBag, Tag, BarChart3, Settings,
   LogOut, Menu, X, TrendingUp, Users, DollarSign, Clock, Bell, ChevronRight,
-  Power, Star, Palette, BellRing
+  Power, Star, Palette, BellRing, ChefHat
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -20,11 +20,13 @@ import {
 import { WaiterBell } from '@/components/owner/WaiterBell';
 import { MessageSquare } from 'lucide-react';
 import { AdminOwnerChatModal } from '@/components/admin/AdminOwnerChatModal';
+import { OwnerSidebar } from '@/components/owner/OwnerSidebar';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
   { label: 'Menu', icon: UtensilsCrossed, href: '/owner/menu' },
   { label: 'Orders', icon: ShoppingBag, href: '/owner/orders' },
+  { label: 'Kitchen Staff', icon: ChefHat, href: '/owner/kitchen-staff' },
   { label: 'Coupons', icon: Tag, href: '/owner/coupons' },
   { label: 'Reviews', icon: Star, href: '/owner/reviews' },
   { label: 'Analytics', icon: BarChart3, href: '/owner/analytics' },
@@ -103,73 +105,7 @@ export function OwnerDashboard() {
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
-      {/* Sidebar Backdrop */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 z-20 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Sidebar */}
-      <aside className={`fixed lg:relative left-0 top-0 h-full z-30 w-64 bg-card border-r border-border flex flex-col transition-transform lg:translate-x-0 ${
-        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      }`}>
-        <div className="p-5 border-b border-border">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-primary text-primary-foreground flex items-center justify-center shadow-md">
-              <UtensilsCrossed className="w-4.5 h-4.5" />
-            </div>
-            <div>
-              <p className="font-display font-bold text-sm">Restaurant</p>
-              <p className="text-xs text-muted-foreground">Owner Panel</p>
-            </div>
-          </div>
-        </div>
-
-        <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const isActive = pathname === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  isActive
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
-              >
-                <Icon className="w-4.5 h-4.5" />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="p-4 border-t border-border">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
-              <span className="text-sm font-bold text-primary">{user?.name?.[0] ?? 'O'}</span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm truncate">{user?.name}</p>
-              <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleLogout}
-              className="flex-1 flex items-center gap-2 px-3 py-2 rounded-xl text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-sm"
-            >
-              <LogOut className="w-4 h-4" />
-              Logout
-            </button>
-            <ThemeToggle size="sm" />
-          </div>
-        </div>
-      </aside>
+      <OwnerSidebar mobileOpen={sidebarOpen} onMobileClose={() => setSidebarOpen(false)} />
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden">
@@ -236,8 +172,8 @@ export function OwnerDashboard() {
                 {[
                   {
                     label: "Today's Earnings",
-                    value: `₹${(data?.stats.todayRevenue ?? 0).toLocaleString('en-IN')}`,
-                    subtitle: `${data?.stats.todayOrders ?? 0} orders today`,
+                    value: `₹${(data?.stats?.todayRevenue ?? 0).toLocaleString('en-IN')}`,
+                    subtitle: `${data?.stats?.todayOrders ?? 0} orders today`,
                     icon: DollarSign,
                     color: 'from-green-500/20 to-emerald-500/20',
                     border: 'border-green-500/20',
@@ -245,8 +181,8 @@ export function OwnerDashboard() {
                   },
                   {
                     label: "Monthly Earnings",
-                    value: `₹${(data?.stats.monthlyRevenue ?? 0).toLocaleString('en-IN')}`,
-                    subtitle: `${data?.stats.monthlyOrders ?? 0} orders this month`,
+                    value: `₹${(data?.stats?.monthlyRevenue ?? 0).toLocaleString('en-IN')}`,
+                    subtitle: `${data?.stats?.monthlyOrders ?? 0} orders this month`,
                     icon: TrendingUp,
                     color: 'from-blue-500/20 to-cyan-500/20',
                     border: 'border-blue-500/20',
@@ -254,7 +190,7 @@ export function OwnerDashboard() {
                   },
                   {
                     label: "Today Hourly Avg",
-                    value: `₹${(data?.stats.todayHourlyAverage ?? 0).toFixed(0)}/hr`,
+                    value: `₹${(data?.stats?.todayHourlyAverage ?? 0).toFixed(0)}/hr`,
                     subtitle: 'Avg earning per hour',
                     icon: Clock,
                     color: 'from-purple-500/20 to-indigo-500/20',
@@ -263,7 +199,7 @@ export function OwnerDashboard() {
                   },
                   {
                     label: 'Pending Orders',
-                    value: data?.stats.pendingOrders ?? 0,
+                    value: data?.stats?.pendingOrders ?? 0,
                     subtitle: 'Needs confirmation',
                     icon: Clock,
                     color: 'from-orange-500/20 to-amber-500/20',
@@ -272,7 +208,7 @@ export function OwnerDashboard() {
                   },
                   {
                     label: 'Avg. Order',
-                    value: `₹${(data?.stats.avgOrderValue ?? 0).toFixed(0)}`,
+                    value: `₹${(data?.stats?.avgOrderValue ?? 0).toFixed(0)}`,
                     subtitle: 'Per completed order',
                     icon: ShoppingBag,
                     color: 'from-pink-500/20 to-rose-500/20',
@@ -281,8 +217,8 @@ export function OwnerDashboard() {
                   },
                   {
                     label: 'Avg. Rating',
-                    value: data?.stats.avgRating ? `${(data.stats.avgRating as number).toFixed(1)} ★` : '0.0 ★',
-                    subtitle: `${data?.stats.totalReviews ?? 0} reviews`,
+                    value: data?.stats?.avgRating ? `${(data.stats.avgRating as number).toFixed(1)} ★` : '0.0 ★',
+                    subtitle: `${data?.stats?.totalReviews ?? 0} reviews`,
                     icon: Star,
                     color: 'from-amber-500/20 to-yellow-500/20',
                     border: 'border-amber-500/20',
