@@ -29,17 +29,17 @@ services:
       - key: JWT_REFRESH_EXPIRES_IN
         value: 7d
       - key: SMTP_HOST
-        value: smtp.gmail.com
+        value: smtp-relay.brevo.com
       - key: SMTP_PORT
         value: 587
       - key: SMTP_USER
-        value: shivabhardwaj4545@gmail.com
+        value: ssharma636076@gmail.com
       - key: SMTP_PASS
-        value: xvodxfbsjqzaotdo
+        sync: false
       - key: SMTP_FROM_NAME
         value: EZ- Restaurant
       - key: SMTP_FROM_EMAIL
-        value: shivabhardwaj4545@gmail.com
+        value: ssharma636076@gmail.com
       - key: CLIENT_URL
         fromService:
           type: web

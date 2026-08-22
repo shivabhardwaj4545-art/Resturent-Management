@@ -205,7 +205,7 @@ export function SuperAdminBroadcastModal({ isOpen, onClose }: SuperAdminBroadcas
             <div className="space-y-4">
               <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-                <span>Configured to send from: <strong>shivabhardwaj4545@gmail.com</strong></span>
+                <span>Configured to send from: <strong>ssharma636076@gmail.com</strong></span>
               </div>
 
               <div>
