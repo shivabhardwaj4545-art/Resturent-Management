@@ -4,8 +4,8 @@ import { logger } from '../utils/logger';
 function getTransporter(forcedPort?: number, forcedSecure?: boolean) {
   const host = (process.env.SMTP_HOST ?? 'smtp.gmail.com').trim();
   const port = forcedPort ?? parseInt(process.env.SMTP_PORT ?? '465', 10);
-  const user = (process.env.SMTP_USER || process.env.SMTP_FROM_EMAIL || 'shivabhardwaj4545@gmail.com').trim();
-  const pass = (process.env.SMTP_PASS || 'xvodxfbsjqzaotdo').replace(/\s+/g, '').trim();
+  const user = (process.env.SMTP_USER || process.env.SMTP_FROM_EMAIL || '').trim();
+  const pass = (process.env.SMTP_PASS || '').replace(/\s+/g, '').trim();
 
   const secure = forcedSecure !== undefined ? forcedSecure : port === 465;
 
@@ -15,13 +15,15 @@ function getTransporter(forcedPort?: number, forcedSecure?: boolean) {
     secure,
     auth: { user, pass },
     tls: { rejectUnauthorized: false },
-    connectionTimeout: 10000,
+    connectionTimeout: 20000,
+    greetingTimeout: 20000,
+    socketTimeout: 20000,
   });
 }
 
 function getFromAddress(): string {
   const name = (process.env.SMTP_FROM_NAME ?? 'EZ- Restaurant').trim();
-  const email = (process.env.SMTP_USER || process.env.SMTP_FROM_EMAIL || 'shivabhardwaj4545@gmail.com').trim();
+  const email = (process.env.SMTP_USER || process.env.SMTP_FROM_EMAIL || '').trim();
   return `"${name}" <${email}>`;
 }
 
@@ -32,15 +34,39 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
     return;
   }
 
-  const user = (process.env.SMTP_USER || process.env.SMTP_FROM_EMAIL || 'shivabhardwaj4545@gmail.com').trim();
-  const pass = (process.env.SMTP_PASS || 'xvodxfbsjqzaotdo').replace(/\s+/g, '').trim();
+  const user = (process.env.SMTP_USER || process.env.SMTP_FROM_EMAIL || '').trim();
+  const pass = (process.env.SMTP_PASS || '').replace(/\s+/g, '').trim();
 
-  if (!pass) {
-    logger.error(`❌ SMTP_PASS environment variable is missing. Email to ${cleanedTo} cannot be dispatched.`);
-    return;
+  if (!pass || !user) {
+    logger.error(`❌ SMTP_USER or SMTP_PASS environment variable is missing. Email to ${cleanedTo} cannot be dispatched.`);
+    throw new Error('SMTP credentials missing in environment variables');
   }
 
-  // Attempt 1: Port 465 SSL (Direct secure connection - standard for Render/cloud servers)
+  // Attempt 1: service 'gmail' preset if using Gmail
+  if (process.env.SMTP_HOST?.toLowerCase().includes('gmail') || user.endsWith('@gmail.com')) {
+    try {
+      const gmailServiceTransporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user, pass },
+        tls: { rejectUnauthorized: false },
+        connectionTimeout: 20000,
+        greetingTimeout: 20000,
+        socketTimeout: 20000,
+      });
+      const info = await gmailServiceTransporter.sendMail({
+        from: getFromAddress(),
+        to: cleanedTo,
+        subject,
+        html,
+      });
+      logger.info(`✅ Service Gmail email sent successfully to ${cleanedTo}: ${subject} (Message ID: ${info.messageId})`);
+      return;
+    } catch (errGmail: any) {
+      logger.warn(`⚠️ Direct service 'gmail' transport failed for ${cleanedTo}: ${errGmail.message || errGmail}. Retrying via Port 465 SSL...`);
+    }
+  }
+
+  // Attempt 2: Port 465 SSL
   try {
     const transporter = getTransporter(465, true);
     const info = await transporter.sendMail({
@@ -55,7 +81,7 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
     logger.warn(`⚠️ Primary SSL (465) email dispatch to ${cleanedTo} failed: ${error.message || error}. Retrying via Port 587 STARTTLS...`);
   }
 
-  // Attempt 2: Port 587 STARTTLS
+  // Attempt 3: Port 587 STARTTLS
   try {
     const transporter587 = getTransporter(587, false);
     const info = await transporter587.sendMail({
@@ -67,27 +93,8 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
     logger.info(`✅ Fallback 587 email sent successfully to ${cleanedTo}: ${subject} (Message ID: ${info.messageId})`);
     return;
   } catch (fallbackError: any) {
-    logger.warn(`⚠️ Fallback 587 email dispatch to ${cleanedTo} failed: ${fallbackError.message || fallbackError}. Retrying via service 'gmail'...`);
-  }
-
-  // Attempt 3: service 'gmail' preset
-  try {
-    const gmailServiceTransporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user, pass },
-      tls: { rejectUnauthorized: false },
-      connectionTimeout: 10000,
-    });
-    const info = await gmailServiceTransporter.sendMail({
-      from: getFromAddress(),
-      to: cleanedTo,
-      subject,
-      html,
-    });
-    logger.info(`✅ Service Gmail email sent successfully to ${cleanedTo}: ${subject} (Message ID: ${info.messageId})`);
-  } catch (err3: any) {
-    logger.error(`❌ All email dispatch attempts failed for ${cleanedTo}:`, err3?.message || err3);
-    // Non-fatal exception logging to keep background tasks running
+    logger.error(`❌ All email dispatch attempts failed for ${cleanedTo}:`, fallbackError?.message || fallbackError);
+    throw new Error(`SMTP dispatch failed for ${cleanedTo}: ${fallbackError?.message || fallbackError}`);
   }
 }
 
