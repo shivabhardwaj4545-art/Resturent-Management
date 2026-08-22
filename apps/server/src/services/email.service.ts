@@ -2,15 +2,28 @@ import nodemailer from 'nodemailer';
 import { logger } from '../utils/logger';
 
 function getTransporter(forcedPort?: number, forcedSecure?: boolean) {
-  const host = (process.env.SMTP_HOST ?? 'smtp.gmail.com').trim();
-  const port = forcedPort ?? parseInt(process.env.SMTP_PORT ?? '465', 10);
+  const host = (process.env.SMTP_HOST ?? 'smtp-relay.brevo.com').trim();
+  const port = forcedPort ?? parseInt(process.env.SMTP_PORT ?? '587', 10);
   const user = (process.env.SMTP_USER || process.env.SMTP_FROM_EMAIL || '').trim();
   const pass = (process.env.SMTP_PASS || '').replace(/\s+/g, '').trim();
+
+  const isGmail = host.toLowerCase().includes('gmail');
+
+  if (isGmail) {
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user, pass },
+      tls: { rejectUnauthorized: false },
+      connectionTimeout: 20000,
+      greetingTimeout: 20000,
+      socketTimeout: 20000,
+    });
+  }
 
   const secure = forcedSecure !== undefined ? forcedSecure : port === 465;
 
   return nodemailer.createTransport({
-    host: host.toLowerCase().includes('gmail') ? 'smtp.gmail.com' : host,
+    host,
     port,
     secure,
     auth: { user, pass },
@@ -42,33 +55,9 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
     throw new Error('SMTP credentials missing in environment variables');
   }
 
-  // Attempt 1: service 'gmail' preset if using Gmail
-  if (process.env.SMTP_HOST?.toLowerCase().includes('gmail') || user.endsWith('@gmail.com')) {
-    try {
-      const gmailServiceTransporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: { user, pass },
-        tls: { rejectUnauthorized: false },
-        connectionTimeout: 20000,
-        greetingTimeout: 20000,
-        socketTimeout: 20000,
-      });
-      const info = await gmailServiceTransporter.sendMail({
-        from: getFromAddress(),
-        to: cleanedTo,
-        subject,
-        html,
-      });
-      logger.info(`✅ Service Gmail email sent successfully to ${cleanedTo}: ${subject} (Message ID: ${info.messageId})`);
-      return;
-    } catch (errGmail: any) {
-      logger.warn(`⚠️ Direct service 'gmail' transport failed for ${cleanedTo}: ${errGmail.message || errGmail}. Retrying via Port 465 SSL...`);
-    }
-  }
-
-  // Attempt 2: Port 465 SSL
+  // Primary attempt: using configured SMTP_HOST & SMTP_PORT
   try {
-    const transporter = getTransporter(465, true);
+    const transporter = getTransporter();
     const info = await transporter.sendMail({
       from: getFromAddress(),
       to: cleanedTo,
@@ -78,10 +67,10 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
     logger.info(`✅ Email sent to ${cleanedTo}: ${subject} (Message ID: ${info.messageId})`);
     return;
   } catch (error: any) {
-    logger.warn(`⚠️ Primary SSL (465) email dispatch to ${cleanedTo} failed: ${error.message || error}. Retrying via Port 587 STARTTLS...`);
+    logger.warn(`⚠️ Primary SMTP dispatch to ${cleanedTo} failed: ${error.message || error}. Retrying via fallback port 587...`);
   }
 
-  // Attempt 3: Port 587 STARTTLS
+  // Fallback attempt: Port 587 STARTTLS
   try {
     const transporter587 = getTransporter(587, false);
     const info = await transporter587.sendMail({
