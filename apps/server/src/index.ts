@@ -10,22 +10,13 @@ import { prisma } from './lib/prisma';
 import { ensureDatabaseSeeded } from './utils/autoSeed';
 import { startKeepAliveJob } from './jobs/keepAlive.job';
 
-// Gracefully handle Redis disconnections / connection failures in production without crashing the process
+// Gracefully handle background disconnections / uncaught exceptions in production without crashing the server process
 process.on('unhandledRejection', (reason: any) => {
-  if (reason?.message === 'Connection is closed.' || reason?.code === 'ECONNREFUSED') {
-    logger.warn(`Redis: connection issue captured gracefully: ${reason.message}`);
-    return;
-  }
-  logger.error('Unhandled Rejection at:', reason);
+  logger.error('Unhandled Rejection captured gracefully:', reason?.message || reason);
 });
 
 process.on('uncaughtException', (error: any) => {
-  if (error?.message === 'Connection is closed.' || error?.code === 'ECONNREFUSED') {
-    logger.warn(`Redis: uncaught socket connection exception captured gracefully: ${error.message}`);
-    return;
-  }
-  logger.error('Uncaught Exception:', error);
-  process.exit(1);
+  logger.error('Uncaught Exception captured gracefully:', error?.stack || error?.message || error);
 });
 
 const PORT = parseInt(process.env.PORT ?? '4000', 10);

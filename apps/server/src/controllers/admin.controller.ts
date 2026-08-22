@@ -191,8 +191,13 @@ export async function getAllUsers(req: AuthenticatedRequest, res: Response, next
     ]);
 
     const mappedUsers = users.map((u) => {
-      const activeRest = u.restaurant?.find((r) => r.deletedAt === null) || u.restaurant?.[0];
-      const isAnyRestSuspended = u.restaurant?.some((r) => r.isSuspended);
+      const isRestArray = Array.isArray(u.restaurant);
+      const activeRest = isRestArray
+        ? u.restaurant.find((r) => r.deletedAt === null) || u.restaurant[0]
+        : (u.restaurant as any);
+      const isAnyRestSuspended = isRestArray
+        ? u.restaurant.some((r) => r.isSuspended)
+        : Boolean((u.restaurant as any)?.isSuspended);
       return {
         ...u,
         isSuspended: Boolean(isAnyRestSuspended) || u.verifyToken === 'SUSPENDED',
