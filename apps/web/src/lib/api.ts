@@ -24,9 +24,16 @@ export function getApiBaseUrl(): string {
       }
       return 'http://localhost:4000/api/v1';
     }
+
+    // 3. Live VPS / Custom Domain / IP resolution
+    if (envUrl && !envUrl.includes('localhost')) {
+      return envUrl.endsWith('/api/v1') ? envUrl : `${envUrl.replace(/\/$/, '')}/api/v1`;
+    }
+
+    return `${window.location.origin}/api/v1`;
   }
 
-  // 3. Fallback for SSR or custom domains
+  // Fallback for SSR or build time
   if (envUrl) {
     return envUrl.endsWith('/api/v1') ? envUrl : `${envUrl.replace(/\/$/, '')}/api/v1`;
   }
