@@ -14,14 +14,38 @@ export async function getPublicRestaurants(
   next: NextFunction
 ): Promise<void> {
   try {
-    const restaurants = await prisma.restaurant.findMany({
+    let restaurants = await prisma.restaurant.findMany({
       where: { isApproved: true, isSuspended: false, deletedAt: null },
-      select: { slug: true, name: true },
+      select: { slug: true, name: true, cuisineType: true, logo: true },
       orderBy: { createdAt: 'asc' },
       take: 10,
     });
-    res.json({ success: true, data: { restaurants } });
-  } catch (error) { next(error); }
+
+    if (!restaurants || restaurants.length === 0) {
+      await ensureDatabaseSeeded();
+      restaurants = await prisma.restaurant.findMany({
+        where: { isApproved: true, isSuspended: false, deletedAt: null },
+        select: { slug: true, name: true, cuisineType: true, logo: true },
+        orderBy: { createdAt: 'asc' },
+        take: 10,
+      });
+    }
+
+    res.json({ success: true, data: { restaurants: restaurants || [] } });
+  } catch (error) {
+    try {
+      await ensureDatabaseSeeded();
+      const restaurants = await prisma.restaurant.findMany({
+        where: { isApproved: true, isSuspended: false, deletedAt: null },
+        select: { slug: true, name: true, cuisineType: true, logo: true },
+        orderBy: { createdAt: 'asc' },
+        take: 10,
+      });
+      res.json({ success: true, data: { restaurants: restaurants || [] } });
+    } catch (retryErr) {
+      next(retryErr);
+    }
+  }
 }
 
 export async function getRestaurantMenu(

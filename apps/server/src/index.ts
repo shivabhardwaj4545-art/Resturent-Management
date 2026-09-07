@@ -39,6 +39,10 @@ async function bootstrap() {
             normalizedOrigin.startsWith('http://127.0.0.1:') ||
             normalizedOrigin.endsWith('.up.railway.app') ||
             normalizedOrigin.endsWith('.onrender.com') ||
+            normalizedOrigin.endsWith('.hostinger.com') ||
+            normalizedOrigin.endsWith('.hostingersite.com') ||
+            normalizedOrigin.endsWith('ezrestro.online') ||
+            (process.env.CLIENT_URL && normalizedOrigin === process.env.CLIENT_URL.replace(/\/$/, '')) ||
             process.env.NODE_ENV !== 'production'
           ) {
             return callback(null, true);
