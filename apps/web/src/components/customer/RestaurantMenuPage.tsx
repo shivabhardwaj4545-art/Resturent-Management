@@ -74,6 +74,15 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
     }
   }, []);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined' && slug) {
+      localStorage.setItem('scanned_restaurant_slug', slug);
+      if (tableNumber) {
+        localStorage.setItem('scanned_table_number', tableNumber);
+      }
+    }
+  }, [slug, tableNumber]);
+
   const getTableStorageKey = useCallback((tbl?: string | null) => {
     const activeTbl = tbl || tableNumber || manualTableNumber || (typeof window !== 'undefined' ? localStorage.getItem(`table_num_${slug}`) : null);
     return activeTbl ? `${slug}_t_${String(activeTbl).trim()}` : null;

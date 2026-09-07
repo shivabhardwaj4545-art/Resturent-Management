@@ -70,7 +70,7 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
     logger.warn(`⚠️ Primary SMTP dispatch to ${cleanedTo} failed: ${error.message || error}. Retrying via fallback port 587...`);
   }
 
-  // Fallback attempt: Port 587 STARTTLS
+  // Fallback attempt 1: Port 587 STARTTLS
   try {
     const transporter587 = getTransporter(587, false);
     const info = await transporter587.sendMail({
@@ -81,9 +81,24 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
     });
     logger.info(`✅ Fallback 587 email sent successfully to ${cleanedTo}: ${subject} (Message ID: ${info.messageId})`);
     return;
-  } catch (fallbackError: any) {
-    logger.error(`❌ All email dispatch attempts failed for ${cleanedTo}:`, fallbackError?.message || fallbackError);
-    throw new Error(`SMTP dispatch failed for ${cleanedTo}: ${fallbackError?.message || fallbackError}`);
+  } catch (fallbackError587: any) {
+    logger.warn(`⚠️ Fallback 587 email dispatch to ${cleanedTo} failed: ${fallbackError587.message || fallbackError587}. Retrying via Port 465 SSL...`);
+  }
+
+  // Fallback attempt 2: Port 465 SSL/TLS (crucial for Hostinger and firewall-restricted servers)
+  try {
+    const transporter465 = getTransporter(465, true);
+    const info = await transporter465.sendMail({
+      from: getFromAddress(),
+      to: cleanedTo,
+      subject,
+      html,
+    });
+    logger.info(`✅ Fallback 465 SSL email sent successfully to ${cleanedTo}: ${subject} (Message ID: ${info.messageId})`);
+    return;
+  } catch (fallbackError465: any) {
+    logger.error(`❌ All email dispatch attempts (Primary, 587, 465) failed for ${cleanedTo}:`, fallbackError465?.message || fallbackError465);
+    throw new Error(`SMTP dispatch failed for ${cleanedTo}: ${fallbackError465?.message || fallbackError465}`);
   }
 }
 

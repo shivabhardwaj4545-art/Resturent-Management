@@ -520,7 +520,7 @@ export async function getMe(req: AuthenticatedRequest, res: Response, next: Next
 
 export async function googleAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const clientId = process.env.GOOGLE_CLIENT_ID ?? '';
+    const clientId = (process.env.GOOGLE_CLIENT_ID ?? '').trim();
     const host = req.get('host');
     const protocol = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
     const redirectUri = process.env.GOOGLE_CALLBACK_URL || `${protocol}://${host}/api/v1/auth/google/callback`;
@@ -529,53 +529,17 @@ export async function googleAuth(req: Request, res: Response, next: NextFunction
     const origin = req.get('origin');
     const clientUrl = process.env.CLIENT_URL || (referer ? new URL(referer).origin : null) || (origin ? new URL(origin).origin : null) || `${protocol}://${host}`;
 
-    // 1. Redirect to Google OAuth consent page when GOOGLE_CLIENT_ID is set
-    if (clientId && !clientId.startsWith('your-google-client-id') && clientId.trim().length > 10) {
-      const scope = 'openid email profile';
-      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&prompt=select_account`;
-      res.redirect(authUrl);
-      return;
+    const restaurantSlug = (req.query.restaurant as string) || (req.query.state as string) || '';
+
+    if (!clientId || clientId.startsWith('your-google-client-id')) {
+      throw new AppError('Google OAuth is not configured on the server. Please provide GOOGLE_CLIENT_ID in environment variables.', 500, 'GOOGLE_AUTH_MISCONFIGURED');
     }
 
-    // 2. Dev mode Google Sign-In fallback for local testing when GOOGLE_CLIENT_ID is not configured
-    let googleUser = await prisma.user.findFirst({
-      where: {
-        email: 'google.customer@example.com',
-      },
-    });
-
-    if (googleUser && (googleUser.verifyToken === 'SUSPENDED' || googleUser.deletedAt)) {
-      googleUser = await prisma.user.update({
-        where: { id: googleUser.id },
-        data: { deletedAt: null, verifyToken: null },
-      });
-    }
-
-    if (!googleUser) {
-      googleUser = await prisma.user.create({
-        data: {
-          name: 'Google Customer',
-          email: 'google.customer@example.com',
-          googleId: 'google-oauth-demo-customer',
-          isVerified: true,
-          role: 'CUSTOMER',
-        },
-      });
-      sendCustomerWelcomeEmail(googleUser.email, googleUser.name).catch((err) => {
-        logger.error('Failed to send Google welcome email on registration:', err);
-      });
-    }
-
-    const accessToken = generateAccessToken({
-      id: googleUser.id,
-      email: googleUser.email,
-      role: googleUser.role,
-      name: googleUser.name,
-    });
-    const newRefreshToken = generateRefreshToken(googleUser.id);
-    setRefreshTokenCookie(res, newRefreshToken);
-
-    res.redirect(`${clientUrl.replace(/\/$/, '')}/auth/callback?token=${accessToken}`);
+    const scope = 'openid email profile';
+    const state = restaurantSlug ? encodeURIComponent(restaurantSlug) : '';
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&prompt=select_account${state ? `&state=${state}` : ''}`;
+    
+    res.redirect(authUrl);
   } catch (error) {
     next(error);
   }
@@ -591,6 +555,7 @@ export async function googleCallback(
   const referer = req.get('referer');
   const origin = req.get('origin');
   const clientUrl = process.env.CLIENT_URL || (referer ? new URL(referer).origin : null) || (origin ? new URL(origin).origin : null) || `${protocol}://${host}`;
+  const restaurantSlug = req.query.state ? decodeURIComponent(req.query.state as string) : '';
 
   try {
     const code = req.query.code as string;
@@ -649,6 +614,8 @@ export async function googleCallback(
       picture: info.picture || '',
     };
 
+    let isNewUser = false;
+
     // Find or create user among active/soft-deleted accounts using the actual Google email
     let user = await prisma.user.findFirst({
       where: {
@@ -685,7 +652,10 @@ export async function googleCallback(
           role: 'CUSTOMER',
         },
       });
+      isNewUser = true;
+    }
 
+    if (isNewUser) {
       sendCustomerWelcomeEmail(googleUser.email, user.name).catch((err) => {
         logger.error(`Failed to send Google login welcome email to ${googleUser.email}:`, err);
       });
@@ -701,8 +671,11 @@ export async function googleCallback(
 
     setRefreshTokenCookie(res, newRefreshToken);
 
-    // Redirect to frontend with token
-    res.redirect(`${clientUrl.replace(/\/$/, '')}/auth/callback?token=${accessToken}`);
+    const redirectTarget = restaurantSlug
+      ? `${clientUrl.replace(/\/$/, '')}/auth/callback?token=${accessToken}&restaurant=${encodeURIComponent(restaurantSlug)}`
+      : `${clientUrl.replace(/\/$/, '')}/auth/callback?token=${accessToken}`;
+
+    res.redirect(redirectTarget);
   } catch (error: any) {
     logger.error('Google Callback Error:', error);
     res.redirect(`${clientUrl.replace(/\/$/, '')}/login?error=oauth_failed`);
