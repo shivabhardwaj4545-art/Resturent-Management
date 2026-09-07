@@ -7,6 +7,7 @@ import { emitOrderStatusUpdate, emitNotification, emitUserLoyaltyUpdate, emitPay
 import { cacheDelPattern, cacheSet } from '../services/redis.service';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { generateTableSignature } from '../utils/tableSignature';
+import { parseMenuDocumentAI } from '../services/ai.gemini.service';
 import { sortOperatingHours } from '../utils/operatingHours';
 import { logger } from '../utils/logger';
 
@@ -272,7 +273,11 @@ export async function getCategories(req: AuthenticatedRequest, res: Response, ne
     const categories = await prisma.menuCategory.findMany({
       where: { restaurantId: restaurant.id },
       orderBy: { sortOrder: 'asc' },
-      include: { _count: { select: { items: true } } },
+      include: {
+        parent: { select: { id: true, name: true } },
+        subcategories: { orderBy: { sortOrder: 'asc' }, include: { _count: { select: { items: true } } } },
+        _count: { select: { items: true } },
+      },
     });
     res.json({ success: true, data: { categories } });
   } catch (error) { next(error); }
@@ -281,9 +286,10 @@ export async function getCategories(req: AuthenticatedRequest, res: Response, ne
 export async function createCategory(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const restaurant = await getOwnerRestaurant(req.user!.id);
-    const { name, sortOrder } = req.body as { name: string; sortOrder?: number };
+    const { name, parentId, sortOrder } = req.body as { name: string; parentId?: string | null; sortOrder?: number };
     const category = await prisma.menuCategory.create({
-      data: { name, restaurantId: restaurant.id, sortOrder: sortOrder ?? 0 },
+      data: { name, parentId: parentId || null, restaurantId: restaurant.id, sortOrder: sortOrder ?? 0 },
+      include: { parent: true },
     });
     await cacheDelPattern(`menu:${restaurant.slug}*`);
     res.status(201).json({ success: true, data: { category }, message: 'Category created' });
@@ -296,7 +302,16 @@ export async function updateCategory(req: AuthenticatedRequest, res: Response, n
     const id = req.params.id as string;
     const existing = await prisma.menuCategory.findFirst({ where: { id, restaurantId: restaurant.id } });
     if (!existing) throw new AppError('Category not found.', 404, 'CATEGORY_NOT_FOUND');
-    const category = await prisma.menuCategory.update({ where: { id }, data: req.body as Record<string, unknown> });
+    const { name, parentId, sortOrder } = req.body as { name?: string; parentId?: string | null; sortOrder?: number };
+    const category = await prisma.menuCategory.update({
+      where: { id },
+      data: {
+        ...(name !== undefined ? { name } : {}),
+        ...(parentId !== undefined ? { parentId: parentId || null } : {}),
+        ...(sortOrder !== undefined ? { sortOrder } : {}),
+      },
+      include: { parent: true },
+    });
     await cacheDelPattern(`menu:${restaurant.slug}*`);
     res.json({ success: true, data: { category }, message: 'Category updated' });
   } catch (error) { next(error); }
@@ -359,9 +374,9 @@ export async function createMenuItem(req: AuthenticatedRequest, res: Response, n
       imageUrl = await uploadMenuItemImage(req.file.buffer, restaurant.slug, body.name);
     }
 
-    const variants = body.variants ? JSON.parse(body.variants) as Array<{ name: string; price: number }> : [];
-    const addOns = body.addOns ? JSON.parse(body.addOns) as Array<{ name: string; price: number }> : [];
-    const badges = body.badges ? JSON.parse(body.badges) as string[] : [];
+    const variants = body.variants ? (JSON.parse(body.variants) as Array<{ name: string; price: number }>) : [];
+    const addOns = body.addOns ? (JSON.parse(body.addOns) as Array<{ name: string; price: number }>) : [];
+    const badges = body.badges ? (JSON.parse(body.badges) as string[]) : [];
 
     const item = await prisma.menuItem.create({
       data: {
@@ -375,8 +390,12 @@ export async function createMenuItem(req: AuthenticatedRequest, res: Response, n
         isVegan: body.isVegan === 'true',
         isAvailable: body.isAvailable !== 'false',
         badges: badges as Array<'POPULAR' | 'TRENDING' | 'BEST_SELLER' | 'NEW'>,
-        variants: { create: variants },
-        addOns: { create: addOns },
+        variants: {
+          create: variants.map((v) => ({ name: v.name, price: Number(v.price) })),
+        },
+        addOns: {
+          create: addOns.map((a) => ({ name: a.name, price: Number(a.price) })),
+        },
       },
       include: { variants: true, addOns: true, category: true },
     });
@@ -415,6 +434,28 @@ export async function updateMenuItem(req: AuthenticatedRequest, res: Response, n
     if (body.isAvailable !== undefined) updateData.isAvailable = body.isAvailable !== 'false';
     if (body.badges) updateData.badges = JSON.parse(body.badges) as string[];
 
+    // Handle variants update
+    if (body.variants !== undefined) {
+      const newVariants = JSON.parse(body.variants) as Array<{ name: string; price: number }>;
+      await prisma.itemVariant.deleteMany({ where: { menuItemId: id } });
+      if (newVariants.length > 0) {
+        await prisma.itemVariant.createMany({
+          data: newVariants.map((v) => ({ menuItemId: id, name: v.name, price: Number(v.price) })),
+        });
+      }
+    }
+
+    // Handle add-ons update
+    if (body.addOns !== undefined) {
+      const newAddOns = JSON.parse(body.addOns) as Array<{ name: string; price: number }>;
+      await prisma.itemAddOn.deleteMany({ where: { menuItemId: id } });
+      if (newAddOns.length > 0) {
+        await prisma.itemAddOn.createMany({
+          data: newAddOns.map((a) => ({ menuItemId: id, name: a.name, price: Number(a.price) })),
+        });
+      }
+    }
+
     const item = await prisma.menuItem.update({
       where: { id },
       data: updateData,
@@ -423,6 +464,144 @@ export async function updateMenuItem(req: AuthenticatedRequest, res: Response, n
 
     await cacheDelPattern(`menu:${restaurant.slug}*`);
     res.json({ success: true, data: { item }, message: 'Menu item updated' });
+  } catch (error) { next(error); }
+}
+
+export async function uploadAndParseMenu(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+    if (!req.file) throw new AppError('No menu file provided.', 400, 'NO_FILE');
+
+    const mimeType = req.file.mimetype;
+    const fileName = req.file.originalname;
+    const buffer = req.file.buffer;
+
+    let previewUrl: string;
+    if (mimeType.startsWith('image/')) {
+      previewUrl = `data:${mimeType};base64,${buffer.toString('base64')}`;
+    } else if (mimeType === 'application/pdf') {
+      previewUrl = `data:application/pdf;base64,${buffer.toString('base64')}`;
+    } else {
+      previewUrl = `data:text/plain;base64,${buffer.toString('base64')}`;
+    }
+
+    const parsed = await parseMenuDocumentAI(buffer, mimeType, fileName);
+
+    res.json({
+      success: true,
+      data: {
+        previewUrl,
+        parsed,
+      },
+      message: 'Menu document uploaded and parsed successfully',
+    });
+  } catch (error) { next(error); }
+}
+
+export async function batchImportMenu(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const { categories, items } = req.body as {
+      categories: Array<{ name: string; parentName?: string }>;
+      items: Array<{
+        name: string;
+        description?: string;
+        price: number;
+        categoryName: string;
+        parentCategoryName?: string;
+        isVeg?: boolean;
+        isVegan?: boolean;
+        variants?: Array<{ name: string; price: number }>;
+        addOns?: Array<{ name: string; price: number }>;
+      }>;
+    };
+
+    if (!items || !Array.isArray(items)) {
+      throw new AppError('Invalid items list', 400, 'INVALID_ITEMS');
+    }
+
+    const categoryMap = new Map<string, string>();
+
+    // Process top-level categories first
+    if (categories && Array.isArray(categories)) {
+      for (const cat of categories.filter((c) => !c.parentName)) {
+        let existing = await prisma.menuCategory.findFirst({
+          where: { restaurantId: restaurant.id, name: cat.name, parentId: null },
+        });
+        if (!existing) {
+          existing = await prisma.menuCategory.create({
+            data: { name: cat.name, restaurantId: restaurant.id },
+          });
+        }
+        categoryMap.set(cat.name, existing.id);
+      }
+
+      // Process subcategories
+      for (const cat of categories.filter((c) => c.parentName)) {
+        const parentId = categoryMap.get(cat.parentName!) || null;
+        let existing = await prisma.menuCategory.findFirst({
+          where: { restaurantId: restaurant.id, name: cat.name, parentId },
+        });
+        if (!existing) {
+          existing = await prisma.menuCategory.create({
+            data: { name: cat.name, restaurantId: restaurant.id, parentId },
+          });
+        }
+        categoryMap.set(cat.name, existing.id);
+      }
+    }
+
+    // Process items
+    let importedCount = 0;
+    for (const itemData of items) {
+      let catId = categoryMap.get(itemData.categoryName);
+      if (!catId) {
+        let parentId: string | null = null;
+        if (itemData.parentCategoryName) {
+          let parentCat = categoryMap.get(itemData.parentCategoryName);
+          if (!parentCat) {
+            const p = await prisma.menuCategory.create({
+              data: { name: itemData.parentCategoryName, restaurantId: restaurant.id },
+            });
+            parentCat = p.id;
+            categoryMap.set(itemData.parentCategoryName, p.id);
+          }
+          parentId = parentCat;
+        }
+        const createdCat = await prisma.menuCategory.create({
+          data: { name: itemData.categoryName, parentId, restaurantId: restaurant.id },
+        });
+        catId = createdCat.id;
+        categoryMap.set(itemData.categoryName, catId);
+      }
+
+      await prisma.menuItem.create({
+        data: {
+          name: itemData.name,
+          description: itemData.description || null,
+          price: Number(itemData.price) || 0,
+          categoryId: catId,
+          restaurantId: restaurant.id,
+          isVeg: itemData.isVeg !== false,
+          isVegan: itemData.isVegan === true,
+          variants: {
+            create: (itemData.variants || []).map((v) => ({ name: v.name, price: Number(v.price) })),
+          },
+          addOns: {
+            create: (itemData.addOns || []).map((a) => ({ name: a.name, price: Number(a.price) })),
+          },
+        },
+      });
+      importedCount++;
+    }
+
+    await cacheDelPattern(`menu:${restaurant.slug}*`);
+
+    res.status(201).json({
+      success: true,
+      data: { importedCount },
+      message: `Successfully imported ${importedCount} items into your menu!`,
+    });
   } catch (error) { next(error); }
 }
 

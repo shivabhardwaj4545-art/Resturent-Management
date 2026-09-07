@@ -56,13 +56,18 @@ export const api = axios.create({
   timeout: 30000,
 });
 
-// Request interceptor — attach access token
+// Request interceptor — attach access token & fix FormData content-type header
 api.interceptors.request.use((config) => {
+  if (config.data instanceof FormData && config.headers) {
+    delete config.headers['Content-Type'];
+    delete (config.headers as any)['content-type'];
+  }
   const token = useAuthStore.getState().accessToken;
   if (typeof window !== 'undefined') {
     console.log(`🚀 [API Request] ${config.method?.toUpperCase()} ${config.url}`, {
       hasToken: !!token,
       tokenPreview: token ? `${token.substring(0, 15)}...` : 'none',
+      isFormData: config.data instanceof FormData,
     });
   }
   if (token) {

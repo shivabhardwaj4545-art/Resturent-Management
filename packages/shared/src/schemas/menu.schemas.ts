@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export const menuCategorySchema = z.object({
   name: z.string().min(1, 'Category name is required').max(100),
+  parentId: z.string().cuid('Invalid parent category ID').optional().nullable(),
   sortOrder: z.number().int().min(0).default(0),
 });
 

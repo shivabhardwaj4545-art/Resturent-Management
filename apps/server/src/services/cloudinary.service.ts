@@ -16,7 +16,7 @@ cloudinaryV2.config({
 // Multer setup for memory storage (files stored in buffer)
 export const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB limit for images
   fileFilter: (_req, file, cb) => {
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
     if (allowedTypes.includes(file.mimetype)) {
@@ -25,6 +25,12 @@ export const upload = multer({
       cb(new AppError('Only JPEG, PNG, and WebP images are allowed.', 400, 'INVALID_FILE_TYPE'));
     }
   },
+});
+
+// Multer setup for menu document files (Images, PDFs, Text files up to 50MB)
+export const uploadDocument = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
 });
 
 export async function uploadImageToCloudinary(

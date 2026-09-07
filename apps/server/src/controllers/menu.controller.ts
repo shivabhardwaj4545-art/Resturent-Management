@@ -151,6 +151,8 @@ export async function getRestaurantMenu(
         where: { restaurantId: retryRestaurant.id },
         orderBy: { sortOrder: 'asc' },
         include: {
+          parent: { select: { id: true, name: true } },
+          subcategories: { select: { id: true, name: true } },
           items: {
             where: { deletedAt: null },
             orderBy: { createdAt: 'asc' },
@@ -169,6 +171,8 @@ export async function getRestaurantMenu(
       where: { restaurantId: restaurant.id },
       orderBy: { sortOrder: 'asc' },
       include: {
+        parent: { select: { id: true, name: true } },
+        subcategories: { select: { id: true, name: true } },
         items: {
           where: { deletedAt: null },
           orderBy: { createdAt: 'asc' },

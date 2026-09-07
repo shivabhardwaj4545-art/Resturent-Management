@@ -1,3 +1,4 @@
+
 import { Router } from 'express';
 import { authenticate } from '../middlewares/auth.middleware';
 import { requireOwner } from '../middlewares/rbac.middleware';
@@ -46,8 +47,10 @@ import {
   getKitchenStaff,
   createKitchenStaff,
   deleteKitchenStaff,
+  uploadAndParseMenu,
+  batchImportMenu,
 } from '../controllers/owner.controller';
-import { upload } from '../services/cloudinary.service';
+import { upload, uploadDocument } from '../services/cloudinary.service';
 
 const router = Router();
 
@@ -85,6 +88,8 @@ router.put('/menu/items/:id', upload.single('image'), updateMenuItem);
 router.delete('/menu/items/:id', deleteMenuItem);
 router.patch('/menu/items/:id/availability', toggleMenuItemAvailability);
 router.post('/menu/seed-demo', seedDemoMenu);
+router.post('/menu/upload-parse', uploadDocument.single('file'), uploadAndParseMenu);
+router.post('/menu/batch-import', batchImportMenu);
 
 // Coupons
 router.get('/coupons', getCoupons);

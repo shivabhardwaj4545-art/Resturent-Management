@@ -3,6 +3,7 @@ import { logger } from '../utils/logger';
 import { AppError } from '../utils/AppError';
 import { Prisma } from '@prisma/client';
 
+import multer from 'multer';
 import { syncDatabaseSchema } from '../utils/autoSeed';
 
 export function errorHandler(
@@ -26,6 +27,24 @@ export function errorHandler(
       success: false,
       error: error.message,
       code: error.code,
+    });
+    return;
+  }
+
+  // Multer file upload errors
+  if (error instanceof multer.MulterError || error.name === 'MulterError') {
+    if ((error as multer.MulterError).code === 'LIMIT_FILE_SIZE') {
+      res.status(400).json({
+        success: false,
+        error: 'File is too large. Maximum allowed file size for menu documents is 50MB.',
+        code: 'LIMIT_FILE_SIZE',
+      });
+      return;
+    }
+    res.status(400).json({
+      success: false,
+      error: error.message || 'File upload error.',
+      code: (error as multer.MulterError).code || 'UPLOAD_ERROR',
     });
     return;
   }

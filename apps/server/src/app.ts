@@ -76,13 +76,13 @@ app.use(
 // ── Body Parsers ──────────────────────────────────────────────
 app.use(
   express.json({
-    limit: '10mb',
+    limit: '50mb',
     verify: (req: any, _res, buf) => {
       req.rawBody = buf;
     },
   })
 );
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser());
 
 // Serve local uploads
