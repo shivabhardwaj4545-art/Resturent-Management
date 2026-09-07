@@ -160,9 +160,9 @@ export default function LoginClient() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className={`w-full ${activeTab === 'PARTNER' ? 'max-w-4xl grid md:grid-cols-2 gap-8' : 'max-w-md'} items-stretch my-8 relative z-10`}
+        className="w-full max-w-md my-8 relative z-10 mx-auto"
       >
-        {/* Left Column: Login Form */}
+        {/* Login Form */}
         <div className="flex flex-col justify-between">
           <div className="text-center mb-6">
             <Link href="/" className="inline-flex items-center gap-2 mb-4">
@@ -343,72 +343,6 @@ export default function LoginClient() {
             )}
           </div>
         </div>
-
-        {/* Right Column: Partner Info Panel (only shown in partner mode) */}
-        {activeTab === 'PARTNER' && (
-          <div className="bg-card backdrop-blur-xl border border-border rounded-2xl p-6 shadow-2xl flex flex-col justify-between">
-            <div className="flex flex-col h-full">
-              <div className="mb-6">
-                <h2 className="font-display text-xl font-bold text-foreground mb-2 flex items-center gap-2">
-                  <Store className="w-5 h-5 text-amber-400" />
-                  Restaurant Partner Portal
-                </h2>
-                <p className="text-muted-foreground text-sm">
-                  Sign in with your partner account to manage your restaurant.
-                </p>
-              </div>
-
-              <div className="space-y-4 flex-1">
-                {/* Owner Access */}
-                <div className="p-4 rounded-xl bg-amber-500/5 border border-amber-500/20">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-9 h-9 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-                      <Store className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-foreground text-sm">Restaurant Owner</p>
-                      <p className="text-[10px] text-amber-400">Full dashboard access</p>
-                    </div>
-                  </div>
-                  <ul className="text-xs text-muted-foreground space-y-1 pl-1">
-                    <li>• Manage your menu & categories</li>
-                    <li>• View and manage orders in real-time</li>
-                    <li>• Customize branding & settings</li>
-                    <li>• Track analytics & revenue</li>
-                  </ul>
-                </div>
-
-                {/* Admin Access */}
-                <div className="p-4 rounded-xl bg-purple-500/5 border border-purple-500/20">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-9 h-9 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
-                      <Shield className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-foreground text-sm">Super Admin</p>
-                      <p className="text-[10px] text-purple-400">Platform management</p>
-                    </div>
-                  </div>
-                  <ul className="text-xs text-muted-foreground space-y-1 pl-1">
-                    <li>• Approve & manage restaurants</li>
-                    <li>• View system-wide statistics</li>
-                    <li>• Manage platform users</li>
-                  </ul>
-                </div>
-
-                <div className="p-3 rounded-xl bg-muted border border-border text-center mt-auto">
-                  <p className="text-xs text-muted-foreground">
-                    Not a partner yet?{' '}
-                    <a href="mailto:support@qrrestaurant.com" className="text-orange-400 hover:text-orange-300 font-medium">
-                      Contact us
-                    </a>
-                    {' '}to get onboarded.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </motion.div>
     </div>
   );
