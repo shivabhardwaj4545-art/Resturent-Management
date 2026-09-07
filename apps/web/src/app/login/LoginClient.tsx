@@ -66,11 +66,6 @@ export default function LoginClient() {
   }, [isAuthenticated, user, router, activeRestaurantSlug, searchParams]);
 
   const handleGoogleAuth = () => {
-    if (activeTab === 'CUSTOMER' && !activeRestaurantSlug) {
-      toast.error('Please scan a restaurant table QR code first to log in as a customer.');
-      return;
-    }
-
     const googleTarget = activeRestaurantSlug
       ? `${API_BASE_URL}/auth/google?restaurant=${encodeURIComponent(activeRestaurantSlug)}`
       : `${API_BASE_URL}/auth/google`;
@@ -83,10 +78,6 @@ export default function LoginClient() {
   });
 
   const onSubmit = async (data: LoginForm) => {
-    if (activeTab === 'CUSTOMER' && !activeRestaurantSlug) {
-      toast.error('Please scan a restaurant table QR code first to log in as a customer.');
-      return;
-    }
 
     setLoading(true);
     try {
@@ -178,13 +169,6 @@ export default function LoginClient() {
             <p className="text-xs text-muted-foreground mb-2">
               Sign in to your account to continue
             </p>
-
-            {activeRestaurantSlug && (
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-orange-500/10 border border-orange-500/20 rounded-full text-xs font-medium text-orange-400 mt-1">
-                <Store className="w-3.5 h-3.5" />
-                <span>Restaurant: <strong>{activeRestaurantSlug.toUpperCase()}</strong></span>
-              </div>
-            )}
           </div>
 
           <div className="bg-card backdrop-blur-xl border border-border rounded-2xl p-6 shadow-2xl flex-1 flex flex-col justify-center">

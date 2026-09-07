@@ -42,38 +42,19 @@ export default function SelectRestaurantPage() {
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 max-w-4xl mx-auto w-full px-6 py-12 flex flex-col items-center">
-        {/* Main QR Notice Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full bg-card border border-border rounded-3xl p-8 shadow-xl text-center mb-10 relative overflow-hidden"
-        >
-          <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary mx-auto flex items-center justify-center mb-4 shadow-sm">
-            <QrCode className="w-8 h-8" />
-          </div>
-
-          <h1 className="font-display text-2xl sm:text-3xl font-bold mb-3 text-foreground">
-            No Restaurant QR Code Scanned
-          </h1>
-
-          <p className="text-muted-foreground text-sm sm:text-base max-w-xl mx-auto leading-relaxed mb-6">
-            Digital menus and table ordering require scanning the QR placard placed on your dining table. If you are currently at a restaurant, please scan their table QR code using your phone's camera.
-          </p>
-
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-muted border border-border text-xs font-semibold text-muted-foreground">
-            <Smartphone className="w-4 h-4 text-primary animate-pulse" />
-            <span>Point camera at table QR code to start ordering</span>
-          </div>
-        </motion.div>
-
+      <main className="flex-1 max-w-4xl mx-auto w-full px-6 py-8 flex flex-col items-center">
         {/* Demo / Available Restaurants Section */}
         <div className="w-full">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display font-bold text-lg text-foreground flex items-center gap-2">
-              <Store className="w-5 h-5 text-primary" /> Available Demo Restaurants
-            </h2>
-            <span className="text-xs text-muted-foreground">Explore sample menus</span>
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="font-display font-bold text-2xl text-foreground flex items-center gap-2">
+                <Store className="w-6 h-6 text-primary" /> Explore Restaurants
+              </h1>
+              <p className="text-xs text-muted-foreground mt-0.5">Select a restaurant to view digital menu and place orders</p>
+            </div>
+            <span className="text-xs text-muted-foreground font-semibold px-3 py-1 bg-muted rounded-full">
+              {restaurants.length} Restaurants Available
+            </span>
           </div>
 
           {loading ? (
