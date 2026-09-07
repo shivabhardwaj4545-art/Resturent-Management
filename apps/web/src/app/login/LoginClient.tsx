@@ -143,7 +143,7 @@ export default function LoginClient() {
     }
   };
 
-  const showCustomerQrLockedNotice = activeTab === 'CUSTOMER' && !activeRestaurantSlug;
+  const showCustomerQrLockedNotice = false;
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4 relative">
@@ -172,39 +172,14 @@ export default function LoginClient() {
               <span className="font-display font-bold text-xl text-foreground">EZ- Restaurant</span>
             </Link>
 
-            {/* Account Type Selector Tabs */}
-            <div className="flex bg-muted border border-border p-1 rounded-xl mb-4 max-w-xs mx-auto">
-              <button
-                type="button"
-                onClick={() => setActiveTab('CUSTOMER')}
-                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all ${
-                  activeTab === 'CUSTOMER'
-                    ? 'bg-card text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Customer Login
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('PARTNER')}
-                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all ${
-                  activeTab === 'PARTNER'
-                    ? 'bg-card text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Partner / Owner
-              </button>
-            </div>
-
             <h1 className="font-display text-2xl sm:text-3xl font-bold text-foreground mb-1">
-              {activeTab === 'CUSTOMER'
-                ? 'Customer Login'
-                : 'Partner & Owner Portal'}
+              Sign In
             </h1>
+            <p className="text-xs text-muted-foreground mb-2">
+              Sign in to your account to continue
+            </p>
 
-            {activeTab === 'CUSTOMER' && activeRestaurantSlug && (
+            {activeRestaurantSlug && (
               <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-orange-500/10 border border-orange-500/20 rounded-full text-xs font-medium text-orange-400 mt-1">
                 <Store className="w-3.5 h-3.5" />
                 <span>Restaurant: <strong>{activeRestaurantSlug.toUpperCase()}</strong></span>
