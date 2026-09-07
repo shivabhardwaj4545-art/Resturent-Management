@@ -459,8 +459,12 @@ export function OwnerMenuPage() {
     setExtractedMenu({ ...extractedMenu, items: updated });
   };
 
+  const subCatIds = activeCategory
+    ? catData?.filter((c) => c.parentId === activeCategory).map((c) => c.id) || []
+    : [];
+
   const filteredItems = activeCategory
-    ? itemsData?.filter((i) => i.categoryId === activeCategory)
+    ? itemsData?.filter((i) => i.categoryId === activeCategory || subCatIds.includes(i.categoryId))
     : itemsData;
 
   const iframeUrl = restaurantData?.slug ? `/r/${restaurantData.slug}` : '';
