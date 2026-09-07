@@ -42,6 +42,11 @@ export async function syncDatabaseSchema(): Promise<void> {
     'ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "guestPhone" TEXT',
     'ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "commissionAmount" DOUBLE PRECISION DEFAULT 0',
     'ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "deletedAt" TIMESTAMP',
+
+    // Menu Categories & Variants/Add-ons
+    'ALTER TABLE "menu_categories" ADD COLUMN IF NOT EXISTS "parentId" TEXT',
+    'CREATE TABLE IF NOT EXISTS "item_variants" ("id" TEXT NOT NULL PRIMARY KEY, "menuItemId" TEXT NOT NULL, "name" TEXT NOT NULL, "price" DOUBLE PRECISION NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+    'CREATE TABLE IF NOT EXISTS "item_add_ons" ("id" TEXT NOT NULL PRIMARY KEY, "menuItemId" TEXT NOT NULL, "name" TEXT NOT NULL, "price" DOUBLE PRECISION NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)',
   ];
 
   for (const sql of statements) {
