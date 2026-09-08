@@ -182,22 +182,28 @@ export function emitWaiterCall(
 
 export function emitWaiterResponse(restaurantId: string, tableNumber: string): void {
   if (!io) return;
-  io.to(`restaurant:${restaurantId}`).emit('waiter:responded', {
-    tableNumber,
+  const cleanTable = String(tableNumber).trim();
+  const payload = {
+    tableNumber: cleanTable,
     restaurantId,
-    message: `Waiter is coming to Table ${tableNumber}`,
+    message: `Waiter is coming to Table ${cleanTable}`,
     timestamp: new Date().toISOString(),
-  });
+  };
+  io.to(`table:${restaurantId}:${cleanTable}`).emit('waiter:responded', payload);
+  io.to(`restaurant:${restaurantId}`).emit('waiter:responded', payload);
 }
 
 export function emitWaiterDismiss(restaurantId: string, tableNumber: string): void {
   if (!io) return;
-  io.to(`restaurant:${restaurantId}`).emit('waiter:dismissed', {
-    tableNumber,
+  const cleanTable = String(tableNumber).trim();
+  const payload = {
+    tableNumber: cleanTable,
     restaurantId,
-    message: `Waiter is occupied right now. You can try again in 30 seconds.`,
+    message: `Waiter is occupied right now. You can try again in 1 minute.`,
     timestamp: new Date().toISOString(),
-  });
+  };
+  io.to(`table:${restaurantId}:${cleanTable}`).emit('waiter:dismissed', payload);
+  io.to(`restaurant:${restaurantId}`).emit('waiter:dismissed', payload);
 }
 
 export function emitPaymentNotReceived(orderId: string, amount: number): void {

@@ -216,7 +216,7 @@ export async function callWaiter(
         isApproved: true,
         isSuspended: false,
       },
-      select: { id: true, name: true },
+      select: { id: true, name: true, ownerId: true },
     });
 
     if (!restaurant) {
@@ -237,6 +237,7 @@ export async function callWaiter(
     await prisma.notification.create({
       data: {
         restaurantId: restaurant.id,
+        userId: restaurant.ownerId,
         type: 'WAITER_CALL',
         title: `🔔 Waiter Call - Table ${tableNumber.trim()}`,
         message: `Customer at Table ${tableNumber.trim()} is requesting assistance.`,

@@ -62,6 +62,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
   const [showTableInput, setShowTableInput] = useState(false);
   const [manualTableNumber, setManualTableNumber] = useState('');
   const [waiterComingTimer, setWaiterComingTimer] = useState(0);
+  const [waiterPendingTimer, setWaiterPendingTimer] = useState(0);
   const waiterComingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const waiterTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -95,6 +96,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
     setWaiterStatus('IDLE');
     setWaiterCooldown(0);
     setWaiterComingTimer(0);
+    setWaiterPendingTimer(0);
     if (typeof window !== 'undefined') {
       const key = getTableStorageKey(tbl);
       if (key) {
@@ -148,13 +150,14 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
     }, 1000);
   }, [clearWaiterTimers, getTableStorageKey, resetWaiterState]);
 
-  const startPendingState = useCallback((tbl?: string | null) => {
+  const startPendingState = useCallback((tbl?: string | null, seconds: number = 20) => {
     clearWaiterTimers();
     setWaiterStatus('PENDING');
+    setWaiterPendingTimer(seconds);
     setWaiterCooldown(0);
     setWaiterComingTimer(0);
 
-    const until = Date.now() + 60000; // 60s pending window
+    const until = Date.now() + seconds * 1000;
     const key = getTableStorageKey(tbl);
     if (typeof window !== 'undefined' && key) {
       localStorage.setItem(`waiter_status_${key}`, 'PENDING');
@@ -163,6 +166,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
 
     waiterTimerRef.current = setInterval(() => {
       const remaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+      setWaiterPendingTimer(remaining);
       if (remaining <= 0) {
         resetWaiterState(tbl);
       }
@@ -190,7 +194,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       } else if (storedStatus === 'OCCUPIED') {
         startOccupiedTimer(remaining, tableNumber || manualTableNumber);
       } else if (storedStatus === 'PENDING') {
-        startPendingState(tableNumber || manualTableNumber);
+        startPendingState(tableNumber || manualTableNumber, remaining);
       }
     } else {
       localStorage.removeItem(`waiter_status_${key}`);
@@ -613,16 +617,16 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       if (!currentTable || !resData?.tableNumber) return;
       if (String(currentTable).trim() === String(resData.tableNumber).trim()) {
         playWaiterCallSound();
-        startOccupiedTimer(30, resData.tableNumber);
+        startOccupiedTimer(60, resData.tableNumber);
         setCustomerAlert({
           isOpen: true,
           type: 'WAITER_OCCUPIED',
           title: '⏳ Waiter Is Busy Right Now',
-          message: resData.message || `Our waiters are currently busy assisting other tables. Please try calling again in 30 seconds.`,
+          message: resData.message || `Our waiters are currently busy assisting other tables. Please try calling again in 1 minute.`,
           tableNumber: resData.tableNumber,
-          timerSeconds: 30,
+          timerSeconds: 60,
         });
-        toast.error(`👨‍🍳 Waiter is busy right now. Please try calling again after 30 seconds.`, {
+        toast.error(`👨‍🍳 Waiter is busy right now. Please try calling again after 1 minute.`, {
           duration: 8000,
           icon: '⏳',
         });
@@ -997,7 +1001,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                 {waiterLoading
                   ? 'Sending Call...'
                   : waiterStatus === 'PENDING'
-                  ? 'Waiter Call Sent...'
+                  ? `Waiter Call Sent (${waiterPendingTimer}s)`
                   : waiterStatus === 'COMING'
                   ? `Waiter will come in ${waiterComingTimer} sec`
                   : waiterStatus === 'OCCUPIED'

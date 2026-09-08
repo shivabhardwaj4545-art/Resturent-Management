@@ -226,8 +226,22 @@ export async function getLoyalty(req: AuthenticatedRequest, res: Response, next:
 
 export async function getNotifications(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
+    let restaurantIds: string[] = [];
+    if (req.user?.role === 'RESTAURANT_OWNER') {
+      const owned = await prisma.restaurant.findMany({
+        where: { ownerId: req.user.id, deletedAt: null },
+        select: { id: true },
+      });
+      restaurantIds = owned.map((r) => r.id);
+    }
+
     const notifications = await prisma.notification.findMany({
-      where: { userId: req.user!.id },
+      where: {
+        OR: [
+          { userId: req.user!.id },
+          ...(restaurantIds.length > 0 ? [{ restaurantId: { in: restaurantIds } }] : []),
+        ],
+      },
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
@@ -238,8 +252,23 @@ export async function getNotifications(req: AuthenticatedRequest, res: Response,
 
 export async function markNotificationsRead(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
+    let restaurantIds: string[] = [];
+    if (req.user?.role === 'RESTAURANT_OWNER') {
+      const owned = await prisma.restaurant.findMany({
+        where: { ownerId: req.user.id, deletedAt: null },
+        select: { id: true },
+      });
+      restaurantIds = owned.map((r) => r.id);
+    }
+
     await prisma.notification.updateMany({
-      where: { userId: req.user!.id, isRead: false },
+      where: {
+        OR: [
+          { userId: req.user!.id },
+          ...(restaurantIds.length > 0 ? [{ restaurantId: { in: restaurantIds } }] : []),
+        ],
+        isRead: false,
+      },
       data: { isRead: true },
     });
     res.json({ success: true, data: null, message: 'All notifications marked as read' });
