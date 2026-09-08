@@ -726,13 +726,37 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
               </div>
             </div>
             {!['DELIVERED', 'CANCELLED'].includes(order.status) && (
-              <button
-                onClick={handleAddMoreItems}
-                className="w-full mt-3 py-2.5 px-4 border border-dashed rounded-xl text-xs font-semibold hover:bg-muted transition-colors flex items-center justify-center gap-1.5"
-                style={{ color: themeColor, borderColor: themeColor }}
-              >
-                <span>➕ Add More Items (Roti, Paneer, etc.)</span>
-              </button>
+              <div className="space-y-2 mt-3">
+                {order.paymentStatus !== 'PAID' && order.tableNumber && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const token = typeof window !== 'undefined' ? localStorage.getItem(`table_token_${restaurantSlug}`) || '' : '';
+                        await api.post(`/menu/${restaurantSlug}/call-waiter`, {
+                          tableNumber: order.tableNumber,
+                          tableToken: token,
+                          type: 'payment',
+                          amount: order.total,
+                          paymentMethod: order.paymentMethod,
+                        });
+                        toast.success(`🙋 Call Waiter for Payment sent for Table ${order.tableNumber}!`);
+                      } catch (err: any) {
+                        toast.error(err.response?.data?.error || 'Could not call waiter for payment.');
+                      }
+                    }}
+                    className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                  >
+                    <span>🙋 Call Waiter for Payment (Table {order.tableNumber})</span>
+                  </button>
+                )}
+                <button
+                  onClick={handleAddMoreItems}
+                  className="w-full py-2.5 px-4 border border-dashed rounded-xl text-xs font-semibold hover:bg-muted transition-colors flex items-center justify-center gap-1.5"
+                  style={{ color: themeColor, borderColor: themeColor }}
+                >
+                  <span>➕ Add More Items (Roti, Paneer, etc.)</span>
+                </button>
+              </div>
             )}
           </div>
         </div>

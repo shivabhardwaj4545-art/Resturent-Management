@@ -161,22 +161,16 @@ export function WaiterBell() {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button
-                    onClick={handleTestSound}
-                    className="text-[10px] bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 px-2 py-1 rounded-lg font-bold transition-all flex items-center gap-1 active:scale-95"
-                    title="Test Notification Sound"
-                  >
-                    <Volume2 className="w-3 h-3" /> Test Sound
-                  </button>
-                  <button
                     onClick={() => setSoundEnabled(!soundEnabled)}
-                    className={`p-1 rounded-lg transition-colors border text-[10px] font-bold flex items-center gap-1 ${
+                    className={`p-1 px-2 rounded-lg transition-colors border text-[10px] font-bold flex items-center gap-1 ${
                       soundEnabled
                         ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
                         : 'bg-muted text-muted-foreground border-border'
                     }`}
                     title="Toggle Sound Alerts"
                   >
-                    {soundEnabled ? <Volume2 className="w-3 h-3" /> : <VolumeX className="w-3 h-3" />}
+                    {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+                    <span>{soundEnabled ? 'Sound On' : 'Muted'}</span>
                   </button>
                 </div>
               </div>

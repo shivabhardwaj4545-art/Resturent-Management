@@ -424,7 +424,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                     }}
                     className={`flex-1 py-3 rounded-xl text-white text-sm font-bold bg-gradient-to-r ${gradientClass} hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5 cursor-pointer`}
                   >
-                    <span>✓ Send Waiter 🏃</span>
+                    <span>{activeWaiterAlert.type === 'payment' ? '✓ Send Waiter for Payment 🏃' : '✓ Send Waiter 🏃'}</span>
                   </button>
                 </div>
               </motion.div>

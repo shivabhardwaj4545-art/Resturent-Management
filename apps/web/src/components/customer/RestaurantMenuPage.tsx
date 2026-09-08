@@ -595,16 +595,16 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       if (!currentTable || !resData?.tableNumber) return;
       if (String(currentTable).trim() === String(resData.tableNumber).trim()) {
         playWaiterCallSound();
-        startComingTimer(20, resData.tableNumber);
+        startComingTimer(60, resData.tableNumber);
         setCustomerAlert({
           isOpen: true,
           type: 'WAITER_COMING',
-          title: '👨‍🍳 Waiter Is On The Way!',
-          message: resData.message || `A staff member has acknowledged your call for Table ${resData.tableNumber}. Waiter will come in 20 sec!`,
+          title: '👨‍🍳 Waiter Is Coming!',
+          message: resData.message || `Wait for 1 min, waiter is coming to Table ${resData.tableNumber}!`,
           tableNumber: resData.tableNumber,
-          timerSeconds: 20,
+          timerSeconds: 60,
         });
-        toast.success(`👨‍🍳 Waiter will come in 20 sec to Table ${resData.tableNumber}!`, {
+        toast.success(`👨‍🍳 Wait for 1 min, waiter is coming to Table ${resData.tableNumber}!`, {
           duration: 8000,
           icon: '🏃',
         });
@@ -616,16 +616,16 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       if (!currentTable || !resData?.tableNumber) return;
       if (String(currentTable).trim() === String(resData.tableNumber).trim()) {
         playWaiterCallSound();
-        startOccupiedTimer(60, resData.tableNumber);
+        startOccupiedTimer(30, resData.tableNumber);
         setCustomerAlert({
           isOpen: true,
           type: 'WAITER_OCCUPIED',
           title: '⏳ Waiter Is Busy Right Now',
-          message: resData.message || `Our waiters are currently busy assisting other tables. Please try calling again in 1 minute.`,
+          message: resData.message || `Waiter is busy right now. You can call waiter again after 30 seconds.`,
           tableNumber: resData.tableNumber,
-          timerSeconds: 60,
+          timerSeconds: 30,
         });
-        toast.error(`👨‍🍳 Waiter is busy right now. Please try calling again after 1 minute.`, {
+        toast.error(`⏳ Waiter is busy right now. You can call waiter again after 30 seconds.`, {
           duration: 8000,
           icon: '⏳',
         });
@@ -1002,7 +1002,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                   : waiterStatus === 'PENDING'
                   ? `Waiter Call Sent (${waiterPendingTimer}s)`
                   : waiterStatus === 'COMING'
-                  ? `Waiter will come in ${waiterComingTimer} sec`
+                  ? `Wait for 1 min, waiter is coming (${waiterComingTimer}s)`
                   : waiterStatus === 'OCCUPIED'
                   ? `Waiter is busy right now (${waiterCooldown}s)`
                   : 'Call Waiter'}
