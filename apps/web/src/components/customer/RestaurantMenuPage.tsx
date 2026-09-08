@@ -526,9 +526,9 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       if (waiterStatus === 'PENDING') {
         toast.info(`Waiter call is already pending for Table ${cleanT}. Please wait a moment.`);
       } else if (waiterStatus === 'COMING') {
-        toast.info(`Waiter is on their way to Table ${cleanT}!`);
+        toast.info(`Wait for 1 min, waiter is coming to Table ${cleanT}!`);
       } else if (waiterStatus === 'OCCUPIED') {
-        toast.info(`Waiter is currently occupied. You can try again in a few seconds.`);
+        toast.info(`Waiter is busy right now. You can try again after 30 seconds.`);
       }
       return;
     }
@@ -987,9 +987,9 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
               style={waiterStatus === 'IDLE' ? { backgroundColor: themeColor } : {}}
               className={`w-full sm:w-auto px-5 py-3 rounded-2xl sm:rounded-full text-white font-bold text-sm sm:text-base shadow-xl flex items-center justify-center gap-2 transition-all border whitespace-nowrap ${
                 waiterStatus === 'COMING'
-                  ? 'bg-[#10b981] border-[#047857] shadow-emerald-500/30 ring-4 ring-emerald-500/20'
+                  ? 'bg-emerald-600 border-emerald-500 text-white font-extrabold shadow-emerald-500/40 ring-4 ring-emerald-500/25'
                   : waiterStatus === 'OCCUPIED'
-                  ? 'bg-[#313d4f] border-[#222c3a] text-white opacity-95 cursor-not-allowed shadow-lg'
+                  ? 'bg-red-600 border-red-700 text-white font-extrabold opacity-95 cursor-not-allowed shadow-lg'
                   : waiterStatus === 'PENDING'
                   ? 'bg-amber-500 border-amber-600 animate-pulse text-white shadow-amber-500/20 ring-4 ring-amber-500/20 cursor-not-allowed'
                   : 'text-white border-transparent hover:opacity-95 shadow-lg'
