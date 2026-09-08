@@ -115,10 +115,18 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     socketRef.current = socket;
     useWaiterStore.getState().setSocket(socket);
 
-    socket.emit('join:restaurant', restaurantData.id);
-    if (user?.id) {
-      socket.emit('join:user', user.id);
+    const joinRooms = () => {
+      socket.emit('join:restaurant', restaurantData.id);
+      if (user?.id) {
+        socket.emit('join:user', user.id);
+      }
+    };
+
+    if (socket.connected) {
+      joinRooms();
     }
+
+    socket.on('connect', joinRooms);
 
     // 1. Waiter calls or payment requests
     socket.on('waiter:called', (payload: { 

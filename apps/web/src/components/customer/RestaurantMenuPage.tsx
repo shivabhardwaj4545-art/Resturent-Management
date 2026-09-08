@@ -747,8 +747,9 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
               <Link
                 href={`/login?restaurant=${slug}`}
                 className="text-[10px] sm:text-xs bg-primary hover:bg-primary/95 border border-primary/20 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-white font-semibold shadow-sm transition-all whitespace-nowrap shrink-0"
+                title="Login is optional for earning loyalty points & order history"
               >
-                Login
+                Login (Optional)
               </Link>
             </>
           )}

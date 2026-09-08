@@ -7,6 +7,10 @@ import api from '@/lib/api';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { motion } from 'framer-motion';
 
+import { useAuthStore } from '@/store/auth.store';
+import { LogIn, LogOut, User as UserIcon } from 'lucide-react';
+import { toast } from 'sonner';
+
 type Restaurant = {
   slug: string;
   name: string;
@@ -16,8 +20,11 @@ type Restaurant = {
 export default function SelectRestaurantPage() {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
+  const { user, isAuthenticated, logout } = useAuthStore();
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     api
       .get('/menu/restaurants')
       .then((res) => {
@@ -38,7 +45,44 @@ export default function SelectRestaurantPage() {
           </div>
           <span className="font-display font-bold text-lg">Restaurant Hub</span>
         </Link>
-        <ThemeToggle size="sm" />
+        <div className="flex items-center gap-3">
+          <ThemeToggle size="sm" />
+          {mounted && (
+            isAuthenticated && user ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground font-medium hidden sm:inline-block">
+                  Hi, {user.name.split(' ')[0]}
+                </span>
+                {user.role === 'SUPER_ADMIN' && (
+                  <Link href="/admin/dashboard" className="text-xs bg-muted hover:bg-accent border border-border px-3 py-1.5 rounded-lg text-foreground font-medium">
+                    Admin
+                  </Link>
+                )}
+                {user.role === 'RESTAURANT_OWNER' && (
+                  <Link href="/owner/dashboard" className="text-xs bg-muted hover:bg-accent border border-border px-3 py-1.5 rounded-lg text-foreground font-medium">
+                    Owner Dashboard
+                  </Link>
+                )}
+                <button
+                  onClick={() => {
+                    logout();
+                    toast.success('Logged out successfully');
+                  }}
+                  className="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1"
+                >
+                  <LogOut className="w-3.5 h-3.5" /> Logout
+                </button>
+              </div>
+            ) : (
+              <Link
+                href="/login"
+                className="text-xs bg-primary hover:bg-primary/90 text-primary-foreground px-3.5 py-1.5 rounded-lg font-semibold transition-all shadow-sm flex items-center gap-1.5"
+              >
+                <LogIn className="w-3.5 h-3.5" /> Sign In
+              </Link>
+            )
+          )}
+        </div>
       </header>
 
       {/* Main Container */}

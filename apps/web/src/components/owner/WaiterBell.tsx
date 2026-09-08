@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useWaiterStore } from '@/store/waiter.store';
@@ -28,9 +28,28 @@ export function WaiterBell() {
       const res = await api.get('/profile/notifications');
       return res.data.data as { notifications: NotificationItem[]; unreadCount: number };
     },
-    enabled: showWaiterPanel,
-    refetchInterval: 10000,
+    enabled: true,
+    refetchInterval: 8000,
   });
+
+  // Sync unread WAITER_CALL notifications from database into active waiter store
+  useEffect(() => {
+    if (!notifData?.notifications) return;
+    const waiterNotifs = notifData.notifications.filter((n) => !n.isRead && n.type === 'WAITER_CALL');
+    waiterNotifs.forEach((n) => {
+      // Extract table number from title (e.g. "🔔 Waiter Call - Table 3")
+      const match = n.title.match(/Table\s+([A-Za-z0-9_-]+)/i) || n.message.match(/Table\s+([A-Za-z0-9_-]+)/i);
+      const tableNumber = match ? match[1] : 'Unknown';
+      const existing = waiterCalls.some((c) => c.tableNumber === tableNumber);
+      if (!existing) {
+        useWaiterStore.getState().addWaiterCall({
+          tableNumber,
+          calledAt: n.createdAt,
+          type: 'default',
+        });
+      }
+    });
+  }, [notifData, waiterCalls]);
 
   const markReadMutation = useMutation({
     mutationFn: async () => {
@@ -42,7 +61,7 @@ export function WaiterBell() {
   });
 
   const notifications = notifData?.notifications ?? [];
-  const unreadNotifCount = notifData?.unreadCount ?? 0;
+  const unreadNotifCount = notifications.filter((n) => !n.isRead).length;
   const totalUnreadCount = waiterCalls.length + unreadNotifCount;
 
   return (
