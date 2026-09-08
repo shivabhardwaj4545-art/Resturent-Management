@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import { Search, Filter, ShoppingCart, Clock, MapPin, Star, Bot, X, ChevronUp, QrCode, ChevronRight, BellRing, Gift } from 'lucide-react';
-import api from '@/lib/api';
+import api, { getSocketUrl } from '@/lib/api';
 import { useCartStore } from '@/store/cart.store';
 import { useAuthStore } from '@/store/auth.store';
 import { MenuItemCard } from './MenuItemCard';
@@ -563,8 +563,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
 
   useEffect(() => {
     if (!data?.restaurant?.id) return;
-    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') ?? 'http://localhost:4000';
-    const socket = io(socketUrl, {
+    const socket = io(getSocketUrl(), {
       transports: ['websocket', 'polling'],
       withCredentials: true,
     });

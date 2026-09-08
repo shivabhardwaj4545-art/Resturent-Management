@@ -9,7 +9,7 @@ import {
   XCircle, Clock, ChevronRight, Shield, CreditCard, Ticket, HandCoins, Megaphone, MessageSquare, Star
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
-import api from '@/lib/api';
+import api, { getSocketUrl } from '@/lib/api';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import {
@@ -23,21 +23,19 @@ import { SuperAdminBroadcastModal } from './SuperAdminBroadcastModal';
 import { AdminOwnerChatModal } from './AdminOwnerChatModal';
 
 const NAV_ITEMS = [
-  { label: 'Dashboard', icon: LayoutDashboard, href: '/admin/dashboard' },
-  { label: 'Restaurants', icon: Store, href: '/admin/restaurants' },
-  { label: 'Users', icon: Users, href: '/admin/users' },
-  { label: 'Reviews', icon: Star, href: '/admin/reviews' },
-  { label: 'Subscriptions', icon: CreditCard, href: '/admin/subscriptions' },
-  { label: 'Coupons', icon: Ticket, href: '/admin/coupons' },
-  { label: 'Payouts', icon: HandCoins, href: '/admin/payouts' },
-  { label: 'Analytics', icon: BarChart3, href: '/admin/analytics' },
-  { label: 'Settings', icon: Settings, href: '/admin/settings' },
+  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/admin/restaurants', label: 'Restaurants', icon: Store },
+  { href: '/admin/coupons', label: 'Global Coupons', icon: Ticket },
+  { href: '/admin/settlements', label: 'Settlements', icon: HandCoins },
+  { href: '/admin/broadcast', label: 'Broadcast', icon: Megaphone },
+  { href: '/admin/chat', label: 'Owner Messages', icon: MessageSquare },
+  { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
 ];
 
 export function AdminDashboard() {
-  const pathname = usePathname();
   const { user, logout } = useAuthStore();
   const router = useRouter();
+  const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [period, setPeriod] = useState<'7d' | '30d'>('7d');
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
@@ -46,10 +44,7 @@ export function AdminDashboard() {
 
   useEffect(() => {
     if (!user?.id) return;
-    const socket = io(
-      process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') ?? 'http://localhost:4000',
-      { transports: ['websocket', 'polling'], withCredentials: true }
-    );
+    const socket = io(getSocketUrl(), { transports: ['websocket', 'polling'], withCredentials: true });
 
     socket.emit('join:user', user.id);
 

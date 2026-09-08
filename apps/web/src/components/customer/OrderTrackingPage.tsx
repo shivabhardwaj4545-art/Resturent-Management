@@ -23,7 +23,8 @@ import { CustomerNotificationModal } from './CustomerNotificationModal';
 import { playNewOrderSound } from '@/utils/audio';
 import { getImageUrl } from '@/lib/image';
 import { io, Socket } from 'socket.io-client';
-import api from '@/lib/api';
+import api, { getSocketUrl } from '@/lib/api';
+import { useAuthStore } from '@/store/auth.store';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -127,6 +128,7 @@ interface OrderTrackingPageProps {
 
 export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPageProps) {
   const router = useRouter();
+  const { user } = useAuthStore();
   const [currentStatus, setCurrentStatus] = useState<string>('PENDING');
   const [showRating, setShowRating] = useState(false);
   const [rating, setRating] = useState(0);
@@ -142,6 +144,8 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
       const res = await api.get('/profile/notifications');
       return res.data.data as { unreadCount: number };
     },
+    enabled: !!user,
+    retry: false,
     refetchInterval: 12000,
   });
 
@@ -220,7 +224,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
   // ── Socket.io real-time tracking ──────────────────────────────────────────
   useEffect(() => {
     const socket: Socket = io(
-      process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') ?? 'http://localhost:4000',
+      getSocketUrl(),
       { transports: ['websocket', 'polling'], withCredentials: true },
     );
 

@@ -5,7 +5,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { useRouter } from 'next/navigation';
 import { Loader2, DollarSign, BellRing, Banknote, ShoppingBag, Check, X } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/api';
+import api, { getSocketUrl } from '@/lib/api';
 import { toast } from 'sonner';
 import { AnimatePresence, motion } from 'framer-motion';
 import { io, Socket } from 'socket.io-client';
@@ -108,7 +108,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     if (!restaurantData?.id) return;
 
     const socket: Socket = io(
-      process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') ?? 'http://localhost:4000',
+      getSocketUrl(),
       { transports: ['websocket', 'polling'], withCredentials: true }
     );
     socketRef.current = socket;
@@ -137,7 +137,12 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       paymentMethod?: string;
       itemsSummary?: string;
     }) => {
-      useWaiterStore.getState().addWaiterCall(payload);
+      const waiterCallObj: WaiterCall = {
+        id: `${payload.tableNumber}-${Date.now()}`,
+        ...payload,
+      };
+      useWaiterStore.getState().addWaiterCall(payload, true);
+      useWaiterStore.getState().setActiveWaiterAlert(waiterCallObj);
       playWaiterCallSound();
       
       const isPayOnCounter = payload.paymentMethod === 'COD';
@@ -157,11 +162,6 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
             : 'Add-on Items Added';
         detailLabel = `Table ${payload.tableNumber} added items${payload.amount ? ` (₹${payload.amount})` : ''}${payload.itemsSummary ? `: ${payload.itemsSummary}` : ''}`;
       }
-        
-      const waiterCallObj: WaiterCall = {
-        id: `${payload.tableNumber}-${Date.now()}`,
-        ...payload,
-      };
 
       toast.info(`${typeLabel}: ${detailLabel}`, {
         duration: 10000,

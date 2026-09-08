@@ -62,11 +62,12 @@ export const useWaiterStore = create<WaiterState>((set) => ({
       id: `${cleanTable}-${Date.now()}`,
     };
     set((state) => {
-      const isHandled = state.handledTables.includes(cleanTable);
       const updatedCalls = [newCall, ...state.waiterCalls.filter((c) => c.tableNumber !== cleanTable)];
+      const updatedHandled = state.handledTables.filter((t) => t !== cleanTable);
       return {
         waiterCalls: updatedCalls,
-        activeWaiterAlert: showAlert && !isHandled ? newCall : state.activeWaiterAlert,
+        handledTables: updatedHandled,
+        activeWaiterAlert: showAlert ? newCall : state.activeWaiterAlert,
       };
     });
   },

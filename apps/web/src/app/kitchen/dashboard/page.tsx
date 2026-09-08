@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useAuthStore } from '@/store/auth.store';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/api';
+import api, { getSocketUrl } from '@/lib/api';
 import { toast } from 'sonner';
 import { io, Socket } from 'socket.io-client';
 import {
@@ -124,8 +124,7 @@ export default function KitchenDashboardPage() {
   useEffect(() => {
     if (!restaurantId) return;
 
-    const wsUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') || 'http://localhost:4000';
-    const socket = io(wsUrl, {
+    const socket = io(getSocketUrl(), {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 10,
     });

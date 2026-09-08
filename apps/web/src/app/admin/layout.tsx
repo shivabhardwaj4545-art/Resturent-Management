@@ -5,8 +5,9 @@ import { useAuthStore } from '@/store/auth.store';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { io, Socket } from 'socket.io-client';
+import api, { getSocketUrl } from '@/lib/api';
 import { toast } from 'sonner';
+import { io, Socket } from 'socket.io-client';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated } = useAuthStore();
@@ -30,8 +31,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   useEffect(() => {
     if (!user || user.role !== 'SUPER_ADMIN') return;
 
-    const wsUrl = process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') ?? 'http://localhost:4000';
-    const socket: Socket = io(wsUrl, {
+    const socket: Socket = io(getSocketUrl(), {
       transports: ['websocket', 'polling'],
       withCredentials: true,
     });

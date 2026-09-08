@@ -202,13 +202,41 @@ api.interceptors.response.use(
       error.response?.data?.error ?? error.message ?? 'Something went wrong';
     const errorCode = error.response?.data?.code;
 
-    // Don't toast for validation errors (handled in forms)
-    if (errorCode !== 'VALIDATION_ERROR' && error.response?.status !== 400) {
+    // Don't toast for validation errors (handled in forms) or 401 unauthorized errors (handled by refresh/redirect)
+    if (errorCode !== 'VALIDATION_ERROR' && error.response?.status !== 400 && error.response?.status !== 401) {
       toast.error(errorMessage);
     }
 
     return Promise.reject(error);
   }
 );
+
+export function getSocketUrl(): string {
+  if (typeof window !== 'undefined') {
+    const envSocketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
+    if (envSocketUrl && !envSocketUrl.includes('localhost')) {
+      return envSocketUrl;
+    }
+    const hostname = window.location.hostname;
+    const protocol = window.location.protocol;
+
+    if (hostname.includes('.onrender.com')) {
+      const serverHostname = hostname.replace('-web', '-server');
+      return `${protocol}//${serverHostname}`;
+    }
+
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      if (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost')) {
+        return process.env.NEXT_PUBLIC_API_URL.replace('/api/v1', '').replace(/\/$/, '');
+      }
+      return 'http://localhost:4000';
+    }
+
+    return `${window.location.origin}`;
+  }
+
+  const envSocket = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '');
+  return envSocket || 'http://localhost:4000';
+}
 
 export default api;
