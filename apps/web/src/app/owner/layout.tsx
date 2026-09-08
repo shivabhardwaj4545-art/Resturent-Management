@@ -171,7 +171,8 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     });
 
     // 2. New order received
-    socket.on('order:new', (order: any) => {
+    const handleNewOrderEvent = (order: any) => {
+      useWaiterStore.getState().addNewOrder(order);
       playNewOrderSound();
       setActiveNewOrderAlert(order);
       
@@ -187,12 +188,17 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       // Auto-refresh orders and stats
       queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
       queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
-    });
+      queryClient.invalidateQueries({ queryKey: ['owner-recent-orders-popover'] });
+    };
+
+    socket.on('order:new', handleNewOrderEvent);
+    socket.on('kitchen:new_order', handleNewOrderEvent);
 
     // 3. Order status updated
     socket.on('order:status_updated', () => {
       queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
       queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-recent-orders-popover'] });
     });
 
     // 4. Broadcast & Direct Chat Notifications

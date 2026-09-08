@@ -3,9 +3,29 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { useWaiterStore } from '@/store/waiter.store';
-import { Bell, BellRing, DollarSign, X, Check, Banknote, Sparkles, Megaphone, CheckCheck, Loader2 } from 'lucide-react';
+import { useWaiterStore, WaiterCall, LiveOrderAlert } from '@/store/waiter.store';
+import {
+  Bell,
+  BellRing,
+  DollarSign,
+  X,
+  Check,
+  Banknote,
+  Sparkles,
+  Megaphone,
+  CheckCheck,
+  Loader2,
+  ShoppingBag,
+  Volume2,
+  VolumeX,
+  ArrowRight,
+  Clock,
+  User,
+  Utensils
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { playNewOrderSound, playWaiterCallSound } from '@/utils/audio';
+import Link from 'next/link';
 
 interface NotificationItem {
   id: string;
@@ -17,11 +37,21 @@ interface NotificationItem {
 }
 
 export function WaiterBell() {
-  const { waiterCalls, removeWaiterCall, clearAll } = useWaiterStore();
+  const {
+    waiterCalls,
+    newOrders,
+    removeWaiterCall,
+    removeNewOrder,
+    clearAll,
+    soundEnabled,
+    setSoundEnabled
+  } = useWaiterStore();
+
   const [showWaiterPanel, setShowWaiterPanel] = useState(false);
-  const [activeTab, setActiveTab] = useState<'calls' | 'notifications'>('calls');
+  const [activeTab, setActiveTab] = useState<'calls' | 'orders' | 'activity'>('calls');
   const queryClient = useQueryClient();
 
+  // 1. Fetch recent activity notifications
   const { data: notifData, isLoading: isLoadingNotifs } = useQuery({
     queryKey: ['owner-notifications'],
     queryFn: async () => {
@@ -32,12 +62,22 @@ export function WaiterBell() {
     refetchInterval: 8000,
   });
 
+  // 2. Fetch live recent orders
+  const { data: recentOrdersData, isLoading: isLoadingOrders } = useQuery({
+    queryKey: ['owner-recent-orders-popover'],
+    queryFn: async () => {
+      const res = await api.get('/owner/orders?limit=10');
+      return res.data.data.orders as any[];
+    },
+    enabled: showWaiterPanel,
+    refetchInterval: 8000,
+  });
+
   // Sync unread WAITER_CALL notifications from database into active waiter store
   useEffect(() => {
     if (!notifData?.notifications) return;
     const waiterNotifs = notifData.notifications.filter((n) => !n.isRead && n.type === 'WAITER_CALL');
     waiterNotifs.forEach((n) => {
-      // Extract table number from title (e.g. "🔔 Waiter Call - Table 3")
       const match = n.title.match(/Table\s+([A-Za-z0-9_-]+)/i) || n.message.match(/Table\s+([A-Za-z0-9_-]+)/i);
       const tableNumber = match ? match[1] : 'Unknown';
       const existing = waiterCalls.some((c) => c.tableNumber === tableNumber);
@@ -62,81 +102,144 @@ export function WaiterBell() {
 
   const notifications = notifData?.notifications ?? [];
   const unreadNotifCount = notifications.filter((n) => !n.isRead).length;
-  const totalUnreadCount = waiterCalls.length + unreadNotifCount;
+
+  const dbRecentOrders = recentOrdersData ?? [];
+  const pendingOrders = dbRecentOrders.filter((o) => o.status === 'PENDING' || o.status === 'CONFIRMED');
+  const combinedOrdersCount = Math.max(newOrders.length, pendingOrders.length);
+
+  const totalUnreadCount = waiterCalls.length + combinedOrdersCount + unreadNotifCount;
+
+  const handleTestSound = () => {
+    playWaiterCallSound();
+    setTimeout(() => {
+      playNewOrderSound();
+    }, 400);
+  };
 
   return (
     <div className="relative">
       <button
-        onClick={() => setShowWaiterPanel((v) => !v)}
-        className="relative p-2 rounded-xl hover:bg-muted transition-colors"
-        title="Notifications & Waiter Calls"
+        onClick={() => {
+          setShowWaiterPanel((v) => !v);
+          if (soundEnabled) {
+            playWaiterCallSound();
+          }
+        }}
+        className="relative p-2.5 rounded-xl hover:bg-muted/80 transition-all duration-200 active:scale-95 group"
+        title="Live Notifications, Waiter Calls & Orders"
       >
         {totalUnreadCount > 0 ? (
-          <BellRing className="w-5 h-5 text-primary animate-[ring_1s_ease-in-out_3]" />
+          <div className="relative">
+            <BellRing className="w-5 h-5 text-primary animate-[ring_1.5s_ease-in-out_infinite]" />
+            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white rounded-full text-[10px] font-black flex items-center justify-center shadow-lg shadow-red-500/30 animate-pulse border-2 border-background">
+              {totalUnreadCount}
+            </span>
+          </div>
         ) : (
-          <Bell className="w-5 h-5 text-foreground" />
-        )}
-        {totalUnreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-primary text-primary-foreground rounded-full text-[10px] font-bold flex items-center justify-center animate-bounce">
-            {totalUnreadCount}
-          </span>
+          <Bell className="w-5 h-5 text-foreground/80 group-hover:text-foreground transition-colors" />
         )}
       </button>
 
-      {/* Notifications Panel */}
+      {/* Notifications Drawer Popover */}
       <AnimatePresence>
         {showWaiterPanel && (
           <>
             <div className="fixed inset-0 z-40" onClick={() => setShowWaiterPanel(false)} />
             <motion.div
-              initial={{ opacity: 0, y: -10, scale: 0.95 }}
+              initial={{ opacity: 0, y: -12, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -10, scale: 0.95 }}
-              transition={{ duration: 0.15 }}
-              className="absolute right-0 mt-2 z-50 w-84 bg-card border border-border shadow-2xl rounded-2xl overflow-hidden"
+              exit={{ opacity: 0, y: -12, scale: 0.96 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              className="absolute right-0 mt-2.5 z-50 w-96 max-w-[calc(100vw-2rem)] bg-card border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col"
             >
+              {/* Sound Controls Header */}
+              <div className="px-4 py-2.5 bg-muted/60 border-b border-border flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                  <span className="text-xs font-bold text-foreground">Live Notification Center</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={handleTestSound}
+                    className="text-[10px] bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 px-2 py-1 rounded-lg font-bold transition-all flex items-center gap-1 active:scale-95"
+                    title="Test Notification Sound"
+                  >
+                    <Volume2 className="w-3 h-3" /> Test Sound
+                  </button>
+                  <button
+                    onClick={() => setSoundEnabled(!soundEnabled)}
+                    className={`p-1 rounded-lg transition-colors border text-[10px] font-bold flex items-center gap-1 ${
+                      soundEnabled
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                        : 'bg-muted text-muted-foreground border-border'
+                    }`}
+                    title="Toggle Sound Alerts"
+                  >
+                    {soundEnabled ? <Volume2 className="w-3 h-3" /> : <VolumeX className="w-3 h-3" />}
+                  </button>
+                </div>
+              </div>
+
               {/* Tab Selector Header */}
-              <div className="flex border-b border-border bg-muted/40 p-1">
+              <div className="flex border-b border-border bg-muted/30 p-1 gap-1">
                 <button
                   onClick={() => setActiveTab('calls')}
-                  className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                     activeTab === 'calls'
-                      ? 'bg-card text-foreground shadow-xs'
+                      ? 'bg-card text-primary shadow-xs border border-border/80'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  <BellRing className="w-3.5 h-3.5 text-primary" />
+                  <BellRing className="w-3.5 h-3.5 text-orange-500" />
                   <span>Waiter Calls</span>
                   {waiterCalls.length > 0 && (
-                    <span className="px-1.5 py-0.2 bg-primary text-primary-foreground rounded-full text-[10px]">
+                    <span className="px-1.5 py-0.2 bg-orange-500 text-white rounded-full text-[10px] font-extrabold">
                       {waiterCalls.length}
                     </span>
                   )}
                 </button>
+
                 <button
-                  onClick={() => setActiveTab('notifications')}
-                  className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                    activeTab === 'notifications'
-                      ? 'bg-card text-foreground shadow-xs'
+                  onClick={() => setActiveTab('orders')}
+                  className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    activeTab === 'orders'
+                      ? 'bg-card text-emerald-600 dark:text-emerald-400 shadow-xs border border-border/80'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <ShoppingBag className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>Orders</span>
+                  {combinedOrdersCount > 0 && (
+                    <span className="px-1.5 py-0.2 bg-emerald-500 text-white rounded-full text-[10px] font-extrabold">
+                      {combinedOrdersCount}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('activity')}
+                  className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    activeTab === 'activity'
+                      ? 'bg-card text-blue-600 dark:text-blue-400 shadow-xs border border-border/80'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
                   <Megaphone className="w-3.5 h-3.5 text-blue-500" />
                   <span>Activity</span>
                   {unreadNotifCount > 0 && (
-                    <span className="px-1.5 py-0.2 bg-blue-500 text-white rounded-full text-[10px]">
+                    <span className="px-1.5 py-0.2 bg-blue-500 text-white rounded-full text-[10px] font-extrabold">
                       {unreadNotifCount}
                     </span>
                   )}
                 </button>
               </div>
 
-              {/* Tab 1: Waiter Calls */}
+              {/* TAB 1: Waiter Calls */}
               {activeTab === 'calls' && (
                 <>
-                  <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-orange-50/50 dark:bg-orange-950/20">
-                    <span className="text-[11px] font-bold text-orange-700 dark:text-orange-400">
-                      Live Table & Payment Calls
+                  <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-orange-500/5 dark:bg-orange-950/20">
+                    <span className="text-[11px] font-extrabold text-orange-600 dark:text-orange-400 uppercase tracking-wider">
+                      Live Table & Payment Requests
                     </span>
                     {waiterCalls.length > 0 && (
                       <button
@@ -152,92 +255,88 @@ export function WaiterBell() {
                           });
                           clearAll();
                         }}
-                        className="text-[10px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        className="text-[10px] font-bold text-muted-foreground hover:text-foreground transition-colors"
                       >
-                        Clear all
+                        Clear All
                       </button>
                     )}
                   </div>
 
-                  <div className="max-h-72 overflow-y-auto">
+                  <div className="max-h-80 overflow-y-auto p-2">
                     {waiterCalls.length === 0 ? (
-                      <div className="py-8 text-center text-muted-foreground text-sm">
-                        <Bell className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                        No active waiter calls
+                      <div className="py-10 text-center text-muted-foreground text-xs space-y-2">
+                        <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center mx-auto opacity-40">
+                          <Bell className="w-5 h-5" />
+                        </div>
+                        <p className="font-semibold">No active waiter calls</p>
+                        <p className="text-[11px] opacity-70">Calls from dining tables will appear here live</p>
                       </div>
                     ) : (
-                      <div className="p-2 space-y-1.5">
+                      <div className="space-y-2">
                         {waiterCalls.map((call) => {
                           const isPayOnCounter = call.paymentMethod === 'COD';
                           const isPayToWaiter = call.paymentMethod === 'PAY_TO_WAITER';
                           const isAddon = call.type === 'addons';
                           const isPayment = call.type === 'payment';
-                          
-                          let containerClass = "bg-orange-50 dark:bg-orange-900/20 border-orange-200/50 dark:border-orange-500/20";
-                          let iconClass = "bg-orange-500/10 text-orange-500";
+
+                          let containerClass = "bg-orange-50/80 dark:bg-orange-950/30 border-orange-200 dark:border-orange-500/30";
+                          let iconClass = "bg-orange-500 text-white";
                           let IconComponent = BellRing;
-                          
+
                           if (isAddon) {
-                            containerClass = "bg-blue-50 dark:bg-blue-900/20 border-blue-200/50 dark:border-blue-500/20";
-                            iconClass = "bg-blue-500/10 text-blue-500";
+                            containerClass = "bg-blue-50/80 dark:bg-blue-950/30 border-blue-200 dark:border-blue-500/30";
+                            iconClass = "bg-blue-500 text-white";
                             IconComponent = isPayOnCounter ? Banknote : isPayToWaiter ? DollarSign : Sparkles;
                           } else if (isPayment) {
-                            containerClass = "bg-amber-50 dark:bg-amber-900/20 border-amber-200/50 dark:border-amber-500/20";
-                            iconClass = "bg-amber-500/10 text-amber-500";
+                            containerClass = "bg-amber-50/80 dark:bg-amber-950/30 border-amber-200 dark:border-amber-500/30";
+                            iconClass = "bg-amber-500 text-white";
                             IconComponent = isPayOnCounter ? Banknote : DollarSign;
                           }
 
                           return (
                             <motion.div
                               key={call.id}
-                              initial={{ opacity: 0, x: -10 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              className={`flex items-center justify-between border rounded-xl px-3 py-2.5 ${containerClass}`}
+                              initial={{ opacity: 0, y: 5 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className={`flex items-center justify-between border rounded-xl p-3 shadow-xs ${containerClass}`}
                             >
-                              <div className="flex items-center gap-2 min-w-0 flex-1">
-                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${iconClass}`}>
+                              <div className="flex items-center gap-3 min-w-0 flex-1">
+                                <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm ${iconClass}`}>
                                   <IconComponent className="w-4 h-4" />
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                  <p className="text-sm font-bold text-foreground flex items-center gap-1.5 flex-wrap">
-                                    Table {call.tableNumber}
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-xs font-black text-foreground">Table {call.tableNumber}</span>
                                     {isPayment && (
-                                      <span className="text-[9px] bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded-full font-semibold border border-amber-200/30">
-                                        Pay
+                                      <span className="text-[9px] bg-amber-500/20 text-amber-600 dark:text-amber-300 px-1.5 py-0.5 rounded-full font-bold border border-amber-500/30">
+                                        Payment
                                       </span>
                                     )}
                                     {isAddon && (
-                                      <span className="text-[9px] bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded-full font-semibold border border-blue-200/30">
+                                      <span className="text-[9px] bg-blue-500/20 text-blue-600 dark:text-blue-300 px-1.5 py-0.5 rounded-full font-bold border border-blue-500/30">
                                         Add-on
                                       </span>
                                     )}
-                                  </p>
-                                  <p className="text-[11px] text-muted-foreground leading-normal">
+                                  </div>
+                                  <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">
                                     {isPayment ? (
-                                      <span className="font-semibold text-amber-700 dark:text-amber-400">
-                                        {isPayOnCounter ? 'Pay on Counter' : 'Pay to Waiter'} {call.amount ? `(₹${call.amount.toFixed(0)})` : ''}
+                                      <span className="font-bold text-amber-600 dark:text-amber-400">
+                                        {isPayOnCounter ? 'Counter Cash' : 'Pay to Waiter'} {call.amount ? `(₹${call.amount.toFixed(0)})` : ''}
                                       </span>
                                     ) : isAddon ? (
-                                      <span className="font-semibold text-blue-700 dark:text-blue-400">
+                                      <span className="font-bold text-blue-600 dark:text-blue-400">
                                         {isPayOnCounter ? 'Add-on Counter Pay' : isPayToWaiter ? 'Add-on Waiter Pay' : 'Add-on Added'} {call.amount ? `(₹${call.amount.toFixed(0)})` : ''}
                                       </span>
                                     ) : (
-                                      <span>Called for assistance</span>
+                                      <span>Requested waiter assistance</span>
                                     )}
-                                    {' • '}
-                                    {new Date(call.calledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                   </p>
-                                  {call.itemsSummary && (
-                                    <p 
-                                      className="text-[10px] text-muted-foreground mt-0.5 italic truncate" 
-                                      title={call.itemsSummary}
-                                    >
-                                      {call.itemsSummary}
-                                    </p>
-                                  )}
+                                  <span className="text-[10px] text-muted-foreground/80 block mt-0.5 font-medium">
+                                    {new Date(call.calledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
                                 </div>
                               </div>
-                              <div className="flex items-center gap-1 flex-shrink-0 ml-1">
+                              <div className="flex items-center gap-1.5 shrink-0 ml-2">
                                 <button
                                   onClick={() => {
                                     const socket = useWaiterStore.getState().socket;
@@ -249,10 +348,10 @@ export function WaiterBell() {
                                     }
                                     removeWaiterCall(call.id);
                                   }}
-                                  className="p-1 rounded-lg bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500/20 transition-colors"
-                                  title="Send Waiter"
+                                  className="p-1.5 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 transition-colors shadow-xs"
+                                  title="Send Waiter Now"
                                 >
-                                  <Check className="w-3.5 h-3.5" />
+                                  <Check className="w-4 h-4" />
                                 </button>
                                 <button
                                   onClick={() => {
@@ -265,10 +364,10 @@ export function WaiterBell() {
                                     }
                                     removeWaiterCall(call.id);
                                   }}
-                                  className="p-1 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                                  className="p-1.5 rounded-lg bg-muted hover:bg-muted/80 text-muted-foreground transition-colors"
                                   title="Dismiss Call"
                                 >
-                                  <X className="w-3.5 h-3.5" />
+                                  <X className="w-4 h-4" />
                                 </button>
                               </div>
                             </motion.div>
@@ -280,33 +379,114 @@ export function WaiterBell() {
                 </>
               )}
 
-              {/* Tab 2: Activity Notifications */}
-              {activeTab === 'notifications' && (
+              {/* TAB 2: Incoming Orders */}
+              {activeTab === 'orders' && (
                 <>
-                  <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-blue-50/50 dark:bg-blue-950/20">
-                    <span className="text-[11px] font-bold text-blue-700 dark:text-blue-400">
-                      System & Activity Notifications
+                  <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-emerald-500/5 dark:bg-emerald-950/20">
+                    <span className="text-[11px] font-extrabold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
+                      Live Incoming Orders
+                    </span>
+                    <Link
+                      href="/owner/orders"
+                      onClick={() => setShowWaiterPanel(false)}
+                      className="text-[10px] font-bold text-primary hover:underline flex items-center gap-1"
+                    >
+                      View All Orders <ArrowRight className="w-3 h-3" />
+                    </Link>
+                  </div>
+
+                  <div className="max-h-80 overflow-y-auto p-2">
+                    {isLoadingOrders ? (
+                      <div className="py-10 flex justify-center items-center">
+                        <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                      </div>
+                    ) : dbRecentOrders.length === 0 ? (
+                      <div className="py-10 text-center text-muted-foreground text-xs space-y-2">
+                        <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center mx-auto opacity-40">
+                          <ShoppingBag className="w-5 h-5" />
+                        </div>
+                        <p className="font-semibold">No recent orders</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {dbRecentOrders.map((order: any) => {
+                          const orderIdShort = order.id ? order.id.slice(-6).toUpperCase() : 'ORD';
+                          const itemsSummary = order.items?.map((i: any) => `${i.menuItem?.name || i.name || 'Item'} x${i.quantity}`).join(', ');
+                          const isPending = order.status === 'PENDING' || order.status === 'CONFIRMED';
+
+                          return (
+                            <div
+                              key={order.id}
+                              className={`p-3 rounded-xl border transition-all ${
+                                isPending
+                                  ? 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-500/30'
+                                  : 'bg-card border-border'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2 mb-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs font-black text-foreground font-mono">#{orderIdShort}</span>
+                                  {order.tableNumber && (
+                                    <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full border border-primary/20">
+                                      Table {order.tableNumber}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">
+                                  ₹{order.total ? Number(order.total).toFixed(0) : '0'}
+                                </span>
+                              </div>
+
+                              <p className="text-[11px] text-muted-foreground line-clamp-1 italic mb-1.5">
+                                {itemsSummary || 'Customer order items'}
+                              </p>
+
+                              <div className="flex items-center justify-between pt-1 border-t border-border/50 text-[10px] text-muted-foreground">
+                                <span className="flex items-center gap-1">
+                                  <User className="w-3 h-3 opacity-60" /> {order.user?.name || order.guestName || 'Customer'}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3 opacity-60" /> {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* TAB 3: Activity Notifications */}
+              {activeTab === 'activity' && (
+                <>
+                  <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-blue-500/5 dark:bg-blue-950/20">
+                    <span className="text-[11px] font-extrabold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
+                      System Activity Logs
                     </span>
                     {unreadNotifCount > 0 && (
                       <button
                         onClick={() => markReadMutation.mutate()}
                         disabled={markReadMutation.isPending}
-                        className="text-[10px] font-semibold text-primary hover:underline flex items-center gap-0.5"
+                        className="text-[10px] font-bold text-primary hover:underline flex items-center gap-0.5"
                       >
                         <CheckCheck className="w-3 h-3" /> Read All
                       </button>
                     )}
                   </div>
 
-                  <div className="max-h-72 overflow-y-auto p-2 space-y-1.5">
+                  <div className="max-h-80 overflow-y-auto p-2 space-y-1.5">
                     {isLoadingNotifs ? (
-                      <div className="py-8 flex justify-center items-center text-muted-foreground">
+                      <div className="py-10 flex justify-center items-center text-muted-foreground">
                         <Loader2 className="w-5 h-5 animate-spin text-primary" />
                       </div>
                     ) : notifications.length === 0 ? (
-                      <div className="py-8 text-center text-muted-foreground text-sm">
-                        <Bell className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                        No activity notifications yet
+                      <div className="py-10 text-center text-muted-foreground text-xs space-y-2">
+                        <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center mx-auto opacity-40">
+                          <Bell className="w-5 h-5" />
+                        </div>
+                        <p className="font-semibold">No activity notifications yet</p>
                       </div>
                     ) : (
                       notifications.map((notif) => (
@@ -314,7 +494,7 @@ export function WaiterBell() {
                           key={notif.id}
                           className={`p-2.5 rounded-xl border text-xs space-y-1 transition-all ${
                             !notif.isRead
-                              ? 'bg-blue-50/60 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900/50 font-medium'
+                              ? 'bg-blue-50/70 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900/50 font-medium'
                               : 'bg-card border-border/60'
                           }`}
                         >
