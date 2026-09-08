@@ -392,32 +392,38 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
 
                 <div className="px-6 pb-6 flex gap-3">
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       if (socketRef.current && activeWaiterAlert.tableNumber) {
                         socketRef.current.emit('waiter:dismiss', {
                           restaurantId: restaurantData?.id,
                           tableNumber: activeWaiterAlert.tableNumber,
                         });
                       }
-                      removeWaiterCall(activeWaiterAlert.id);
-                      setActiveWaiterAlert(null);
+                      useWaiterStore.getState().dismissWaiterCall(activeWaiterAlert.id, activeWaiterAlert.tableNumber);
+                      try {
+                        await api.patch('/profile/notifications/read');
+                        queryClient.invalidateQueries({ queryKey: ['owner-notifications'] });
+                      } catch {}
                     }}
-                    className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold hover:bg-muted transition-colors text-foreground"
+                    className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold hover:bg-muted transition-colors text-foreground cursor-pointer"
                   >
                     Dismiss
                   </button>
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       if (socketRef.current && activeWaiterAlert.tableNumber) {
                         socketRef.current.emit('waiter:respond', {
                           restaurantId: restaurantData?.id,
                           tableNumber: activeWaiterAlert.tableNumber,
                         });
                       }
-                      removeWaiterCall(activeWaiterAlert.id);
-                      setActiveWaiterAlert(null);
+                      useWaiterStore.getState().dismissWaiterCall(activeWaiterAlert.id, activeWaiterAlert.tableNumber);
+                      try {
+                        await api.patch('/profile/notifications/read');
+                        queryClient.invalidateQueries({ queryKey: ['owner-notifications'] });
+                      } catch {}
                     }}
-                    className={`flex-1 py-3 rounded-xl text-white text-sm font-bold bg-gradient-to-r ${gradientClass} hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5`}
+                    className={`flex-1 py-3 rounded-xl text-white text-sm font-bold bg-gradient-to-r ${gradientClass} hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5 cursor-pointer`}
                   >
                     <span>✓ Send Waiter 🏃</span>
                   </button>

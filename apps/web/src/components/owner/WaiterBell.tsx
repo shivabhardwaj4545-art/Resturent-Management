@@ -81,12 +81,13 @@ export function WaiterBell() {
       const match = n.title.match(/Table\s+([A-Za-z0-9_-]+)/i) || n.message.match(/Table\s+([A-Za-z0-9_-]+)/i);
       const tableNumber = match ? match[1] : 'Unknown';
       const existing = waiterCalls.some((c) => c.tableNumber === tableNumber);
-      if (!existing) {
+      const isHandled = useWaiterStore.getState().handledTables.includes(tableNumber);
+      if (!existing && !isHandled) {
         useWaiterStore.getState().addWaiterCall({
           tableNumber,
           calledAt: n.createdAt,
           type: 'default',
-        });
+        }, false);
       }
     });
   }, [notifData, waiterCalls]);
@@ -346,7 +347,8 @@ export function WaiterBell() {
                                         tableNumber: call.tableNumber,
                                       });
                                     }
-                                    removeWaiterCall(call.id);
+                                    useWaiterStore.getState().dismissWaiterCall(call.id, call.tableNumber);
+                                    markReadMutation.mutate();
                                   }}
                                   className="p-1.5 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 transition-colors shadow-xs"
                                   title="Send Waiter Now"
@@ -362,7 +364,8 @@ export function WaiterBell() {
                                         tableNumber: call.tableNumber,
                                       });
                                     }
-                                    removeWaiterCall(call.id);
+                                    useWaiterStore.getState().dismissWaiterCall(call.id, call.tableNumber);
+                                    markReadMutation.mutate();
                                   }}
                                   className="p-1.5 rounded-lg bg-muted hover:bg-muted/80 text-muted-foreground transition-colors"
                                   title="Dismiss Call"

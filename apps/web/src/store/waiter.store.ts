@@ -26,10 +26,12 @@ interface WaiterState {
   waiterCalls: WaiterCall[];
   newOrders: LiveOrderAlert[];
   activeWaiterAlert: WaiterCall | null;
+  handledTables: string[];
   socket: Socket | null;
   soundEnabled: boolean;
-  addWaiterCall: (call: Omit<WaiterCall, 'id'>) => void;
+  addWaiterCall: (call: Omit<WaiterCall, 'id'>, showAlert?: boolean) => void;
   removeWaiterCall: (id: string) => void;
+  dismissWaiterCall: (id: string, tableNumber?: string) => void;
   addNewOrder: (order: LiveOrderAlert) => void;
   removeNewOrder: (id: string) => void;
   setSoundEnabled: (enabled: boolean) => void;
@@ -42,32 +44,58 @@ export const useWaiterStore = create<WaiterState>((set) => ({
   waiterCalls: [],
   newOrders: [],
   activeWaiterAlert: null,
+  handledTables: [],
   socket: null,
   soundEnabled: true,
-  addWaiterCall: (payload) => {
+
+  addWaiterCall: (payload, showAlert = true) => {
+    const cleanTable = String(payload.tableNumber).trim();
     const newCall: WaiterCall = {
       ...payload,
-      id: `${payload.tableNumber}-${Date.now()}`,
+      tableNumber: cleanTable,
+      id: `${cleanTable}-${Date.now()}`,
     };
-    set((state) => ({
-      waiterCalls: [newCall, ...state.waiterCalls.filter((c) => c.tableNumber !== payload.tableNumber)],
-      activeWaiterAlert: newCall,
-    }));
+    set((state) => {
+      const isHandled = state.handledTables.includes(cleanTable);
+      const updatedCalls = [newCall, ...state.waiterCalls.filter((c) => c.tableNumber !== cleanTable)];
+      return {
+        waiterCalls: updatedCalls,
+        activeWaiterAlert: showAlert && !isHandled ? newCall : state.activeWaiterAlert,
+      };
+    });
   },
+
   removeWaiterCall: (id) =>
     set((state) => ({
       waiterCalls: state.waiterCalls.filter((c) => c.id !== id),
+      activeWaiterAlert: state.activeWaiterAlert?.id === id ? null : state.activeWaiterAlert,
     })),
+
+  dismissWaiterCall: (id, tableNumber) =>
+    set((state) => {
+      const cleanT = tableNumber ? String(tableNumber).trim() : null;
+      return {
+        waiterCalls: state.waiterCalls.filter((c) => c.id !== id && (cleanT ? c.tableNumber !== cleanT : true)),
+        activeWaiterAlert:
+          state.activeWaiterAlert?.id === id || (cleanT && state.activeWaiterAlert?.tableNumber === cleanT)
+            ? null
+            : state.activeWaiterAlert,
+        handledTables: cleanT && !state.handledTables.includes(cleanT) ? [...state.handledTables, cleanT] : state.handledTables,
+      };
+    }),
+
   addNewOrder: (order) =>
     set((state) => ({
       newOrders: [order, ...state.newOrders.filter((o) => o.id !== order.id)],
     })),
+
   removeNewOrder: (id) =>
     set((state) => ({
       newOrders: state.newOrders.filter((o) => o.id !== id),
     })),
+
   setSoundEnabled: (soundEnabled) => set({ soundEnabled }),
   setActiveWaiterAlert: (activeWaiterAlert) => set({ activeWaiterAlert }),
-  clearAll: () => set({ waiterCalls: [], newOrders: [], activeWaiterAlert: null }),
+  clearAll: () => set({ waiterCalls: [], newOrders: [], activeWaiterAlert: null, handledTables: [] }),
   setSocket: (socket) => set({ socket }),
 }));
