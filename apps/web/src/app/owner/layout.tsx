@@ -78,8 +78,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
   const { user, isAuthenticated } = useAuthStore();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
-  const { activeWaiterAlert, addWaiterCall, removeWaiterCall, setActiveWaiterAlert } = useWaiterStore();
-  const [activeNewOrderAlert, setActiveNewOrderAlert] = useState<any>(null);
+  const { activeWaiterAlert, activeNewOrderAlert, setActiveWaiterAlert, setActiveNewOrderAlert } = useWaiterStore();
 
   useEffect(() => {
     setMounted(true);

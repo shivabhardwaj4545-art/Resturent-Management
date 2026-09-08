@@ -18,6 +18,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 import { WaiterBell } from '@/components/owner/WaiterBell';
+import { useWaiterStore } from '@/store/waiter.store';
 import { MessageSquare } from 'lucide-react';
 import { AdminOwnerChatModal } from '@/components/admin/AdminOwnerChatModal';
 import { OwnerSidebar } from '@/components/owner/OwnerSidebar';
@@ -322,7 +323,11 @@ export function OwnerDashboard() {
                 </div>
                 <div className="space-y-3">
                   {data?.recentOrders.slice(0, 5).map((order) => (
-                    <div key={order.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-muted/50 transition-colors">
+                    <div
+                      key={order.id}
+                      onClick={() => useWaiterStore.getState().setActiveNewOrderAlert(order as any)}
+                      className="flex items-center gap-3 p-3 rounded-xl hover:bg-muted/80 transition-all cursor-pointer border border-transparent hover:border-primary/30"
+                    >
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-sm">

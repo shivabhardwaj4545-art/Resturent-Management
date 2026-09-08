@@ -301,7 +301,13 @@ export function WaiterBell() {
                               animate={{ opacity: 1, y: 0 }}
                               className={`flex items-center justify-between border rounded-xl p-3 shadow-xs ${containerClass}`}
                             >
-                              <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <div
+                                onClick={() => {
+                                  useWaiterStore.getState().setActiveWaiterAlert(call);
+                                  setShowWaiterPanel(false);
+                                }}
+                                className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer hover:opacity-85 transition-opacity"
+                              >
                                 <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm ${iconClass}`}>
                                   <IconComponent className="w-4 h-4" />
                                 </div>
@@ -420,7 +426,11 @@ export function WaiterBell() {
                           return (
                             <div
                               key={order.id}
-                              className={`p-3 rounded-xl border transition-all ${
+                              onClick={() => {
+                                useWaiterStore.getState().setActiveNewOrderAlert(order);
+                                setShowWaiterPanel(false);
+                              }}
+                              className={`p-3 rounded-xl border transition-all cursor-pointer hover:border-emerald-500 hover:scale-[1.01] ${
                                 isPending
                                   ? 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-500/30'
                                   : 'bg-card border-border'

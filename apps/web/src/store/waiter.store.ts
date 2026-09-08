@@ -10,6 +10,7 @@ export interface WaiterCall {
   amount?: number;
   paymentMethod?: string;
   itemsSummary?: string;
+  orderId?: string;
 }
 
 export interface LiveOrderAlert {
@@ -18,14 +19,17 @@ export interface LiveOrderAlert {
   tableNumber?: string | number;
   total?: number;
   status?: string;
+  paymentMethod?: string;
   createdAt?: string;
-  items?: Array<{ name?: string; menuItem?: { name?: string }; quantity: number }>;
+  items?: Array<{ name?: string; menuItem?: { name?: string }; quantity: number; subtotal?: number; unitPrice?: number }>;
+  user?: { name?: string };
 }
 
 interface WaiterState {
   waiterCalls: WaiterCall[];
   newOrders: LiveOrderAlert[];
   activeWaiterAlert: WaiterCall | null;
+  activeNewOrderAlert: LiveOrderAlert | null;
   handledTables: string[];
   socket: Socket | null;
   soundEnabled: boolean;
@@ -36,6 +40,7 @@ interface WaiterState {
   removeNewOrder: (id: string) => void;
   setSoundEnabled: (enabled: boolean) => void;
   setActiveWaiterAlert: (alert: WaiterCall | null) => void;
+  setActiveNewOrderAlert: (alert: LiveOrderAlert | null) => void;
   clearAll: () => void;
   setSocket: (socket: Socket | null) => void;
 }
@@ -44,6 +49,7 @@ export const useWaiterStore = create<WaiterState>((set) => ({
   waiterCalls: [],
   newOrders: [],
   activeWaiterAlert: null,
+  activeNewOrderAlert: null,
   handledTables: [],
   socket: null,
   soundEnabled: true,
@@ -87,15 +93,18 @@ export const useWaiterStore = create<WaiterState>((set) => ({
   addNewOrder: (order) =>
     set((state) => ({
       newOrders: [order, ...state.newOrders.filter((o) => o.id !== order.id)],
+      activeNewOrderAlert: order,
     })),
 
   removeNewOrder: (id) =>
     set((state) => ({
       newOrders: state.newOrders.filter((o) => o.id !== id),
+      activeNewOrderAlert: state.activeNewOrderAlert?.id === id ? null : state.activeNewOrderAlert,
     })),
 
   setSoundEnabled: (soundEnabled) => set({ soundEnabled }),
   setActiveWaiterAlert: (activeWaiterAlert) => set({ activeWaiterAlert }),
-  clearAll: () => set({ waiterCalls: [], newOrders: [], activeWaiterAlert: null, handledTables: [] }),
+  setActiveNewOrderAlert: (activeNewOrderAlert) => set({ activeNewOrderAlert }),
+  clearAll: () => set({ waiterCalls: [], newOrders: [], activeWaiterAlert: null, activeNewOrderAlert: null, handledTables: [] }),
   setSocket: (socket) => set({ socket }),
 }));
