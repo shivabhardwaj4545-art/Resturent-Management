@@ -20,6 +20,7 @@ import {
   Bell,
 } from 'lucide-react';
 import { CustomerNotificationModal } from './CustomerNotificationModal';
+import { playNewOrderSound } from '@/utils/audio';
 import { getImageUrl } from '@/lib/image';
 import { io, Socket } from 'socket.io-client';
 import api from '@/lib/api';
@@ -235,6 +236,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
       reason?: string;
     }) => {
       if (data.orderId === orderId) {
+        playNewOrderSound();
         if (data.status) {
           setCurrentStatus(data.status);
           const statusLabels: Record<string, string> = {

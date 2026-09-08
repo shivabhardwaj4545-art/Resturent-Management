@@ -13,6 +13,8 @@ import { CartDrawer } from './CartDrawer';
 import { AIChatbot } from './AIChatbot';
 import { AIRecommendations } from './AIRecommendations';
 import { CustomerNotificationModal } from './CustomerNotificationModal';
+import { CustomerAlertModal, CustomerAlertData } from './CustomerAlertModal';
+import { playWaiterCallSound, playNewOrderSound } from '@/utils/audio';
 import { toast } from 'sonner';
 import { Bell } from 'lucide-react';
 import Link from 'next/link';
@@ -201,6 +203,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
   const { user: rawUser, logout } = useAuthStore();
   const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
   const [showNotifModal, setShowNotifModal] = useState(false);
+  const [customerAlert, setCustomerAlert] = useState<CustomerAlertData | null>(null);
 
   // Fetch latest user profile to keep loyalty points synced in real-time
   const { data: userProfileData } = useQuery({
@@ -562,25 +565,46 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       withCredentials: true,
     });
 
-    if (activeUser?.id) {
-      socket.emit('join:user', activeUser.id);
-    }
+    const joinCustomerRooms = () => {
+      if (activeUser?.id) {
+        socket.emit('join:user', activeUser.id);
+      }
+      if (data?.restaurant?.id) {
+        socket.emit('join:restaurant', data.restaurant.id);
+      }
+      const storedTable = typeof window !== 'undefined' ? localStorage.getItem(`table_num_${slug}`) : null;
+      const activeTable = tableNumber || manualTableNumber || storedTable;
+      if (activeTable) {
+        socket.emit('join:table', { restaurantId: data.restaurant.id, tableNumber: String(activeTable).trim() });
+      }
+      recentOrders.forEach((o) => {
+        if (o.orderId) {
+          socket.emit('join:order', o.orderId);
+        }
+      });
+    };
 
-    const storedTable = typeof window !== 'undefined' ? localStorage.getItem(`table_num_${slug}`) : null;
-    const activeTable = tableNumber || manualTableNumber || storedTable;
-    if (activeTable) {
-      socket.emit('join:table', { restaurantId: data.restaurant.id, tableNumber: String(activeTable).trim() });
-    }
+    socket.on('connect', joinCustomerRooms);
+    joinCustomerRooms();
 
     socket.on('waiter:responded', (resData: { tableNumber?: string; message?: string }) => {
       const currentTable = tableNumber || manualTableNumber || (typeof window !== 'undefined' ? localStorage.getItem(`table_num_${slug}`) : null);
       if (!currentTable || !resData?.tableNumber) return;
       if (String(currentTable).trim() === String(resData.tableNumber).trim()) {
+        playWaiterCallSound();
+        startComingTimer(60, resData.tableNumber);
+        setCustomerAlert({
+          isOpen: true,
+          type: 'WAITER_COMING',
+          title: '👨‍🍳 Waiter Is On The Way!',
+          message: resData.message || `A staff member has acknowledged your call for Table ${resData.tableNumber}. They will be with you shortly!`,
+          tableNumber: resData.tableNumber,
+          timerSeconds: 60,
+        });
         toast.success(`👨‍🍳 Waiter is coming! Someone will be with you shortly.`, {
           duration: 8000,
           icon: '🏃',
         });
-        startComingTimer(60, resData.tableNumber);
       }
     });
 
@@ -588,11 +612,20 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       const currentTable = tableNumber || manualTableNumber || (typeof window !== 'undefined' ? localStorage.getItem(`table_num_${slug}`) : null);
       if (!currentTable || !resData?.tableNumber) return;
       if (String(currentTable).trim() === String(resData.tableNumber).trim()) {
+        playWaiterCallSound();
+        startOccupiedTimer(30, resData.tableNumber);
+        setCustomerAlert({
+          isOpen: true,
+          type: 'WAITER_OCCUPIED',
+          title: '⏳ Staff Currently Occupied',
+          message: resData.message || `Our waiters are currently busy with other guests. You can try calling again in 30 seconds.`,
+          tableNumber: resData.tableNumber,
+          timerSeconds: 30,
+        });
         toast.error(`👨‍🍳 Waiter is occupied right now. You can press the call waiter button again after 30 seconds.`, {
           duration: 8000,
           icon: '⏳',
         });
-        startOccupiedTimer(30, resData.tableNumber);
       }
     });
 
@@ -600,15 +633,43 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       queryClient.invalidateQueries({ queryKey: ['user-profile-loyalty'] });
     });
 
-    socket.on('order:status_updated', () => {
+    socket.on('order:status_updated', (payload: { orderId?: string; status?: string; paymentStatus?: string; reason?: string }) => {
       queryClient.invalidateQueries({ queryKey: ['active-orders'] });
       queryClient.invalidateQueries({ queryKey: ['previous-orders'] });
+      playNewOrderSound();
+
+      const statusMap: Record<string, { label: string; text: string; icon: string }> = {
+        CONFIRMED: { label: 'Order Confirmed', text: 'The restaurant has confirmed your order!', icon: '✅' },
+        PREPARING: { label: 'Preparing Order', text: 'The kitchen has started preparing your delicious food!', icon: '👨‍🍳' },
+        BAKING: { label: 'Cooking & Baking', text: 'Your food is in the kitchen oven/stove!', icon: '🔥' },
+        READY: { label: 'Order Ready!', text: 'Your order is ready to be served!', icon: '🍽️' },
+        ON_THE_WAY: { label: 'Out for Delivery', text: 'Your order is on the way!', icon: '🚴' },
+        DELIVERED: { label: 'Served & Completed', text: 'Your order has been served. Enjoy your meal!', icon: '🎉' },
+        CANCELLED: { label: 'Order Cancelled', text: payload?.reason ? `Order cancelled: ${payload.reason}` : 'Your order was cancelled by the restaurant.', icon: '❌' },
+      };
+
+      const info = payload?.status && statusMap[payload.status] ? statusMap[payload.status] : {
+        label: `Order ${payload?.status ? payload.status.replace(/_/g, ' ') : 'Updated'}`,
+        text: `Your order status was updated to ${payload?.status || 'UPDATED'}.`,
+        icon: '🔔',
+      };
+
+      setCustomerAlert({
+        isOpen: true,
+        type: 'ORDER_UPDATE',
+        title: `${info.icon} ${info.label}`,
+        message: info.text,
+        orderId: payload?.orderId,
+        orderStatus: payload?.status,
+      });
+
+      toast.info(`${info.icon} ${info.label}`, { duration: 6000 });
     });
 
     return () => {
       socket.disconnect();
     };
-  }, [data?.restaurant?.id, tableNumber, manualTableNumber, activeUser?.id, queryClient]);
+  }, [data?.restaurant?.id, tableNumber, manualTableNumber, activeUser?.id, queryClient, recentOrders, slug, startComingTimer, startOccupiedTimer]);
 
   const filteredCategories = useMemo(() => {
     if (!data) return [];
@@ -1503,6 +1564,12 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       <CustomerNotificationModal
         isOpen={showNotifModal}
         onClose={() => setShowNotifModal(false)}
+      />
+
+      {/* Customer Real-Time Alert Modal */}
+      <CustomerAlertModal
+        data={customerAlert}
+        onClose={() => setCustomerAlert(null)}
       />
     </div>
   );
