@@ -415,21 +415,33 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
             </p>
           )}
 
-          {/* Badge showing order type */}
-          <span
-            className="mt-2 inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full"
-            style={{ backgroundColor: `${themeColor}20`, color: themeColor }}
-          >
-            {isDeliveryOrder ? (
-              <>
-                <Bike className="w-3 h-3" /> Home Delivery
-              </>
+          {/* Badge showing order type & payment status */}
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <span
+              className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full"
+              style={{ backgroundColor: `${themeColor}20`, color: themeColor }}
+            >
+              {isDeliveryOrder ? (
+                <>
+                  <Bike className="w-3 h-3" /> Home Delivery
+                </>
+              ) : (
+                <>
+                  <Utensils className="w-3 h-3" /> Dine-In
+                </>
+              )}
+            </span>
+
+            {order.paymentStatus === 'PAID' ? (
+              <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                ✅ Payment Confirmed
+              </span>
             ) : (
-              <>
-                <Utensils className="w-3 h-3" /> Dine-In
-              </>
+              <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 animate-pulse">
+                ⏳ Payment Pending
+              </span>
             )}
-          </span>
+          </div>
         </div>
       </div>
 
@@ -720,9 +732,14 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
                   <span>-₹{order.discount.toFixed(2)}</span>
                 </div>
               )}
-              <div className="flex justify-between font-bold text-base border-t border-border pt-2">
-                <span>Total Paid</span>
-                <span>₹{order.total.toFixed(2)}</span>
+              <div className="flex justify-between items-center font-bold text-base border-t border-border pt-2">
+                <div>
+                  <span className="block">{order.paymentStatus === 'PAID' ? 'Total Paid' : 'Total Amount'}</span>
+                  <span className={`text-xs block font-extrabold ${order.paymentStatus === 'PAID' ? 'text-emerald-600' : 'text-amber-600 dark:text-amber-400 animate-pulse'}`}>
+                    {order.paymentStatus === 'PAID' ? '✅ Payment Confirmed' : '⏳ Payment Pending'}
+                  </span>
+                </div>
+                <span className="text-lg">₹{order.total.toFixed(2)}</span>
               </div>
             </div>
             {!['DELIVERED', 'CANCELLED'].includes(order.status) && (

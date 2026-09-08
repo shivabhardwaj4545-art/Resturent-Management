@@ -1118,7 +1118,15 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                             <span>₹{order.total.toFixed(0)}</span>
                             <span>•</span>
                             <span>
-                              {order.paymentMethod === 'RAZORPAY' ? 'Paid Online' : order.paymentMethod === 'COD' ? 'Pay on Counter' : order.paymentMethod === 'PAY_TO_WAITER' ? 'Pay to Waiter' : 'Wallet'}
+                              {order.paymentStatus === 'PAID' ? (
+                                <span className="font-extrabold text-emerald-600 dark:text-emerald-400">
+                                  ✅ Paid ({order.paymentMethod === 'RAZORPAY' ? 'Online' : order.paymentMethod === 'COD' ? 'Counter' : 'Waiter'})
+                                </span>
+                              ) : (
+                                <span className="font-extrabold text-amber-600 dark:text-amber-400 animate-pulse">
+                                  ⏳ Payment Pending ({order.paymentMethod === 'RAZORPAY' ? 'Online' : order.paymentMethod === 'COD' ? 'Pay on Counter' : 'Pay to Waiter'})
+                                </span>
+                              )}
                             </span>
                             {order.tableNumber ? (
                               <>
