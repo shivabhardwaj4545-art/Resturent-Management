@@ -984,15 +984,26 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                 }
               }}
               disabled={waiterStatus !== 'IDLE' || waiterLoading}
-              style={waiterStatus === 'IDLE' ? { backgroundColor: themeColor } : {}}
-              className={`w-full sm:w-auto px-5 py-3 rounded-2xl sm:rounded-full text-white font-bold text-sm sm:text-base shadow-xl flex items-center justify-center gap-2 transition-all border whitespace-nowrap ${
-                waiterStatus === 'COMING'
-                  ? 'bg-emerald-600 border-emerald-500 text-white font-extrabold shadow-emerald-500/40 ring-4 ring-emerald-500/25'
-                  : waiterStatus === 'OCCUPIED'
-                  ? 'bg-red-600 border-red-700 text-white font-extrabold opacity-95 cursor-not-allowed shadow-lg'
-                  : waiterStatus === 'PENDING'
-                  ? 'bg-amber-500 border-amber-600 animate-pulse text-white shadow-amber-500/20 ring-4 ring-amber-500/20 cursor-not-allowed'
-                  : 'text-white border-transparent hover:opacity-95 shadow-lg'
+              style={{
+                backgroundColor:
+                  waiterStatus === 'COMING'
+                    ? '#059669'
+                    : waiterStatus === 'OCCUPIED'
+                    ? '#475569'
+                    : waiterStatus === 'PENDING'
+                    ? '#f59e0b'
+                    : themeColor,
+                borderColor:
+                  waiterStatus === 'COMING'
+                    ? '#047857'
+                    : waiterStatus === 'OCCUPIED'
+                    ? '#334155'
+                    : waiterStatus === 'PENDING'
+                    ? '#d97706'
+                    : 'transparent',
+              }}
+              className={`w-full sm:w-auto px-5 py-3 rounded-2xl sm:rounded-full text-white font-extrabold text-sm sm:text-base shadow-xl flex items-center justify-center gap-2 transition-all border whitespace-nowrap ${
+                waiterStatus !== 'IDLE' ? 'cursor-not-allowed opacity-95' : 'hover:opacity-95'
               }`}
             >
               <BellRing className={`w-4 h-4 sm:w-5 sm:h-5 shrink-0 ${waiterStatus === 'COMING' || waiterStatus === 'PENDING' ? 'animate-pulse' : waiterStatus === 'OCCUPIED' ? '' : 'animate-bounce'}`} />
