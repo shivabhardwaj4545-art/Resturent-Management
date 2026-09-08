@@ -131,6 +131,13 @@ export function emitOrderStatusUpdate(orderId: string, restaurantId: string, dat
 export function emitNewOrder(restaurantId: string, order: unknown): void {
   if (!io) return;
   io.to(`restaurant:${restaurantId}`).emit('order:new', order);
+  io.to(`restaurant:${restaurantId}`).emit('kitchen:new_order', order);
+  io.to(`restaurant:${restaurantId}`).emit('notification:new', {
+    type: 'NEW_ORDER',
+    title: '🛍️ New Order Received!',
+    message: 'A new order has been placed.',
+    data: order,
+  });
 }
 
 // Emit notification to user
@@ -155,7 +162,7 @@ export function emitWaiterCall(
   itemsSummary?: string
 ): void {
   if (!io) return;
-  io.to(`restaurant:${restaurantId}`).emit('waiter:called', {
+  const payload = {
     tableNumber,
     restaurantId,
     calledAt: new Date().toISOString(),
@@ -163,6 +170,13 @@ export function emitWaiterCall(
     amount,
     paymentMethod,
     itemsSummary,
+  };
+  io.to(`restaurant:${restaurantId}`).emit('waiter:called', payload);
+  io.to(`restaurant:${restaurantId}`).emit('notification:new', {
+    type: 'WAITER_CALL',
+    title: `🔔 Waiter Call - Table ${tableNumber}`,
+    message: `Table ${tableNumber} requested assistance.`,
+    data: payload,
   });
 }
 

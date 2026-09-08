@@ -168,6 +168,8 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
         duration: 10000,
         icon: '🔔',
       });
+      queryClient.invalidateQueries({ queryKey: ['owner-notifications'] });
+      queryClient.refetchQueries({ queryKey: ['owner-notifications'] });
     });
 
     // 2. New order received
@@ -185,10 +187,14 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
         icon: '🛍️',
       });
       
-      // Auto-refresh orders and stats
+      // Instant real-time UI refetching without page refresh
       queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
       queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['owner-recent-orders-popover'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-notifications'] });
+      queryClient.refetchQueries({ queryKey: ['owner-orders'] });
+      queryClient.refetchQueries({ queryKey: ['owner-recent-orders-popover'] });
+      queryClient.refetchQueries({ queryKey: ['owner-notifications'] });
     };
 
     socket.on('order:new', handleNewOrderEvent);
@@ -199,19 +205,23 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
       queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['owner-recent-orders-popover'] });
+      queryClient.refetchQueries({ queryKey: ['owner-orders'] });
     });
 
     // 4. Broadcast & Direct Chat Notifications
     socket.on('notification:new', (notif: any) => {
       playAlertBeep();
-      toast.info(notif.title || '📢 System Announcement', {
-        description: notif.message,
-        duration: 12000,
-        icon: '📢',
-      });
+      if (notif.title) {
+        toast.info(notif.title, {
+          description: notif.message,
+          duration: 10000,
+          icon: '🔔',
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ['owner-notifications'] });
       queryClient.invalidateQueries({ queryKey: ['chat-messages'] });
       queryClient.invalidateQueries({ queryKey: ['chat-contacts'] });
+      queryClient.refetchQueries({ queryKey: ['owner-notifications'] });
     });
 
     return () => {
