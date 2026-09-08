@@ -85,8 +85,9 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, themeCo
       setCouponInput('');
       toast.success(`Coupon applied! You save ₹${discountAmount}`);
     } catch (error: unknown) {
-      const axiosError = error as { response?: { data?: { error?: string } } };
-      toast.error(axiosError.response?.data?.error ?? 'Invalid coupon code');
+      const axiosError = error as { response?: { data?: { error?: string; message?: string } } };
+      const msg = axiosError.response?.data?.error || axiosError.response?.data?.message || 'Invalid coupon code';
+      toast.error(msg);
     } finally {
       setCouponLoading(false);
     }

@@ -82,14 +82,21 @@ async function calculateOrderTotal(
   if (couponCode && restaurantId) {
     const coupon = await prisma.coupon.findFirst({
       where: {
-        code: couponCode.toUpperCase(),
+        code: couponCode.toUpperCase().trim(),
         isActive: true,
         OR: [{ restaurantId }, { restaurantId: null }],
-        expiresAt: { gt: new Date() },
+        AND: [
+          {
+            OR: [
+              { expiresAt: null },
+              { expiresAt: { gt: new Date() } }
+            ]
+          }
+        ]
       },
     });
 
-    if (coupon && subtotal >= coupon.minOrderAmount) {
+    if (coupon && (coupon.minOrderAmount === null || coupon.minOrderAmount === 0 || subtotal >= coupon.minOrderAmount)) {
       if (coupon.type === 'FLAT') {
         discount = coupon.value;
       } else {

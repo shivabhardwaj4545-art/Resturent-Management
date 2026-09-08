@@ -223,7 +223,14 @@ export async function getCouponSuggestion(
       where: {
         isActive: true,
         OR: [{ restaurantId: restaurant.id }, { restaurantId: null }],
-        expiresAt: { gt: new Date() },
+        AND: [
+          {
+            OR: [
+              { expiresAt: null },
+              { expiresAt: { gt: new Date() } }
+            ]
+          }
+        ]
       },
       select: {
         code: true,

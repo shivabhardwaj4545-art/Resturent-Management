@@ -212,20 +212,26 @@ export async function applyCoupon(
 
     const coupon = await prisma.coupon.findFirst({
       where: {
-        code: code.toUpperCase(),
-        isActive: true,
+        code: code.toUpperCase().trim(),
         OR: [{ restaurantId: restaurant.id }, { restaurantId: null }],
-        expiresAt: { gt: new Date() },
       },
     });
 
     if (!coupon) {
-      throw new AppError('Invalid or expired coupon code.', 400, 'INVALID_COUPON');
+      throw new AppError('Invalid coupon code.', 400, 'INVALID_COUPON');
     }
 
-    if (cartTotal < coupon.minOrderAmount) {
+    if (!coupon.isActive) {
+      throw new AppError('This coupon is currently inactive.', 400, 'COUPON_INACTIVE');
+    }
+
+    if (coupon.expiresAt && new Date(coupon.expiresAt).getTime() < Date.now()) {
+      throw new AppError('This coupon has expired.', 400, 'COUPON_EXPIRED');
+    }
+
+    if (coupon.minOrderAmount !== null && coupon.minOrderAmount > 0 && cartTotal < coupon.minOrderAmount) {
       throw new AppError(
-        `Minimum order of ₹${coupon.minOrderAmount} required for this coupon.`,
+        `Minimum order of ₹${coupon.minOrderAmount} required for coupon ${coupon.code}.`,
         400,
         'COUPON_MIN_ORDER_NOT_MET'
       );
