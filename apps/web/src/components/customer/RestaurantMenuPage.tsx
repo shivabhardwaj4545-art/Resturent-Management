@@ -592,16 +592,16 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       if (!currentTable || !resData?.tableNumber) return;
       if (String(currentTable).trim() === String(resData.tableNumber).trim()) {
         playWaiterCallSound();
-        startComingTimer(60, resData.tableNumber);
+        startComingTimer(20, resData.tableNumber);
         setCustomerAlert({
           isOpen: true,
           type: 'WAITER_COMING',
           title: '👨‍🍳 Waiter Is On The Way!',
-          message: resData.message || `A staff member has acknowledged your call for Table ${resData.tableNumber}. They will be with you shortly!`,
+          message: resData.message || `A staff member has acknowledged your call for Table ${resData.tableNumber}. Waiter will come in 20 sec!`,
           tableNumber: resData.tableNumber,
-          timerSeconds: 60,
+          timerSeconds: 20,
         });
-        toast.success(`👨‍🍳 Waiter is coming! Someone will be with you shortly.`, {
+        toast.success(`👨‍🍳 Waiter will come in 20 sec to Table ${resData.tableNumber}!`, {
           duration: 8000,
           icon: '🏃',
         });
@@ -617,12 +617,12 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
         setCustomerAlert({
           isOpen: true,
           type: 'WAITER_OCCUPIED',
-          title: '⏳ Staff Currently Occupied',
-          message: resData.message || `Our waiters are currently busy with other guests. You can try calling again in 30 seconds.`,
+          title: '⏳ Waiter Is Busy Right Now',
+          message: resData.message || `Our waiters are currently busy assisting other tables. Please try calling again in 30 seconds.`,
           tableNumber: resData.tableNumber,
           timerSeconds: 30,
         });
-        toast.error(`👨‍🍳 Waiter is occupied right now. You can press the call waiter button again after 30 seconds.`, {
+        toast.error(`👨‍🍳 Waiter is busy right now. Please try calling again after 30 seconds.`, {
           duration: 8000,
           icon: '⏳',
         });
@@ -999,9 +999,9 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                   : waiterStatus === 'PENDING'
                   ? 'Waiter Call Sent...'
                   : waiterStatus === 'COMING'
-                  ? `Waiter is coming (${formatTimer(waiterComingTimer)})`
+                  ? `Waiter will come in ${waiterComingTimer} sec`
                   : waiterStatus === 'OCCUPIED'
-                  ? `Waiter occupied (${formatTimer(waiterCooldown)})`
+                  ? `Waiter is busy right now (${waiterCooldown}s)`
                   : 'Call Waiter'}
               </span>
             </motion.button>
