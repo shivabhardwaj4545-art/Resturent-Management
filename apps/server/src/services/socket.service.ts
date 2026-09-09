@@ -71,11 +71,13 @@ export function initializeSocketService(socketServer: SocketIOServer): void {
     socket.on('waiter:call', (data: { restaurantId: string; tableNumber: string }) => {
       const { restaurantId, tableNumber } = data;
       logger.info(`Waiter called for restaurant ${restaurantId}, table ${tableNumber}`);
-      io.to(`restaurant:${restaurantId}`).emit('waiter:called', {
+      const payload = {
         tableNumber,
         restaurantId,
         calledAt: new Date().toISOString(),
-      });
+      };
+      io.to(`restaurant:${restaurantId}`).emit('waiter:called', payload);
+      io.to(`restaurant:${restaurantId}`).emit('waiter_called', payload);
     });
 
     // Owner responds to waiter call — notify customer on specific table ONLY
@@ -90,6 +92,9 @@ export function initializeSocketService(socketServer: SocketIOServer): void {
         timestamp: new Date().toISOString(),
       };
       io.to(`table:${restaurantId}:${cleanTable}`).emit('waiter:responded', payload);
+      io.to(`table:${restaurantId}:${cleanTable}`).emit('waiter_responded', payload);
+      io.to(`restaurant:${restaurantId}`).emit('waiter:responded', payload);
+      io.to(`restaurant:${restaurantId}`).emit('waiter_responded', payload);
     });
 
     // Owner dismisses waiter call — notify customer on specific table ONLY
@@ -104,6 +109,9 @@ export function initializeSocketService(socketServer: SocketIOServer): void {
         timestamp: new Date().toISOString(),
       };
       io.to(`table:${restaurantId}:${cleanTable}`).emit('waiter:dismissed', payload);
+      io.to(`table:${restaurantId}:${cleanTable}`).emit('waiter_dismissed', payload);
+      io.to(`restaurant:${restaurantId}`).emit('waiter:dismissed', payload);
+      io.to(`restaurant:${restaurantId}`).emit('waiter_dismissed', payload);
     });
 
     socket.on('disconnect', () => {
@@ -121,16 +129,31 @@ export function emitOrderStatusUpdate(orderId: string, restaurantId: string, dat
   paymentStatus?: string;
   updatedAt: string;
   estimatedTime?: number;
+  driverId?: string;
+  driverName?: string;
 }): void {
   if (!io) return;
   io.to(`order:${orderId}`).emit('order:status_updated', data);
+  io.to(`order:${orderId}`).emit('order_status_changed', data);
   io.to(`restaurant:${restaurantId}`).emit('order:status_updated', data);
+  io.to(`restaurant:${restaurantId}`).emit('order_status_changed', data);
+
+  if (data.status === 'CANCELLED') {
+    io.to(`order:${orderId}`).emit('order_cancelled', data);
+    io.to(`restaurant:${restaurantId}`).emit('order_cancelled', data);
+  }
+
+  if (data.driverId || data.status === 'ON_THE_WAY') {
+    io.to(`order:${orderId}`).emit('driver_assigned', data);
+    io.to(`restaurant:${restaurantId}`).emit('driver_assigned', data);
+  }
 }
 
 // Emit new order to restaurant
 export function emitNewOrder(restaurantId: string, order: unknown): void {
   if (!io) return;
   io.to(`restaurant:${restaurantId}`).emit('order:new', order);
+  io.to(`restaurant:${restaurantId}`).emit('new_order', order);
   io.to(`restaurant:${restaurantId}`).emit('kitchen:new_order', order);
   io.to(`restaurant:${restaurantId}`).emit('notification:new', {
     type: 'NEW_ORDER',
@@ -172,6 +195,7 @@ export function emitWaiterCall(
     itemsSummary,
   };
   io.to(`restaurant:${restaurantId}`).emit('waiter:called', payload);
+  io.to(`restaurant:${restaurantId}`).emit('waiter_called', payload);
   io.to(`restaurant:${restaurantId}`).emit('notification:new', {
     type: 'WAITER_CALL',
     title: `🔔 Waiter Call - Table ${tableNumber}`,
@@ -190,7 +214,9 @@ export function emitWaiterResponse(restaurantId: string, tableNumber: string): v
     timestamp: new Date().toISOString(),
   };
   io.to(`table:${restaurantId}:${cleanTable}`).emit('waiter:responded', payload);
+  io.to(`table:${restaurantId}:${cleanTable}`).emit('waiter_responded', payload);
   io.to(`restaurant:${restaurantId}`).emit('waiter:responded', payload);
+  io.to(`restaurant:${restaurantId}`).emit('waiter_responded', payload);
 }
 
 export function emitWaiterDismiss(restaurantId: string, tableNumber: string): void {
@@ -199,11 +225,13 @@ export function emitWaiterDismiss(restaurantId: string, tableNumber: string): vo
   const payload = {
     tableNumber: cleanTable,
     restaurantId,
-    message: `Waiter is occupied right now. You can try again in 1 minute.`,
+    message: `Waiter is occupied right now. You can try again in 30 seconds.`,
     timestamp: new Date().toISOString(),
   };
   io.to(`table:${restaurantId}:${cleanTable}`).emit('waiter:dismissed', payload);
+  io.to(`table:${restaurantId}:${cleanTable}`).emit('waiter_dismissed', payload);
   io.to(`restaurant:${restaurantId}`).emit('waiter:dismissed', payload);
+  io.to(`restaurant:${restaurantId}`).emit('waiter_dismissed', payload);
 }
 
 export function emitPaymentNotReceived(orderId: string, amount: number): void {

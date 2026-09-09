@@ -26,6 +26,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { playNewOrderSound, playWaiterCallSound } from '@/utils/audio';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 interface NotificationItem {
   id: string;
@@ -37,6 +38,7 @@ interface NotificationItem {
 }
 
 export function WaiterBell() {
+  const router = useRouter();
   const {
     waiterCalls,
     newOrders,
@@ -421,7 +423,7 @@ export function WaiterBell() {
                             <div
                               key={order.id}
                               onClick={() => {
-                                useWaiterStore.getState().setActiveNewOrderAlert(order);
+                                router.push('/owner/orders');
                                 setShowWaiterPanel(false);
                               }}
                               className={`p-3 rounded-xl border transition-all cursor-pointer hover:border-emerald-500 hover:scale-[1.01] ${

@@ -25,11 +25,20 @@ export interface LiveOrderAlert {
   user?: { name?: string };
 }
 
+export interface GeneralNotificationAlert {
+  id: string;
+  title: string;
+  message?: string;
+  type?: string;
+  createdAt?: string;
+}
+
 interface WaiterState {
   waiterCalls: WaiterCall[];
   newOrders: LiveOrderAlert[];
   activeWaiterAlert: WaiterCall | null;
   activeNewOrderAlert: LiveOrderAlert | null;
+  activeGeneralNotificationAlert: GeneralNotificationAlert | null;
   handledTables: string[];
   socket: Socket | null;
   soundEnabled: boolean;
@@ -41,6 +50,7 @@ interface WaiterState {
   setSoundEnabled: (enabled: boolean) => void;
   setActiveWaiterAlert: (alert: WaiterCall | null) => void;
   setActiveNewOrderAlert: (alert: LiveOrderAlert | null) => void;
+  setActiveGeneralNotificationAlert: (alert: GeneralNotificationAlert | null) => void;
   clearAll: () => void;
   setSocket: (socket: Socket | null) => void;
 }
@@ -50,6 +60,7 @@ export const useWaiterStore = create<WaiterState>((set) => ({
   newOrders: [],
   activeWaiterAlert: null,
   activeNewOrderAlert: null,
+  activeGeneralNotificationAlert: null,
   handledTables: [],
   socket: null,
   soundEnabled: true,
@@ -106,6 +117,7 @@ export const useWaiterStore = create<WaiterState>((set) => ({
   setSoundEnabled: (soundEnabled) => set({ soundEnabled }),
   setActiveWaiterAlert: (activeWaiterAlert) => set({ activeWaiterAlert }),
   setActiveNewOrderAlert: (activeNewOrderAlert) => set({ activeNewOrderAlert }),
-  clearAll: () => set({ waiterCalls: [], newOrders: [], activeWaiterAlert: null, activeNewOrderAlert: null, handledTables: [] }),
+  setActiveGeneralNotificationAlert: (activeGeneralNotificationAlert) => set({ activeGeneralNotificationAlert }),
+  clearAll: () => set({ waiterCalls: [], newOrders: [], activeWaiterAlert: null, activeNewOrderAlert: null, activeGeneralNotificationAlert: null, handledTables: [] }),
   setSocket: (socket) => set({ socket }),
 }));

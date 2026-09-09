@@ -20,7 +20,7 @@ import {
   Bell,
 } from 'lucide-react';
 import { CustomerNotificationModal } from './CustomerNotificationModal';
-import { playNewOrderSound } from '@/utils/audio';
+import { playNewOrderSound, processRealTimeEvent } from '@/utils/audio';
 import { getImageUrl } from '@/lib/image';
 import { io, Socket } from 'socket.io-client';
 import api, { getSocketUrl } from '@/lib/api';
@@ -231,8 +231,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
     // ✅ Correct event name: 'join:order'
     socket.emit('join:order', orderId);
 
-    // ✅ Real-time order, payment, and add-on status updates
-    socket.on('order:status_updated', (data: {
+    const handleStatusUpdate = (data: {
       orderId: string;
       status?: string;
       addOnStatus?: string | null;
@@ -240,66 +239,89 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
       reason?: string;
     }) => {
       if (data.orderId === orderId) {
-        playNewOrderSound();
-        if (data.status) {
-          setCurrentStatus(data.status);
-          const statusLabels: Record<string, string> = {
-            CONFIRMED: '🎉 Order Confirmed!',
-            PREPARING: '👨‍🍳 Kitchen is preparing your order!',
-            BAKING: '🔥 Order is in the kitchen!',
-            READY: '🍽️ Order Ready!',
-            ON_THE_WAY: '🚴 Order is on the way!',
-            DELIVERED: '✅ Order Served!',
-            CANCELLED: '❌ Order Cancelled',
-          };
-          if (data.status === 'CANCELLED') {
-            toast.error(`Order Cancelled${data.reason ? `: ${data.reason}` : ''}`, { duration: 7000, id: 'order-status-cancelled' });
-          } else {
-            toast.success(statusLabels[data.status] ?? `Order status: ${data.status.replace(/_/g, ' ')}`, { id: 'order-status-update' });
+        processRealTimeEvent('order_status_changed', () => {
+          if (data.status) {
+            setCurrentStatus(data.status);
+            const statusLabels: Record<string, string> = {
+              CONFIRMED: '🎉 Order Confirmed!',
+              PREPARING: '👨‍🍳 Kitchen is preparing your order!',
+              BAKING: '🔥 Order is in the kitchen!',
+              READY: '🍽️ Order Ready!',
+              ON_THE_WAY: '🚴 Order is on the way!',
+              DELIVERED: '✅ Order Served!',
+              CANCELLED: '❌ Order Cancelled',
+            };
+            if (data.status === 'CANCELLED') {
+              toast.error(`Order Cancelled${data.reason ? `: ${data.reason}` : ''}`, { duration: 7000, id: 'order-status-cancelled' });
+            } else {
+              toast.success(statusLabels[data.status] ?? `Order status: ${data.status.replace(/_/g, ' ')}`, { id: 'order-status-update' });
+            }
+            if (data.status === 'DELIVERED') {
+              setShowRating(true);
+            }
           }
-          if (data.status === 'DELIVERED') {
-            setShowRating(true);
-          }
-        }
 
-        if (data.paymentStatus === 'PAID') {
-          toast.success('✅ Payment Confirmed by Restaurant!', { id: 'payment-confirmed-toast' });
-        } else if (data.paymentStatus === 'FAILED') {
-          toast.error('⚠️ Payment Not Confirmed by Restaurant.', { id: 'payment-failed-toast' });
-        }
-
-        if (data.addOnStatus) {
-          const addonLabels: Record<string, string> = {
-            PREPARING: '👨‍🍳 Add-on items are being prepared!',
-            READY: '🍽️ Add-on items are ready to serve!',
-            DELIVERED: '✅ Add-on items served!',
-            CANCELLED: '🚫 Add-on items have been cancelled.',
-          };
-          if (data.addOnStatus === 'CANCELLED') {
-            toast.error(addonLabels[data.addOnStatus], { id: 'addon-cancelled-toast' });
-          } else {
-            toast.info(addonLabels[data.addOnStatus] ?? `Add-on status: ${data.addOnStatus}`, { id: 'addon-status-toast' });
+          if (data.paymentStatus === 'PAID') {
+            toast.success('✅ Payment Confirmed by Restaurant!', { id: 'payment-confirmed-toast' });
+          } else if (data.paymentStatus === 'FAILED') {
+            toast.error('⚠️ Payment Not Confirmed by Restaurant.', { id: 'payment-failed-toast' });
           }
-        }
+
+          if (data.addOnStatus) {
+            const addonLabels: Record<string, string> = {
+              PREPARING: '👨‍🍳 Add-on items are being prepared!',
+              READY: '🍽️ Add-on items are ready to serve!',
+              DELIVERED: '✅ Add-on items served!',
+              CANCELLED: '🚫 Add-on items have been cancelled.',
+            };
+            if (data.addOnStatus === 'CANCELLED') {
+              toast.error(addonLabels[data.addOnStatus], { id: 'addon-cancelled-toast' });
+            } else {
+              toast.info(addonLabels[data.addOnStatus] ?? `Add-on status: ${data.addOnStatus}`, { id: 'addon-status-toast' });
+            }
+          }
+        });
 
         qc.invalidateQueries({ queryKey: ['order', orderId] });
+      }
+    };
+
+    socket.on('order:status_updated', handleStatusUpdate);
+    socket.on('order_status_changed', handleStatusUpdate);
+
+    socket.on('order_cancelled', (data: any) => {
+      if (data.orderId === orderId) {
+        processRealTimeEvent('order_cancelled', () => {
+          toast.error(`⚠️ Order Cancelled${data.reason ? `: ${data.reason}` : ''}`, { duration: 7000 });
+          qc.invalidateQueries({ queryKey: ['order', orderId] });
+        });
+      }
+    });
+
+    socket.on('driver_assigned', (data: any) => {
+      if (data.orderId === orderId) {
+        processRealTimeEvent('driver_assigned', () => {
+          toast.info(`🚗 Driver Assigned to your order!`, { duration: 7000 });
+          qc.invalidateQueries({ queryKey: ['order', orderId] });
+        });
       }
     });
 
     // Listen for payment not received notification from owner
     socket.on('payment:not_received', (data: { orderId: string; amount: number }) => {
       if (data.orderId === orderId) {
-        setPaymentNotReceivedAmount(data.amount);
-        setShowPaymentNotReceivedModal(true);
-        // Also play a system beep via toast
-        toast.error('⚠️ Payment not received by restaurant!', { duration: 5000 });
+        processRealTimeEvent('order_status_changed', () => {
+          setPaymentNotReceivedAmount(data.amount);
+          setShowPaymentNotReceivedModal(true);
+          toast.error('⚠️ Payment not received by restaurant!', { duration: 5000 });
+        });
       }
     });
 
     return () => {
       socket.disconnect();
     };
-  }, [orderId]);
+  }, [orderId, qc]);
 
   // ── Loading skeleton ──────────────────────────────────────────────────────
   if (isLoading || !order) {

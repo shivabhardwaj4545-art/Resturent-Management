@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import { AnimatePresence, motion } from 'framer-motion';
 import { io, Socket } from 'socket.io-client';
 import { useWaiterStore, WaiterCall } from '@/store/waiter.store';
-import { playNewOrderSound, playWaiterCallSound } from '@/utils/audio';
+import { playNewOrderSound, playWaiterCallSound, processRealTimeEvent } from '@/utils/audio';
 
 // Play attention beep using Web Audio API
 function playAlertBeep() {
@@ -78,7 +78,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
   const { user, isAuthenticated } = useAuthStore();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
-  const { activeWaiterAlert, activeNewOrderAlert, setActiveWaiterAlert, setActiveNewOrderAlert } = useWaiterStore();
+  const { activeWaiterAlert, activeNewOrderAlert, activeGeneralNotificationAlert, setActiveWaiterAlert, setActiveNewOrderAlert, setActiveGeneralNotificationAlert } = useWaiterStore();
 
   useEffect(() => {
     setMounted(true);
@@ -128,7 +128,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     socket.on('connect', joinRooms);
 
     // 1. Waiter calls or payment requests
-    socket.on('waiter:called', (payload: { 
+    const handleWaiterCallEvent = (payload: { 
       tableNumber: string; 
       calledAt: string; 
       restaurantId?: string;
@@ -142,8 +142,10 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
         ...payload,
       };
       useWaiterStore.getState().addWaiterCall(payload, true);
-      useWaiterStore.getState().setActiveWaiterAlert(waiterCallObj);
-      playWaiterCallSound();
+
+      processRealTimeEvent('waiter_called', () => {
+        useWaiterStore.getState().setActiveWaiterAlert(waiterCallObj);
+      });
       
       const isPayOnCounter = payload.paymentMethod === 'COD';
       const isPayToWaiter = payload.paymentMethod === 'PAY_TO_WAITER';
@@ -169,13 +171,21 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       });
       queryClient.invalidateQueries({ queryKey: ['owner-notifications'] });
       queryClient.refetchQueries({ queryKey: ['owner-notifications'] });
-    });
+    };
+
+    socket.on('waiter:called', handleWaiterCallEvent);
+    socket.on('waiter_called', handleWaiterCallEvent);
 
     // 2. New order received
     const handleNewOrderEvent = (order: any) => {
+      if (order.status && order.status !== 'PENDING') {
+        return;
+      }
       useWaiterStore.getState().addNewOrder(order);
-      playNewOrderSound();
-      setActiveNewOrderAlert(order);
+
+      processRealTimeEvent('new_order', () => {
+        setActiveNewOrderAlert(order);
+      });
       
       const orderIdShort = order.id ? order.id.slice(-8).toUpperCase() : 'NEW';
       const itemsLabel = order.items?.map((i: any) => `${i.menuItem?.name || i.name || 'Item'} × ${i.quantity}`).join(', ');
@@ -197,19 +207,52 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     };
 
     socket.on('order:new', handleNewOrderEvent);
+    socket.on('new_order', handleNewOrderEvent);
     socket.on('kitchen:new_order', handleNewOrderEvent);
 
     // 3. Order status updated
-    socket.on('order:status_updated', () => {
+    const handleStatusUpdated = (payload?: any) => {
+      const orderId = payload?.id || payload?.orderId;
+      if (orderId) {
+        useWaiterStore.getState().removeNewOrder(orderId);
+        const currentAlert = useWaiterStore.getState().activeNewOrderAlert;
+        if (currentAlert?.id === orderId) {
+          setActiveNewOrderAlert(null);
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
       queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['owner-recent-orders-popover'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-notifications'] });
       queryClient.refetchQueries({ queryKey: ['owner-orders'] });
-    });
+      queryClient.refetchQueries({ queryKey: ['owner-dashboard'] });
+      queryClient.refetchQueries({ queryKey: ['owner-recent-orders-popover'] });
+      queryClient.refetchQueries({ queryKey: ['owner-notifications'] });
+    };
+
+    socket.on('order:status_updated', handleStatusUpdated);
+    socket.on('order_status_changed', handleStatusUpdated);
+    socket.on('order_cancelled', handleStatusUpdated);
+    socket.on('driver_assigned', handleStatusUpdated);
 
     // 4. Broadcast & Direct Chat Notifications
     socket.on('notification:new', (notif: any) => {
-      playAlertBeep();
+      if (notif.type !== 'NEW_ORDER' && notif.type !== 'WAITER_CALL') {
+        const notifObj = {
+          id: notif.id || `notif-${Date.now()}`,
+          title: notif.title || 'New Notification Alert',
+          message: notif.message || notif.body || '',
+          type: notif.type || 'NOTIFICATION',
+          createdAt: notif.createdAt || new Date().toISOString(),
+        };
+
+        processRealTimeEvent('waiter_called', () => {
+          setActiveGeneralNotificationAlert(notifObj);
+        });
+      } else {
+        playAlertBeep();
+      }
+
       if (notif.title) {
         toast.info(notif.title, {
           description: notif.message,
@@ -435,7 +478,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
 
       {/* Global New Order Alert Modal */}
       <AnimatePresence>
-        {activeNewOrderAlert && (
+        {activeNewOrderAlert && (!activeNewOrderAlert.status || activeNewOrderAlert.status === 'PENDING') && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -520,9 +563,11 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
               <div className="p-4 border-t border-border bg-muted/30 flex gap-2 flex-wrap">
                 <button
                   onClick={async () => {
+                    const orderId = activeNewOrderAlert.id;
                     try {
-                      await api.patch(`/owner/orders/${activeNewOrderAlert.id}/status`, { status: 'CONFIRMED' });
-                      toast.success(`Order #${activeNewOrderAlert.id.slice(-8).toUpperCase()} Confirmed!`);
+                      await api.patch(`/owner/orders/${orderId}/status`, { status: 'CONFIRMED' });
+                      toast.success(`Order #${orderId.slice(-8).toUpperCase()} Confirmed!`);
+                      useWaiterStore.getState().removeNewOrder(orderId);
                       queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
                       queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
                     } catch {
@@ -547,6 +592,71 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                 <button
                   onClick={() => setActiveNewOrderAlert(null)}
                   className="py-3 px-4 rounded-xl border border-border text-foreground font-semibold text-xs hover:bg-muted transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Global General Notification Alert Modal */}
+      <AnimatePresence>
+        {activeGeneralNotificationAlert && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs"
+          >
+            <motion.div
+              initial={{ scale: 0.85, y: 30 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.85, y: 30 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 24 }}
+              className="bg-card border-2 border-primary/60 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden text-card-foreground relative"
+            >
+              {/* Top Banner */}
+              <div className="bg-gradient-to-r from-primary via-orange-500 to-amber-500 p-5 text-white flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-xs">
+                    <BellRing className="w-5 h-5 text-white animate-bounce" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-extrabold uppercase tracking-widest bg-white/20 px-2 py-0.5 rounded-full">
+                      {activeGeneralNotificationAlert.type || 'Notification'}
+                    </span>
+                    <h3 className="font-display font-extrabold text-lg leading-tight line-clamp-1">
+                      {activeGeneralNotificationAlert.title}
+                    </h3>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setActiveGeneralNotificationAlert(null)}
+                  className="p-1.5 rounded-full hover:bg-white/20 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5 text-white" />
+                </button>
+              </div>
+
+              {/* Message Content */}
+              <div className="p-6 space-y-4">
+                <div className="bg-muted/50 p-4 rounded-2xl border border-border/50">
+                  <p className="text-sm font-medium text-foreground leading-relaxed whitespace-pre-wrap">
+                    {activeGeneralNotificationAlert.message || 'You have received a new update.'}
+                  </p>
+                </div>
+                <p className="text-xs text-muted-foreground text-center">
+                  Received at {new Date(activeGeneralNotificationAlert.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="p-4 border-t border-border bg-muted/30 flex gap-2">
+                <button
+                  onClick={() => setActiveGeneralNotificationAlert(null)}
+                  className="flex-1 py-3 px-4 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold text-xs shadow-md transition-all text-center cursor-pointer"
                 >
                   Dismiss
                 </button>

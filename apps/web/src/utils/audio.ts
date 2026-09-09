@@ -1,11 +1,36 @@
 /**
- * Web Audio API Notification Sound Synthesizer
- * Provides crystal-clear, loud, distinct sounds for:
- * 1. New Order Notification
- * 2. Waiter Call Bell
- * 3. Kitchen Display Chime
+ * Real-Time Sound, Popup, and Vibration Notification Service
+ * Supports:
+ * - Real-time audio playback for:
+ *   1. new_order -> new_order.mp3 / Order sound 🔔
+ *   2. waiter_called -> waiter_call.mp3 / Waiter sound 🛎️
+ *   3. order_cancelled -> order_cancelled.mp3 / Cancel sound ⚠️
+ *   4. driver_assigned -> driver_assigned.mp3 / Driver sound 🚗
+ *   5. order_status_changed -> order_status_changed.mp3 / Status sound 🔔
+ * - Web Audio API fallback synthesized tones
+ * - Mobile Haptic Vibration (navigator.vibrate)
+ * - Sequential execution: Sound -> Popup -> Vibration (mobile)
  */
 
+export type EventType =
+  | 'new_order'
+  | 'waiter_called'
+  | 'order_cancelled'
+  | 'driver_assigned'
+  | 'order_status_changed';
+
+// Mobile vibration trigger
+export function triggerVibration(pattern: number[] = [200, 100, 200]) {
+  if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+    try {
+      navigator.vibrate(pattern);
+    } catch {
+      /* ignore vibration errors */
+    }
+  }
+}
+
+// Audio context singleton for web audio fallback
 let sharedAudioCtx: AudioContext | null = null;
 
 function getAudioContext(): AudioContext {
@@ -19,151 +44,200 @@ function getAudioContext(): AudioContext {
   return sharedAudioCtx;
 }
 
-// Unlock audio context on user interaction
 if (typeof window !== 'undefined') {
   const unlockAudio = () => {
     if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
-      sharedAudioCtx.resume();
+      sharedAudioCtx.resume().catch(() => {});
     }
   };
-  window.addEventListener('click', unlockAudio, { once: false, capture: true });
-  window.addEventListener('keydown', unlockAudio, { once: false, capture: true });
-  window.addEventListener('touchstart', unlockAudio, { once: false, capture: true });
+  window.addEventListener('click', unlockAudio, { capture: true });
+  window.addEventListener('keydown', unlockAudio, { capture: true });
+  window.addEventListener('touchstart', unlockAudio, { capture: true });
 }
 
-/**
- * Loud, clear 4-tone chime sequence for New Orders
- */
-export function playNewOrderSound() {
+// Synthesized Sound Fallbacks
+export function playNewOrderSynth() {
   try {
     const ctx = getAudioContext();
     const now = ctx.currentTime;
-
-    // Melody: C5 (523.25) -> E5 (659.25) -> G5 (783.99) -> C6 (1046.50)
     const notes = [
       { freq: 523.25, time: 0, duration: 0.15 },
       { freq: 659.25, time: 0.15, duration: 0.15 },
       { freq: 783.99, time: 0.3, duration: 0.15 },
       { freq: 1046.5, time: 0.45, duration: 0.4 },
     ];
-
-    // Repeat melody twice for maximum clarity
-    const repeatOffset = 0.9;
-    const allNotes = [
-      ...notes,
-      ...notes.map((n) => ({ ...n, time: n.time + repeatOffset })),
-    ];
-
-    allNotes.forEach(({ freq, time, duration }) => {
+    notes.forEach(({ freq, time, duration }) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-
       osc.type = 'triangle';
       osc.frequency.setValueAtTime(freq, now + time);
-
-      // Warm overtone oscillator
-      const subOsc = ctx.createOscillator();
-      subOsc.type = 'sine';
-      subOsc.frequency.setValueAtTime(freq * 0.5, now + time);
-
       gain.gain.setValueAtTime(0.7, now + time);
       gain.gain.exponentialRampToValueAtTime(0.001, now + time + duration);
-
       osc.connect(gain);
-      subOsc.connect(gain);
       gain.connect(ctx.destination);
-
       osc.start(now + time);
-      subOsc.start(now + time);
       osc.stop(now + time + duration);
-      subOsc.stop(now + time + duration);
     });
-  } catch {
-    /* Silent fallback */
-  }
+  } catch { /* silent fallback */ }
 }
 
-/**
- * Loud 2-pulse bell chime for Waiter Calls / Bill Requests
- */
-export function playWaiterCallSound() {
+export function playWaiterCallSynth() {
   try {
     const ctx = getAudioContext();
     const now = ctx.currentTime;
-
-    // Bell pulses: Ring-Ding... Ring-Ding!
     const pulses = [
       { freq1: 987.77, freq2: 1318.51, start: 0 },
       { freq1: 987.77, freq2: 1318.51, start: 0.4 },
     ];
-
     pulses.forEach(({ freq1, freq2, start }) => {
       const osc1 = ctx.createOscillator();
       const osc2 = ctx.createOscillator();
       const gain = ctx.createGain();
-
       osc1.type = 'sine';
       osc2.type = 'triangle';
-
       osc1.frequency.setValueAtTime(freq1, now + start);
       osc2.frequency.setValueAtTime(freq2, now + start + 0.12);
-
       gain.gain.setValueAtTime(0.8, now + start);
       gain.gain.exponentialRampToValueAtTime(0.001, now + start + 0.35);
-
       osc1.connect(gain);
       osc2.connect(gain);
       gain.connect(ctx.destination);
-
       osc1.start(now + start);
       osc2.start(now + start + 0.12);
       osc1.stop(now + start + 0.35);
       osc2.stop(now + start + 0.35);
     });
-  } catch {
-    /* Silent fallback */
-  }
+  } catch { /* silent fallback */ }
 }
 
-/**
- * High-pitched crisp chime for Kitchen Display Queue
- */
-export function playKitchenOrderSound() {
+export function playOrderCancelledSynth() {
   try {
     const ctx = getAudioContext();
     const now = ctx.currentTime;
-
-    // Kitchen Chime: High E5 -> G5 -> C6 -> E6
     const tones = [
-      { freq: 659.25, start: 0, len: 0.15 },
-      { freq: 783.99, start: 0.15, len: 0.15 },
-      { freq: 1046.5, start: 0.3, len: 0.2 },
-      { freq: 1318.51, start: 0.5, len: 0.4 },
+      { freq: 300, start: 0, duration: 0.2 },
+      { freq: 220, start: 0.25, duration: 0.35 },
     ];
-
-    tones.forEach(({ freq, start, len }) => {
+    tones.forEach(({ freq, start, duration }) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-
-      osc.type = 'square'; // Crisper sound for kitchen background noise
+      osc.type = 'sawtooth';
       osc.frequency.setValueAtTime(freq, now + start);
-
-      // Lowpass filter to smooth square wave into crisp bell
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(2500, now + start);
-
-      gain.gain.setValueAtTime(0.5, now + start);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + start + len);
-
-      osc.connect(filter);
-      filter.connect(gain);
+      gain.gain.setValueAtTime(0.6, now + start);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + start + duration);
+      osc.connect(gain);
       gain.connect(ctx.destination);
-
       osc.start(now + start);
-      osc.stop(now + start + len);
+      osc.stop(now + start + duration);
     });
-  } catch {
-    /* Silent fallback */
+  } catch { /* silent fallback */ }
+}
+
+export function playDriverAssignedSynth() {
+  try {
+    const ctx = getAudioContext();
+    const now = ctx.currentTime;
+    const tones = [
+      { freq: 440, start: 0, duration: 0.12 },
+      { freq: 554.37, start: 0.15, duration: 0.25 },
+    ];
+    tones.forEach(({ freq, start, duration }) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(freq, now + start);
+      gain.gain.setValueAtTime(0.5, now + start);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + start + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + start);
+      osc.stop(now + start + duration);
+    });
+  } catch { /* silent fallback */ }
+}
+
+export function playOrderStatusSynth() {
+  try {
+    const ctx = getAudioContext();
+    const now = ctx.currentTime;
+    const tones = [
+      { freq: 659.25, start: 0, duration: 0.15 },
+      { freq: 880, start: 0.15, duration: 0.3 },
+    ];
+    tones.forEach(({ freq, start, duration }) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + start);
+      gain.gain.setValueAtTime(0.6, now + start);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + start + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + start);
+      osc.stop(now + start + duration);
+    });
+  } catch { /* silent fallback */ }
+}
+
+// Sound file mapping
+const SOUND_FILES: Record<EventType, string> = {
+  new_order: '/sounds/new_order.mp3',
+  waiter_called: '/sounds/waiter_call.mp3',
+  order_cancelled: '/sounds/order_cancelled.mp3',
+  driver_assigned: '/sounds/driver_assigned.mp3',
+  order_status_changed: '/sounds/order_status_changed.mp3',
+};
+
+const SYNTH_FALLBACKS: Record<EventType, () => void> = {
+  new_order: playNewOrderSynth,
+  waiter_called: playWaiterCallSynth,
+  order_cancelled: playOrderCancelledSynth,
+  driver_assigned: playDriverAssignedSynth,
+  order_status_changed: playOrderStatusSynth,
+};
+
+export function playEventSound(event: EventType) {
+  if (typeof window === 'undefined') return;
+  const soundFile = SOUND_FILES[event];
+  if (soundFile) {
+    const audio = new Audio(soundFile);
+    audio.play().catch(() => {
+      const synth = SYNTH_FALLBACKS[event];
+      if (synth) synth();
+    });
+  } else {
+    const synth = SYNTH_FALLBACKS[event];
+    if (synth) synth();
   }
 }
+
+// Named function exports for direct caller usage
+export const playNewOrderSound = () => playEventSound('new_order');
+export const playWaiterCallSound = () => playEventSound('waiter_called');
+export const playOrderCancelledSound = () => playEventSound('order_cancelled');
+export const playDriverAssignedSound = () => playEventSound('driver_assigned');
+export const playOrderStatusSound = () => playEventSound('order_status_changed');
+export const playKitchenOrderSound = () => playEventSound('new_order');
+
+/**
+ * Real-time notification flow:
+ * 1. Sound
+ * 2. Popup
+ * 3. Vibration (mobile)
+ */
+export function processRealTimeEvent(
+  event: EventType,
+  popupTrigger?: () => void
+) {
+  // 1. Sound
+  playEventSound(event);
+
+  // 2. Popup
+  if (popupTrigger) {
+    popupTrigger();
+  }
+
+  // 3. Vibration (mobile)
+  triggerVibration([200, 100, 200]);
+}
+

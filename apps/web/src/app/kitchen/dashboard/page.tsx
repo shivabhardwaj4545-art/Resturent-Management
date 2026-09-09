@@ -138,10 +138,12 @@ export default function KitchenDashboardPage() {
       if (soundEnabled) playKitchenOrderSound();
       toast.info('🔔 New Order Confirmed for Kitchen!', { duration: 5000 });
       queryClient.invalidateQueries({ queryKey: ['kitchen-orders'] });
+      queryClient.refetchQueries({ queryKey: ['kitchen-orders'] });
     };
 
     const handleOrderUpdated = () => {
       queryClient.invalidateQueries({ queryKey: ['kitchen-orders'] });
+      queryClient.refetchQueries({ queryKey: ['kitchen-orders'] });
     };
 
     const handleWaiterCalled = (payload: { tableNumber: string; calledAt?: string }) => {
@@ -161,10 +163,15 @@ export default function KitchenDashboardPage() {
     };
 
     socket.on('order:new', handleNewOrder);
+    socket.on('new_order', handleNewOrder);
     socket.on('kitchen:new_order', handleNewOrder);
     socket.on('order:status_updated', handleOrderUpdated);
     socket.on('kitchen:order_updated', handleOrderUpdated);
+    socket.on('order_status_changed', handleOrderUpdated);
+    socket.on('order_cancelled', handleOrderUpdated);
+    socket.on('driver_assigned', handleOrderUpdated);
     socket.on('waiter:called', handleWaiterCalled);
+    socket.on('waiter_called', handleWaiterCalled);
 
     return () => {
       socket.disconnect();

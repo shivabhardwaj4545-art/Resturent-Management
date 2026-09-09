@@ -325,7 +325,7 @@ export function OwnerDashboard() {
                   {data?.recentOrders.slice(0, 5).map((order) => (
                     <div
                       key={order.id}
-                      onClick={() => useWaiterStore.getState().setActiveNewOrderAlert(order as any)}
+                      onClick={() => router.push('/owner/orders')}
                       className="flex items-center gap-3 p-3 rounded-xl hover:bg-muted/80 transition-all cursor-pointer border border-transparent hover:border-primary/30"
                     >
                       <div className="flex-1 min-w-0">

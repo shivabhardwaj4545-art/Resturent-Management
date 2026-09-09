@@ -14,7 +14,7 @@ import { AIChatbot } from './AIChatbot';
 import { AIRecommendations } from './AIRecommendations';
 import { CustomerNotificationModal } from './CustomerNotificationModal';
 import { CustomerAlertModal, CustomerAlertData } from './CustomerAlertModal';
-import { playWaiterCallSound, playNewOrderSound } from '@/utils/audio';
+import { playWaiterCallSound, playNewOrderSound, processRealTimeEvent } from '@/utils/audio';
 import { toast } from 'sonner';
 import { Bell } from 'lucide-react';
 import Link from 'next/link';
@@ -590,83 +590,127 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
     socket.on('connect', joinCustomerRooms);
     joinCustomerRooms();
 
-    socket.on('waiter:responded', (resData: { tableNumber?: string; message?: string }) => {
+    const handleWaiterResponded = (resData: { tableNumber?: string; message?: string }) => {
       const currentTable = tableNumber || manualTableNumber || (typeof window !== 'undefined' ? localStorage.getItem(`table_num_${slug}`) : null);
       if (!currentTable || !resData?.tableNumber) return;
       if (String(currentTable).trim() === String(resData.tableNumber).trim()) {
-        playWaiterCallSound();
-        startComingTimer(60, resData.tableNumber);
-        setCustomerAlert({
-          isOpen: true,
-          type: 'WAITER_COMING',
-          title: '👨‍🍳 Waiter Is Coming!',
-          message: resData.message || `Wait for 1 min, waiter is coming to Table ${resData.tableNumber}!`,
-          tableNumber: resData.tableNumber,
-          timerSeconds: 60,
-        });
-        toast.success(`👨‍🍳 Wait for 1 min, waiter is coming to Table ${resData.tableNumber}!`, {
-          duration: 8000,
-          icon: '🏃',
+        processRealTimeEvent('waiter_called', () => {
+          startComingTimer(60, resData.tableNumber);
+          setCustomerAlert({
+            isOpen: true,
+            type: 'WAITER_COMING',
+            title: '👨‍🍳 Waiter Is Coming!',
+            message: resData.message || `Waiter will come in a few minutes to Table ${resData.tableNumber}!`,
+            tableNumber: resData.tableNumber,
+            timerSeconds: 60,
+          });
+          toast.success(`👨‍🍳 Waiter will come in a few minutes to Table ${resData.tableNumber}!`, {
+            duration: 8000,
+            icon: '🏃',
+          });
         });
       }
-    });
+    };
 
-    socket.on('waiter:dismissed', (resData: { tableNumber?: string; message?: string }) => {
+    socket.on('waiter:responded', handleWaiterResponded);
+    socket.on('waiter_responded', handleWaiterResponded);
+
+    const handleWaiterDismissed = (resData: { tableNumber?: string; message?: string }) => {
       const currentTable = tableNumber || manualTableNumber || (typeof window !== 'undefined' ? localStorage.getItem(`table_num_${slug}`) : null);
       if (!currentTable || !resData?.tableNumber) return;
       if (String(currentTable).trim() === String(resData.tableNumber).trim()) {
-        playWaiterCallSound();
-        startOccupiedTimer(30, resData.tableNumber);
-        setCustomerAlert({
-          isOpen: true,
-          type: 'WAITER_OCCUPIED',
-          title: '⏳ Waiter Is Busy Right Now',
-          message: resData.message || `Waiter is busy right now. You can call waiter again after 30 seconds.`,
-          tableNumber: resData.tableNumber,
-          timerSeconds: 30,
-        });
-        toast.error(`⏳ Waiter is busy right now. You can call waiter again after 30 seconds.`, {
-          duration: 8000,
-          icon: '⏳',
+        processRealTimeEvent('order_cancelled', () => {
+          startOccupiedTimer(30, resData.tableNumber);
+          setCustomerAlert({
+            isOpen: true,
+            type: 'WAITER_OCCUPIED',
+            title: '⏳ Waiter Is Busy Right Now',
+            message: resData.message || `Waiter is busy right now. You can call waiter again after 30 seconds.`,
+            tableNumber: resData.tableNumber,
+            timerSeconds: 30,
+          });
+          toast.error(`⏳ Waiter is busy right now. You can call waiter again after 30 seconds.`, {
+            duration: 8000,
+            icon: '⏳',
+          });
         });
       }
-    });
+    };
+
+    socket.on('waiter:dismissed', handleWaiterDismissed);
+    socket.on('waiter_dismissed', handleWaiterDismissed);
 
     socket.on('user:loyalty_updated', () => {
       queryClient.invalidateQueries({ queryKey: ['user-profile-loyalty'] });
     });
 
-    socket.on('order:status_updated', (payload: { orderId?: string; status?: string; paymentStatus?: string; reason?: string }) => {
+    const handleOrderStatusUpdated = (payload: { orderId?: string; status?: string; paymentStatus?: string; reason?: string }) => {
       queryClient.invalidateQueries({ queryKey: ['active-orders'] });
       queryClient.invalidateQueries({ queryKey: ['previous-orders'] });
-      playNewOrderSound();
 
-      const statusMap: Record<string, { label: string; text: string; icon: string }> = {
-        CONFIRMED: { label: 'Order Confirmed', text: 'The restaurant has confirmed your order!', icon: '✅' },
-        PREPARING: { label: 'Preparing Order', text: 'The kitchen has started preparing your delicious food!', icon: '👨‍🍳' },
-        BAKING: { label: 'Cooking & Baking', text: 'Your food is in the kitchen oven/stove!', icon: '🔥' },
-        READY: { label: 'Order Ready!', text: 'Your order is ready to be served!', icon: '🍽️' },
-        ON_THE_WAY: { label: 'Out for Delivery', text: 'Your order is on the way!', icon: '🚴' },
-        DELIVERED: { label: 'Served & Completed', text: 'Your order has been served. Enjoy your meal!', icon: '🎉' },
-        CANCELLED: { label: 'Order Cancelled', text: payload?.reason ? `Order cancelled: ${payload.reason}` : 'Your order was cancelled by the restaurant.', icon: '❌' },
-      };
+      const isCancelled = payload?.status === 'CANCELLED';
+      const eventType = isCancelled ? 'order_cancelled' : 'order_status_changed';
 
-      const info = payload?.status && statusMap[payload.status] ? statusMap[payload.status] : {
-        label: `Order ${payload?.status ? payload.status.replace(/_/g, ' ') : 'Updated'}`,
-        text: `Your order status was updated to ${payload?.status || 'UPDATED'}.`,
-        icon: '🔔',
-      };
+      processRealTimeEvent(eventType, () => {
+        const statusMap: Record<string, { label: string; text: string; icon: string }> = {
+          CONFIRMED: { label: 'Order Confirmed', text: 'The restaurant has confirmed your order!', icon: '✅' },
+          PREPARING: { label: 'Preparing Order', text: 'The kitchen has started preparing your delicious food!', icon: '👨‍🍳' },
+          BAKING: { label: 'Cooking & Baking', text: 'Your food is in the kitchen oven/stove!', icon: '🔥' },
+          READY: { label: 'Order Ready!', text: 'Your order is ready to be served!', icon: '🍽️' },
+          ON_THE_WAY: { label: 'Out for Delivery', text: 'Your order is on the way!', icon: '🚴' },
+          DELIVERED: { label: 'Served & Completed', text: 'Your order has been served. Enjoy your meal!', icon: '🎉' },
+          CANCELLED: { label: 'Order Cancelled', text: payload?.reason ? `Order cancelled: ${payload.reason}` : 'Your order was cancelled by the restaurant.', icon: '❌' },
+        };
 
-      setCustomerAlert({
-        isOpen: true,
-        type: 'ORDER_UPDATE',
-        title: `${info.icon} ${info.label}`,
-        message: info.text,
-        orderId: payload?.orderId,
-        orderStatus: payload?.status,
+        const info = payload?.status && statusMap[payload.status] ? statusMap[payload.status] : {
+          label: `Order ${payload?.status ? payload.status.replace(/_/g, ' ') : 'Updated'}`,
+          text: `Your order status was updated to ${payload?.status || 'UPDATED'}.`,
+          icon: '🔔',
+        };
+
+        setCustomerAlert({
+          isOpen: true,
+          type: 'ORDER_UPDATE',
+          title: `${info.icon} ${info.label}`,
+          message: info.text,
+          orderId: payload?.orderId,
+          orderStatus: payload?.status,
+        });
+
+        toast.info(`${info.icon} ${info.label}`, { duration: 6000 });
       });
+    };
 
-      toast.info(`${info.icon} ${info.label}`, { duration: 6000 });
+    socket.on('order:status_updated', handleOrderStatusUpdated);
+    socket.on('order_status_changed', handleOrderStatusUpdated);
+
+    socket.on('order_cancelled', (payload: any) => {
+      queryClient.invalidateQueries({ queryKey: ['active-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['previous-orders'] });
+      processRealTimeEvent('order_cancelled', () => {
+        setCustomerAlert({
+          isOpen: true,
+          type: 'ORDER_UPDATE',
+          title: '⚠️ Order Cancelled',
+          message: payload?.reason ? `Order cancelled: ${payload.reason}` : 'Your order was cancelled.',
+          orderId: payload?.orderId,
+          orderStatus: 'CANCELLED',
+        });
+      });
+    });
+
+    socket.on('driver_assigned', (payload: any) => {
+      queryClient.invalidateQueries({ queryKey: ['active-orders'] });
+      processRealTimeEvent('driver_assigned', () => {
+        setCustomerAlert({
+          isOpen: true,
+          type: 'ORDER_UPDATE',
+          title: '🚗 Driver Assigned',
+          message: 'A driver has been assigned to your order!',
+          orderId: payload?.orderId,
+          orderStatus: payload?.status || 'ON_THE_WAY',
+        });
+      });
     });
 
     return () => {
