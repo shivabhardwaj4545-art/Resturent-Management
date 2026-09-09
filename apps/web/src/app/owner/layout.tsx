@@ -102,6 +102,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
 
   const queryClient = useQueryClient();
   const socketRef = useRef<Socket | null>(null);
+  const processedEventsRef = useRef<Map<string, number>>(new Map());
 
   // Global socket connection for waiter calls and new orders
   useEffect(() => {
@@ -137,8 +138,15 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       paymentMethod?: string;
       itemsSummary?: string;
     }) => {
+      const eventKey = `waiter-${payload.tableNumber}-${payload.type || 'default'}-${payload.calledAt || ''}`;
+      const now = Date.now();
+      if (processedEventsRef.current.has(eventKey) && now - (processedEventsRef.current.get(eventKey) || 0) < 3000) {
+        return;
+      }
+      processedEventsRef.current.set(eventKey, now);
+
       const waiterCallObj: WaiterCall = {
-        id: `${payload.tableNumber}-${Date.now()}`,
+        id: `${payload.tableNumber}-${now}`,
         ...payload,
       };
       useWaiterStore.getState().addWaiterCall(payload, true);
@@ -178,9 +186,20 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
 
     // 2. New order received
     const handleNewOrderEvent = (order: any) => {
-      if (order.status && order.status !== 'PENDING') {
+      if (!order) return;
+      if (order.status && String(order.status).toUpperCase() !== 'PENDING') {
         return;
       }
+
+      const eventKey = `order-${order.id}`;
+      const now = Date.now();
+      if (order.id && processedEventsRef.current.has(eventKey) && now - (processedEventsRef.current.get(eventKey) || 0) < 3000) {
+        return;
+      }
+      if (order.id) {
+        processedEventsRef.current.set(eventKey, now);
+      }
+
       useWaiterStore.getState().addNewOrder(order);
 
       processRealTimeEvent('new_order', () => {
@@ -355,7 +374,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+              className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/70 backdrop-blur-sm"
             >
               <motion.div
                 initial={{ scale: 0.7, y: 40 }}
@@ -478,12 +497,12 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
 
       {/* Global New Order Alert Modal */}
       <AnimatePresence>
-        {activeNewOrderAlert && (!activeNewOrderAlert.status || activeNewOrderAlert.status === 'PENDING') && (
+        {activeNewOrderAlert && (!activeNewOrderAlert.status || String(activeNewOrderAlert.status).toUpperCase() === 'PENDING') && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs"
+            className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs"
           >
             <motion.div
               initial={{ scale: 0.9, y: 20 }}
@@ -608,7 +627,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs"
+            className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs"
           >
             <motion.div
               initial={{ scale: 0.85, y: 30 }}
