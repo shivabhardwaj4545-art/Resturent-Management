@@ -124,9 +124,6 @@ export function WaiterBell() {
       <button
         onClick={() => {
           setShowWaiterPanel((v) => !v);
-          if (soundEnabled) {
-            playWaiterCallSound();
-          }
         }}
         className="relative p-2.5 rounded-xl hover:bg-muted/80 transition-all duration-200 active:scale-95 group"
         title="Live Notifications, Waiter Calls & Orders"
