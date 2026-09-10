@@ -79,7 +79,7 @@ export function OwnerSidebar({ mobileOpen = false, onMobileClose }: OwnerSidebar
         </div>
 
         {/* Nav Links */}
-        <nav className="p-4 space-y-1.5 overflow-y-auto max-h-[calc(100vh-220px)]">
+        <nav className="p-4 space-y-1.5 flex-1 min-h-0 overflow-y-auto">
           {OWNER_NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;

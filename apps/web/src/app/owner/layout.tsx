@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuthStore } from '@/store/auth.store';
 import { useRouter } from 'next/navigation';
 import { Loader2, DollarSign, BellRing, Banknote, ShoppingBag, Check, X } from 'lucide-react';
@@ -110,7 +111,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
 
   // Global socket connection for waiter calls and new orders
   useEffect(() => {
-    if (!restaurantData?.id) return;
+    const targetRestId = restaurantData?.id || (user as any)?.restaurantId;
 
     const socket: Socket = io(
       getSocketUrl(),
@@ -120,7 +121,10 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     useWaiterStore.getState().setSocket(socket);
 
     const joinRooms = () => {
-      socket.emit('join:restaurant', restaurantData.id);
+      const currentRestId = restaurantData?.id || (user as any)?.restaurantId;
+      if (currentRestId) {
+        socket.emit('join:restaurant', currentRestId);
+      }
       if (user?.id) {
         socket.emit('join:user', user.id);
       }
@@ -363,8 +367,6 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       } as React.CSSProperties}
       className="min-h-screen relative"
     >
-      {children}
-
       {/* Global Waiter Call Alert Modal */}
       <AnimatePresence>
         {activeWaiterAlert && (() => {
