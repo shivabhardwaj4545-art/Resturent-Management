@@ -37,6 +37,8 @@ export function requestDesktopNotificationPermission() {
       Notification.requestPermission().catch(() => {});
     }
   }
+}
+
 const recentDesktopNotificationsCache = new Map<string, number>();
 
 export function sendDesktopNotification(
