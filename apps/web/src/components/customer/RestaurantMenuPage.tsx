@@ -619,10 +619,6 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
             tableNumber: resData.tableNumber,
             timerSeconds: 60,
           });
-          toast.success(`👨‍🍳 Waiter is coming in a few minutes to Table ${resData.tableNumber}!`, {
-            duration: 8000,
-            icon: '🏃',
-          });
         });
       }
     };
@@ -643,10 +639,6 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
             message: resData.message || `Waiter is busy right now. You can call again after 50 seconds.`,
             tableNumber: resData.tableNumber,
             timerSeconds: 50,
-          });
-          toast.error(`⏳ Waiter is busy right now. You can call again after 50 seconds.`, {
-            duration: 8000,
-            icon: '⏳',
           });
         });
       }
