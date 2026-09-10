@@ -296,7 +296,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
         playAlertBeep();
       }
 
-      if (notif.title) {
+      if (notif.title && notif.type !== 'NEW_ORDER' && notif.type !== 'WAITER_CALL') {
         sendDesktopNotification(notif.title, {
           body: notif.message || notif.body || '',
           tag: `notif-${notif.id || Date.now()}`,

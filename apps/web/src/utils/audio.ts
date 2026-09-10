@@ -37,7 +37,7 @@ export function requestDesktopNotificationPermission() {
       Notification.requestPermission().catch(() => {});
     }
   }
-}
+const recentDesktopNotificationsCache = new Map<string, number>();
 
 export function sendDesktopNotification(
   title: string,
@@ -50,6 +50,25 @@ export function sendDesktopNotification(
   }
 ) {
   if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+
+  // Prevent duplicate notifications within 4 seconds
+  const cleanTitle = title.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const cleanBody = (options?.body || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const dedupeKey = `${cleanTitle}-${cleanBody}`;
+  const now = Date.now();
+  const lastSent = recentDesktopNotificationsCache.get(dedupeKey);
+
+  if (lastSent && now - lastSent < 4000) {
+    return;
+  }
+  recentDesktopNotificationsCache.set(dedupeKey, now);
+
+  if (recentDesktopNotificationsCache.size > 50) {
+    for (const [key, timestamp] of recentDesktopNotificationsCache.entries()) {
+      if (now - timestamp > 10000) recentDesktopNotificationsCache.delete(key);
+    }
+  }
 
   const fireNotification = () => {
     try {
