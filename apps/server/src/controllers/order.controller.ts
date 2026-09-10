@@ -607,11 +607,9 @@ export async function getOrderById(
 
     if (!order) throw new AppError('Order not found.', 404, 'ORDER_NOT_FOUND');
 
-    // Access control — user can only see their own orders (guests cannot see user orders)
-    if (order.userId) {
-      if (!req.user || (order.userId !== req.user.id && req.user.role === 'CUSTOMER')) {
-        throw new AppError('Access denied.', 403, 'ACCESS_DENIED');
-      }
+    // Access control — restrict only if authenticated user is trying to view another user's order
+    if (order.userId && req.user && req.user.role === 'CUSTOMER' && order.userId !== req.user.id) {
+      throw new AppError('Access denied.', 403, 'ACCESS_DENIED');
     }
 
     res.json({ success: true, data: { order } });

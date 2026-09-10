@@ -129,6 +129,7 @@ interface OrderTrackingPageProps {
 export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPageProps) {
   const router = useRouter();
   const { user } = useAuthStore();
+  const [mounted, setMounted] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<string>('PENDING');
   const [showRating, setShowRating] = useState(false);
   const [rating, setRating] = useState(0);
@@ -137,6 +138,10 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
   const [paymentNotReceivedAmount, setPaymentNotReceivedAmount] = useState<number | null>(null);
   const [showNotifModal, setShowNotifModal] = useState(false);
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // Fetch unread notifications count for customer
   const { data: customerNotifData } = useQuery({
     queryKey: ['customer-notifications-count'],
@@ -144,7 +149,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
       const res = await api.get('/profile/notifications');
       return res.data.data as { unreadCount: number };
     },
-    enabled: !!user,
+    enabled: !!user && mounted,
     retry: false,
     refetchInterval: 12000,
   });
@@ -215,11 +220,16 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
     queryKey: ['order', orderId],
     queryFn: async () => {
       const response = await api.get(`/orders/${orderId}`);
-      const ord = response.data.data.order as Order;
-      setCurrentStatus(ord.status);
-      return ord;
+      return response.data.data.order as Order;
     },
+    enabled: mounted && !!orderId,
   });
+
+  useEffect(() => {
+    if (order?.status) {
+      setCurrentStatus(order.status);
+    }
+  }, [order?.status]);
 
   // ── Socket.io real-time tracking ──────────────────────────────────────────
   useEffect(() => {
