@@ -41,6 +41,8 @@ import {
   updateOrderStatus,
   confirmPayment,
   rejectPayment,
+  deleteOwnerOrder,
+  clearOwnerOrderHistory,
   getAnalytics,
   signTable,
   getRestaurantReviews,
@@ -104,6 +106,8 @@ router.get('/orders/:id', getOrderDetail);
 router.patch('/orders/:id/status', validate(updateOrderStatusSchema), updateOrderStatus);
 router.patch('/orders/:id/payment', confirmPayment);
 router.patch('/orders/:id/payment-reject', rejectPayment);
+router.delete('/orders/history/clear', clearOwnerOrderHistory);
+router.delete('/orders/:id', deleteOwnerOrder);
 router.get('/reviews', getRestaurantReviews);
 
 // Analytics

@@ -139,22 +139,28 @@ if (typeof window !== 'undefined') {
 }
 
 // ── 1. OWNER AUDIO SYNTHS (Sharp cash-register & waiter call alarm) ───────────
+
+// 🛍️ New Order Sound: Sharp, upbeat cash-register / order chime
 export function playOwnerOrderSynth() {
   try {
     const ctx = getAudioContext();
     const now = ctx.currentTime;
+    // Ascending cash-register brass chord + metallic ping
     const notes = [
-      { freq: 523.25, time: 0, duration: 0.12 },
-      { freq: 783.99, time: 0.1, duration: 0.12 },
-      { freq: 1046.5, time: 0.2, duration: 0.18 },
-      { freq: 1318.5, time: 0.32, duration: 0.4 },
+      { freq: 523.25, type: 'triangle' as const, time: 0, duration: 0.15, vol: 0.9 },
+      { freq: 659.25, type: 'triangle' as const, time: 0.08, duration: 0.15, vol: 0.9 },
+      { freq: 783.99, type: 'triangle' as const, time: 0.16, duration: 0.18, vol: 0.95 },
+      { freq: 1046.5, type: 'triangle' as const, time: 0.24, duration: 0.25, vol: 1.0 },
+      { freq: 1567.98, type: 'sine' as const, time: 0.35, duration: 0.4, vol: 1.0 },
+      { freq: 2093.0, type: 'sine' as const, time: 0.42, duration: 0.5, vol: 0.8 }, // Metallic coin-register ping
     ];
-    notes.forEach(({ freq, time, duration }) => {
+
+    notes.forEach(({ freq, type, time, duration, vol }) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = 'triangle';
+      osc.type = type;
       osc.frequency.setValueAtTime(freq, now + time);
-      gain.gain.setValueAtTime(0.9, now + time);
+      gain.gain.setValueAtTime(vol, now + time);
       gain.gain.exponentialRampToValueAtTime(0.001, now + time + duration);
       osc.connect(gain);
       gain.connect(ctx.destination);
@@ -164,27 +170,39 @@ export function playOwnerOrderSynth() {
   } catch { /* silent fallback */ }
 }
 
+// 🔔 Waiter Call Sound: Loud, urgent, repeating dual-tone Bell Ring Alarm
 export function playOwnerWaiterSynth() {
   try {
     const ctx = getAudioContext();
     const now = ctx.currentTime;
-    [0, 0.35].forEach((delay) => {
+
+    // 4 rapid double-ring pulses (Ding-Ding! Ding-Ding!)
+    const pulses = [0, 0.28, 0.56, 0.84];
+    pulses.forEach((delay) => {
+      // Bell tone 1: High A6 (1760 Hz)
       const osc1 = ctx.createOscillator();
-      const osc2 = ctx.createOscillator();
-      const gain = ctx.createGain();
+      const gain1 = ctx.createGain();
       osc1.type = 'sine';
-      osc2.type = 'square';
-      osc1.frequency.setValueAtTime(880, now + delay);
-      osc2.frequency.setValueAtTime(1174.66, now + delay + 0.08);
-      gain.gain.setValueAtTime(0.85, now + delay);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.3);
-      osc1.connect(gain);
-      osc2.connect(gain);
-      gain.connect(ctx.destination);
+      osc1.frequency.setValueAtTime(1760, now + delay);
+      gain1.gain.setValueAtTime(1.1, now + delay);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.22);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
       osc1.start(now + delay);
-      osc2.start(now + delay + 0.08);
-      osc1.stop(now + delay + 0.3);
-      osc2.stop(now + delay + 0.3);
+      osc1.stop(now + delay + 0.22);
+
+      // Bell tone 2 (harmonic overlay): E6 (1318.5 Hz) + pitch sweep for ring sharpness
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'square';
+      osc2.frequency.setValueAtTime(1318.51, now + delay + 0.04);
+      osc2.frequency.exponentialRampToValueAtTime(1046.5, now + delay + 0.2);
+      gain2.gain.setValueAtTime(0.7, now + delay + 0.04);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.22);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(now + delay + 0.04);
+      osc2.stop(now + delay + 0.22);
     });
   } catch { /* silent fallback */ }
 }

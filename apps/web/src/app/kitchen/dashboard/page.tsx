@@ -23,12 +23,9 @@ import {
   ShoppingBag,
   User,
   Phone,
-  BellRing,
-  Bell,
-  X as XIcon,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { playKitchenOrderSound, playWaiterCallSound, processRealTimeEvent, requestDesktopNotificationPermission, sendDesktopNotification } from '@/utils/audio';
+import { playKitchenOrderSound, processRealTimeEvent, requestDesktopNotificationPermission, sendDesktopNotification } from '@/utils/audio';
 
 // Play sound alert for kitchen when new order arrives
 function playKitchenAlertChime() {
@@ -89,7 +86,6 @@ export default function KitchenDashboardPage() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'CONFIRMED' | 'PREPARING' | 'READY' | 'DELIVERED'>('ALL');
-  const [activeWaiterCalls, setActiveWaiterCalls] = useState<{ id: string; tableNumber: string; time: string }[]>([]);
   const [activeNewOrderAlert, setActiveNewOrderAlert] = useState<any | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
@@ -198,39 +194,6 @@ export default function KitchenDashboardPage() {
       queryClient.invalidateQueries({ queryKey: ['kitchen-orders'] });
     };
 
-    const handleWaiterCalled = (payload: { tableNumber: string; calledAt?: string }) => {
-      if (soundEnabledRef.current) {
-        processRealTimeEvent(
-          'waiter_called',
-          undefined,
-          {
-            title: `🔔 KITCHEN: WAITER CALL`,
-            body: `Table ${payload.tableNumber} requested waiter assistance!`,
-            tag: `kitchen-waiter-${payload.tableNumber}-${Date.now()}`,
-          },
-          'kitchen'
-        );
-      } else {
-        sendDesktopNotification(`🔔 KITCHEN: WAITER CALL`, {
-          body: `Table ${payload.tableNumber} requested waiter assistance!`,
-          tag: `kitchen-waiter-${payload.tableNumber}-${Date.now()}`,
-        });
-      }
-
-      toast.warning(`🔔 Waiter Call from Table ${payload.tableNumber}!`, {
-        description: 'Customer requested assistance at table.',
-        duration: 10000,
-      });
-      setActiveWaiterCalls((prev) => [
-        {
-          id: `${payload.tableNumber}-${Date.now()}`,
-          tableNumber: payload.tableNumber,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        },
-        ...prev.filter((c) => c.tableNumber !== payload.tableNumber),
-      ]);
-    };
-
     socket.on('order:new', handleNewOrder);
     socket.on('new_order', handleNewOrder);
     socket.on('kitchen:new_order', handleNewOrder);
@@ -239,8 +202,6 @@ export default function KitchenDashboardPage() {
     socket.on('order_status_changed', handleOrderUpdated);
     socket.on('order_cancelled', handleOrderUpdated);
     socket.on('driver_assigned', handleOrderUpdated);
-    socket.on('waiter:called', handleWaiterCalled);
-    socket.on('waiter_called', handleWaiterCalled);
 
     return () => {
       socket.disconnect();
@@ -418,52 +379,7 @@ export default function KitchenDashboardPage() {
         </div>
       </header>
 
-      {/* Live Waiter Calls Alert Banner */}
-      <AnimatePresence>
-        {activeWaiterCalls.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="bg-gradient-to-r from-orange-950/80 via-amber-950/70 to-orange-950/80 border-b border-orange-500/40 px-6 py-3 shadow-lg"
-          >
-            <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-orange-500 text-white rounded-xl animate-bounce shadow-md">
-                  <BellRing className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-orange-200 tracking-wide flex items-center gap-2">
-                    LIVE WAITER CALLS ({activeWaiterCalls.length})
-                  </h3>
-                  <p className="text-xs text-orange-300/80">Table requested waiter assistance in dining area</p>
-                </div>
-              </div>
 
-              <div className="flex items-center gap-2 flex-wrap">
-                {activeWaiterCalls.map((call) => (
-                  <div
-                    key={call.id}
-                    className="bg-orange-900/60 border border-orange-500/40 rounded-xl px-3 py-1.5 text-xs text-orange-100 flex items-center gap-2 font-bold shadow-sm"
-                  >
-                    <span>Table {call.tableNumber}</span>
-                    <span className="text-[10px] text-orange-300 font-normal">({call.time})</span>
-                    <button
-                      onClick={() =>
-                        setActiveWaiterCalls((prev) => prev.filter((c) => c.id !== call.id))
-                      }
-                      className="p-1 hover:bg-orange-500/30 rounded-lg transition-colors text-orange-200"
-                      title="Clear"
-                    >
-                      <XIcon className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Main Kanban Grid */}
       <main className="flex-1 p-6 overflow-x-auto">

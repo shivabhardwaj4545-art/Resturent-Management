@@ -167,7 +167,23 @@ export async function getRestaurant(req: AuthenticatedRequest, res: Response, ne
 export async function updateRestaurant(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const restaurant = await getOwnerRestaurant(req.user!.id);
-    const body = { ...req.body } as Record<string, any>;
+    const rawBody = { ...req.body } as Record<string, any>;
+
+    const allowedKeys = [
+      'name', 'slug', 'description', 'cuisineType', 'logo', 'banner',
+      'address', 'city', 'state', 'country', 'pincode', 'phone', 'operatingHours',
+      'deliveryRadius', 'minOrderValue', 'isOpen', 'hasDelivery',
+      'themeColor', 'menuTemplate', 'customFields', 'paymentQrCode',
+      'paymentUpiId', 'paymentPhone', 'bankName', 'bankAccountNumber',
+      'bankIfsc', 'bankAccountHolder',
+    ];
+
+    const body: Record<string, any> = {};
+    for (const key of allowedKeys) {
+      if (key in rawBody && rawBody[key] !== undefined) {
+        body[key] = rawBody[key];
+      }
+    }
 
     if (body.operatingHours) {
       body.operatingHours = sortOperatingHours(body.operatingHours);
@@ -1493,6 +1509,56 @@ export async function deleteKitchenStaff(req: AuthenticatedRequest, res: Respons
     res.json({
       success: true,
       message: 'Kitchen staff account deleted successfully.',
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deleteOwnerOrder(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const id = req.params.id as string;
+
+    const order = await prisma.order.findFirst({
+      where: { id, restaurantId: restaurant.id },
+    });
+    if (!order) {
+      throw new AppError('Order not found.', 404, 'ORDER_NOT_FOUND');
+    }
+
+    await prisma.order.delete({
+      where: { id },
+    });
+
+    res.json({
+      success: true,
+      message: 'Order deleted successfully.',
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function clearOwnerOrderHistory(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const { status } = req.query as { status?: string };
+
+    const whereClause: any = { restaurantId: restaurant.id };
+    if (status && status !== 'ALL') {
+      whereClause.status = status;
+    } else {
+      whereClause.status = { in: ['COMPLETED', 'DELIVERED', 'CANCELLED'] };
+    }
+
+    const result = await prisma.order.deleteMany({
+      where: whereClause,
+    });
+
+    res.json({
+      success: true,
+      message: `${result.count} order history records deleted successfully.`,
     });
   } catch (error) {
     next(error);

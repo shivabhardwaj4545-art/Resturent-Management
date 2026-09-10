@@ -145,27 +145,28 @@ export function OwnerSettingsPage() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const res = await api.put('/owner/restaurant', {
-        name: form.name,
-        slug: form.slug,
-        description: form.description,
-        phone: form.phone,
-        address: form.address,
-        city: form.city,
-        state: form.state,
-        country: form.country,
-        pincode: form.pincode,
+      const payload: Record<string, any> = {
+        name: form.name ? form.name.trim() : undefined,
+        slug: form.slug ? form.slug.trim() : undefined,
+        description: form.description ?? null,
+        phone: form.phone ?? null,
+        address: form.address ?? null,
+        city: form.city ?? null,
+        state: form.state ?? null,
+        country: form.country ?? null,
+        pincode: form.pincode ?? null,
         hasDelivery: form.hasDelivery,
         operatingHours: operatingHours,
-        themeColor: form.themeColor,
-        paymentQrCode: form.paymentQrCode,
-        paymentUpiId: form.paymentUpiId,
-        paymentPhone: form.paymentPhone,
-        bankName: form.bankName,
-        bankAccountNumber: form.bankAccountNumber,
-        bankIfsc: form.bankIfsc,
-        bankAccountHolder: form.bankAccountHolder,
-      });
+        themeColor: form.themeColor ?? null,
+        paymentQrCode: form.paymentQrCode ?? null,
+        paymentUpiId: form.paymentUpiId ?? null,
+        paymentPhone: form.paymentPhone ?? null,
+        bankName: form.bankName ?? null,
+        bankAccountNumber: form.bankAccountNumber ?? null,
+        bankIfsc: form.bankIfsc ?? null,
+        bankAccountHolder: form.bankAccountHolder ?? null,
+      };
+      const res = await api.put('/owner/restaurant', payload);
       return res.data.data.restaurant;
     },
     onSuccess: (updatedRestaurant) => {

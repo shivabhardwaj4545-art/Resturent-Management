@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import {
   ShoppingBag, UtensilsCrossed, LayoutDashboard, Tag, BarChart3, Settings, LogOut,
   Menu, Search, Clock, ChevronDown, RefreshCw, User, MapPin, Palette,
-  Mail, Phone, CreditCard, Receipt, Check, Wallet, Banknote, Sparkles, Star, AlertTriangle, ChefHat
+  Mail, Phone, CreditCard, Receipt, Check, Wallet, Banknote, Sparkles, Star, AlertTriangle, ChefHat, Trash2
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -143,6 +143,30 @@ export function OwnerOrdersPage() {
     onError: () => toast.error('Failed to send payment notification'),
   });
 
+  const deleteOrderMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/owner/orders/${id}`);
+    },
+    onSuccess: () => {
+      toast.success('Order deleted successfully');
+      qc.invalidateQueries({ queryKey: ['owner-orders'] });
+      qc.invalidateQueries({ queryKey: ['owner-dashboard'] });
+    },
+    onError: () => toast.error('Failed to delete order'),
+  });
+
+  const clearHistoryMutation = useMutation({
+    mutationFn: async () => {
+      await api.delete(`/owner/orders/history/clear?status=${statusFilter}`);
+    },
+    onSuccess: (res: any) => {
+      toast.success(res?.data?.message || 'Order history cleared');
+      qc.invalidateQueries({ queryKey: ['owner-orders'] });
+      qc.invalidateQueries({ queryKey: ['owner-dashboard'] });
+    },
+    onError: () => toast.error('Failed to clear order history'),
+  });
+
   const handleLogout = async () => {
     try { await api.post('/auth/logout'); } finally { logout(); router.push('/login'); }
   };
@@ -178,13 +202,26 @@ export function OwnerOrdersPage() {
               <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                 placeholder="Search order ID or customer..." className="w-full pl-9 pr-4 py-2.5 bg-card border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
-            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 min-w-0 max-w-full">
+            <div className="flex gap-2 items-center overflow-x-auto no-scrollbar pb-1 min-w-0 max-w-full">
               {ORDER_STATUSES.map((s) => (
                 <button key={s} onClick={() => { setStatusFilter(s); setPage(1); }}
                   className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${statusFilter === s ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-card border border-border text-muted-foreground hover:bg-muted'}`}>
                   {s}
                 </button>
               ))}
+              <button
+                onClick={() => {
+                  if (confirm(`Are you sure you want to clear order history for status "${statusFilter}"? This will delete these order records.`)) {
+                    clearHistoryMutation.mutate();
+                  }
+                }}
+                disabled={clearHistoryMutation.isPending || !data?.data.orders.length}
+                className="flex items-center gap-1 px-3 py-2 bg-red-500/10 text-red-600 hover:bg-red-500/20 dark:bg-red-950/40 dark:hover:bg-red-950/60 dark:text-red-400 border border-red-200 dark:border-red-900/50 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-colors disabled:opacity-50"
+                title="Delete completed/cancelled order history"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Clear History</span>
+              </button>
             </div>
           </div>
 
@@ -228,6 +265,19 @@ export function OwnerOrdersPage() {
                         {new Date(order.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm(`Are you sure you want to delete order #${order.id.slice(-8).toUpperCase()}?`)) {
+                          deleteOrderMutation.mutate(order.id);
+                        }
+                      }}
+                      disabled={deleteOrderMutation.isPending}
+                      className="p-1.5 text-muted-foreground hover:text-red-600 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
+                      title="Delete Order"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                     <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${expandedOrder === order.id ? 'rotate-180' : ''}`} />
                   </div>
 

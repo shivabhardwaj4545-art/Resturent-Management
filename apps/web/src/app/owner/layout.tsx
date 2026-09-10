@@ -332,23 +332,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
   }, [primaryHsl, foregroundHsl]);
 
   // Auto-open modal popup for any unhandled pending waiter call or new order
-  const { waiterCalls, newOrders } = useWaiterStore();
-  useEffect(() => {
-    if (!activeWaiterAlert && waiterCalls.length > 0) {
-      useWaiterStore.getState().setActiveWaiterAlert(waiterCalls[0]);
-    }
-  }, [waiterCalls, activeWaiterAlert]);
 
-  useEffect(() => {
-    if (!activeNewOrderAlert && newOrders.length > 0) {
-      const pendingOrder = newOrders.find(
-        (o) => !o.status || !['DELIVERED', 'CANCELLED', 'COMPLETED', 'SERVED'].includes(String(o.status).toUpperCase())
-      );
-      if (pendingOrder) {
-        useWaiterStore.getState().setActiveNewOrderAlert(pendingOrder);
-      }
-    }
-  }, [newOrders, activeNewOrderAlert]);
 
   if (!mounted || !user || user.role !== 'RESTAURANT_OWNER') {
     return (
@@ -451,8 +435,20 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                     </div>
                   </div>
                   <button
-                    onClick={() => useWaiterStore.getState().setActiveWaiterAlert(null)}
-                    className="p-2 rounded-full hover:bg-white/20 transition-colors text-white"
+                    onClick={() => {
+                      if (activeWaiterAlert) {
+                        const socket = useWaiterStore.getState().socket;
+                        if (socket && activeWaiterAlert.restaurantId) {
+                          socket.emit('waiter:dismiss', {
+                            restaurantId: activeWaiterAlert.restaurantId,
+                            tableNumber: activeWaiterAlert.tableNumber,
+                          });
+                        }
+                        useWaiterStore.getState().dismissWaiterCall(activeWaiterAlert.id, activeWaiterAlert.tableNumber);
+                        useWaiterStore.getState().setActiveWaiterAlert(null);
+                      }
+                    }}
+                    className="p-2 rounded-full hover:bg-white/20 transition-colors text-white cursor-pointer"
                     title="Dismiss alert"
                   >
                     <X className="w-5 h-5" />

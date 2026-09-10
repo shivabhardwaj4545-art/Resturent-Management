@@ -120,6 +120,38 @@ export async function approveRestaurant(req: AuthenticatedRequest, res: Response
   } catch (error) { next(error); }
 }
 
+export async function updateRestaurant(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    const { name, slug, phone, email, address, city, isApproved, isSuspended, isOpen } = req.body;
+
+    const existing = await prisma.restaurant.findFirst({ where: { id, deletedAt: null } });
+    if (!existing) throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
+
+    if (slug && slug !== existing.slug) {
+      const slugConflict = await prisma.restaurant.findFirst({ where: { slug, id: { not: id } } });
+      if (slugConflict) throw new AppError('Slug is already taken by another restaurant.', 400, 'SLUG_TAKEN');
+    }
+
+    const updated = await prisma.restaurant.update({
+      where: { id },
+      data: {
+        ...(name && { name }),
+        ...(slug && { slug }),
+        ...(phone !== undefined && { phone }),
+        ...(email !== undefined && { email }),
+        ...(address !== undefined && { address }),
+        ...(city !== undefined && { city }),
+        ...(typeof isApproved === 'boolean' && { isApproved }),
+        ...(typeof isSuspended === 'boolean' && { isSuspended }),
+        ...(typeof isOpen === 'boolean' && { isOpen }),
+      },
+    });
+
+    res.json({ success: true, data: { restaurant: updated }, message: 'Restaurant details updated successfully' });
+  } catch (error) { next(error); }
+}
+
 export async function suspendRestaurant(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const id = req.params.id as string;

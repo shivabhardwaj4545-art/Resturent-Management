@@ -14,22 +14,34 @@ export const restaurantProfileSchema = z.object({
     .max(80, 'URL code must be at most 80 characters')
     .regex(/^[a-z0-9-]+$/, 'URL code can only contain lowercase letters, numbers, and hyphens')
     .optional(),
-  description: z.string().max(2000).optional(),
-  cuisineType: z.string().max(100).optional(),
-  address: z.string().max(500).optional(),
-  city: z.string().max(100).optional(),
-  state: z.string().max(100).optional(),
-  country: z.string().max(100).optional(),
-  pincode: z.string().regex(/^\d{6}$/).optional(),
-  phone: z.string().regex(/^[6-9]\d{9}$/).optional(),
-  deliveryRadius: z.number().positive().max(100).optional(),
-  minOrderValue: z.number().min(0).default(0),
+  description: z.string().max(2000).optional().nullable(),
+  cuisineType: z.string().max(100).optional().nullable(),
+  address: z.string().max(500).optional().nullable(),
+  city: z.string().max(100).optional().nullable(),
+  state: z.string().max(100).optional().nullable(),
+  country: z.string().max(100).optional().nullable(),
+  pincode: z
+    .string()
+    .optional()
+    .nullable()
+    .refine((val) => !val || /^\d{5,8}$/.test(val.trim()), { message: 'Pincode must be valid (5-8 digits)' }),
+  phone: z
+    .string()
+    .optional()
+    .nullable()
+    .refine(
+      (val) => !val || /^\+?\d{1,4}?[\s\-]?(?:\(?\d{1,4}\)?[\s\-]?)?\d{6,14}$/.test(val.trim().replace(/[\s\-]/g, '')) || /^\d{10,12}$/.test(val.trim().replace(/[^\d]/g, '')),
+      { message: 'Please enter a valid phone number' }
+    ),
+  deliveryRadius: z.number().positive().max(100).optional().nullable(),
+  minOrderValue: z.number().min(0).optional().nullable().default(0),
   hasDelivery: z.boolean().optional(),
   themeColor: z
     .string()
-    .regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, 'Must be a valid hex color')
-    .optional(),
-  menuTemplate: z.string().optional(),
+    .optional()
+    .nullable()
+    .refine((val) => !val || /^#?([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(val), { message: 'Must be a valid hex color' }),
+  menuTemplate: z.string().optional().nullable(),
   customFields: z
     .array(
       z.object({
@@ -51,7 +63,8 @@ export const restaurantProfileSchema = z.object({
       saturday: operatingHoursDaySchema,
       sunday: operatingHoursDaySchema,
     })
-    .optional(),
+    .optional()
+    .nullable(),
   paymentQrCode: z.string().optional().nullable(),
   paymentUpiId: z.string().optional().nullable(),
   paymentPhone: z.string().optional().nullable(),

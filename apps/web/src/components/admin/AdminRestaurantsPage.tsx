@@ -7,7 +7,7 @@ import {
   Store, Search, CheckCircle2, XCircle, Clock, Filter,
   LayoutDashboard, Users, BarChart3, Settings, LogOut,
   Menu, Shield, ChevronRight, Eye, AlertTriangle, RefreshCw,
-  Plus, X, Loader2, CreditCard, Ticket, HandCoins, Star, Trash2
+  Plus, X, Loader2, CreditCard, Ticket, HandCoins, Star, Trash2, Pencil
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { AdminSidebar } from '@/components/admin/AdminSidebar';
@@ -33,7 +33,11 @@ type Restaurant = {
   id: string;
   name: string;
   slug: string;
+  cuisineType?: string | null;
   city: string | null;
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
   isApproved: boolean;
   isSuspended: boolean;
   isOpen: boolean;
@@ -68,6 +72,66 @@ export function AdminRestaurantsPage() {
   const [createOwnerPhone, setCreateOwnerPhone] = useState('');
   const [createOwnerPassword, setCreateOwnerPassword] = useState('');
   const [creating, setCreating] = useState(false);
+
+  // Edit Restaurant State
+  const [editingRestaurant, setEditingRestaurant] = useState<Restaurant | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editSlug, setEditSlug] = useState('');
+  const [editCuisine, setEditCuisine] = useState('');
+  const [editCity, setEditCity] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editIsApproved, setEditIsApproved] = useState(false);
+  const [editIsSuspended, setEditIsSuspended] = useState(false);
+  const [editIsOpen, setEditIsOpen] = useState(false);
+  const [updating, setUpdating] = useState(false);
+
+  const handleOpenEditModal = (r: Restaurant) => {
+    setEditingRestaurant(r);
+    setEditName(r.name || '');
+    setEditSlug(r.slug || '');
+    setEditCuisine(r.cuisineType || '');
+    setEditCity(r.city || '');
+    setEditPhone(r.phone || '');
+    setEditEmail(r.email || '');
+    setEditAddress(r.address || '');
+    setEditIsApproved(r.isApproved ?? false);
+    setEditIsSuspended(r.isSuspended ?? false);
+    setEditIsOpen(r.isOpen ?? false);
+  };
+
+  const handleUpdateRestaurant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingRestaurant) return;
+    if (!editName) {
+      toast.error('Restaurant Name is required.');
+      return;
+    }
+    setUpdating(true);
+    try {
+      await api.patch(`/admin/restaurants/${editingRestaurant.id}`, {
+        name: editName,
+        slug: editSlug || undefined,
+        cuisineType: editCuisine || undefined,
+        city: editCity || undefined,
+        phone: editPhone || undefined,
+        email: editEmail || undefined,
+        address: editAddress || undefined,
+        isApproved: editIsApproved,
+        isSuspended: editIsSuspended,
+        isOpen: editIsOpen,
+      });
+      toast.success('Restaurant details updated successfully! 🎉');
+      setEditingRestaurant(null);
+      qc.invalidateQueries({ queryKey: ['admin-restaurants'] });
+    } catch (err: any) {
+      const errMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to update restaurant';
+      toast.error(errMsg);
+    } finally {
+      setUpdating(false);
+    }
+  };
 
   const handleCreateRestaurant = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -339,6 +403,13 @@ export function AdminRestaurantsPage() {
                                     <Trash2 className="w-4 h-4" />
                                   </button>
                                 )}
+                                <button
+                                  onClick={() => handleOpenEditModal(r)}
+                                  className="p-1.5 text-amber-500 hover:bg-amber-100 dark:hover:bg-amber-900/20 rounded-lg transition-colors"
+                                  title="Edit Restaurant Details"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
                                 <Link
                                   href={`/r/${r.slug}`}
                                   target="_blank"
@@ -551,6 +622,165 @@ export function AdminRestaurantsPage() {
                 >
                   {creating && <Loader2 className="w-3 animate-spin" />}
                   Create Restaurant
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Edit Restaurant Modal */}
+      {editingRestaurant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-card border border-border w-full max-w-lg rounded-2xl shadow-2xl relative my-8"
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <div>
+                <h3 className="font-display font-bold text-base text-foreground">Edit Restaurant Details</h3>
+                <p className="text-xs text-muted-foreground">ID: {editingRestaurant.id}</p>
+              </div>
+              <button
+                onClick={() => setEditingRestaurant(null)}
+                className="p-1.5 rounded-xl hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateRestaurant} className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Basic Info</h4>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Restaurant Name *</label>
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      required
+                      className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">URL Slug</label>
+                    <input
+                      type="text"
+                      value={editSlug}
+                      onChange={(e) => setEditSlug(e.target.value)}
+                      className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Cuisine Type</label>
+                    <input
+                      type="text"
+                      value={editCuisine}
+                      onChange={(e) => setEditCuisine(e.target.value)}
+                      placeholder="e.g. Fast Food, Italian"
+                      className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">City</label>
+                    <input
+                      type="text"
+                      value={editCity}
+                      onChange={(e) => setEditCity(e.target.value)}
+                      placeholder="e.g. New Delhi"
+                      className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Phone</label>
+                    <input
+                      type="text"
+                      value={editPhone}
+                      onChange={(e) => setEditPhone(e.target.value)}
+                      placeholder="Phone number"
+                      className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Contact Email</label>
+                    <input
+                      type="email"
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                      placeholder="Contact email"
+                      className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Full Address</label>
+                  <textarea
+                    rows={2}
+                    value={editAddress}
+                    onChange={(e) => setEditAddress(e.target.value)}
+                    placeholder="Restaurant full address..."
+                    className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3 border-t border-border pt-4">
+                <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Status & Access Controls</h4>
+                <div className="grid grid-cols-3 gap-3">
+                  <label className="flex items-center gap-2 p-2.5 bg-muted rounded-xl border border-border cursor-pointer hover:bg-muted/80">
+                    <input
+                      type="checkbox"
+                      checked={editIsApproved}
+                      onChange={(e) => setEditIsApproved(e.target.checked)}
+                      className="rounded border-border text-primary focus:ring-primary"
+                    />
+                    <span className="text-xs font-medium">Approved</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2.5 bg-muted rounded-xl border border-border cursor-pointer hover:bg-muted/80">
+                    <input
+                      type="checkbox"
+                      checked={editIsSuspended}
+                      onChange={(e) => setEditIsSuspended(e.target.checked)}
+                      className="rounded border-border text-primary focus:ring-primary"
+                    />
+                    <span className="text-xs font-medium text-rose-500">Suspended</span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2.5 bg-muted rounded-xl border border-border cursor-pointer hover:bg-muted/80">
+                    <input
+                      type="checkbox"
+                      checked={editIsOpen}
+                      onChange={(e) => setEditIsOpen(e.target.checked)}
+                      className="rounded border-border text-primary focus:ring-primary"
+                    />
+                    <span className="text-xs font-medium text-emerald-500">Store Open</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex gap-2 justify-end border-t border-border pt-4 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingRestaurant(null)}
+                  className="px-4 py-2 rounded-xl border border-border text-xs font-semibold hover:bg-muted text-foreground transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={updating}
+                  className="px-5 py-2 rounded-xl text-white bg-primary hover:bg-primary/95 text-xs font-semibold disabled:opacity-60 flex items-center gap-1.5 transition-all shadow-md shadow-primary/10"
+                >
+                  {updating && <Loader2 className="w-3 animate-spin" />}
+                  Save Changes
                 </button>
               </div>
             </form>
