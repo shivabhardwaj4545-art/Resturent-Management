@@ -93,9 +93,29 @@ export default function KitchenDashboardPage() {
   const [activeNewOrderAlert, setActiveNewOrderAlert] = useState<any | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
+  const soundEnabledRef = useRef(soundEnabled);
+  useEffect(() => {
+    soundEnabledRef.current = soundEnabled;
+  }, [soundEnabled]);
+
   useEffect(() => {
     setMounted(true);
     requestDesktopNotificationPermission();
+
+    const unlockAudio = () => {
+      try {
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        if (ctx.state === 'suspended') {
+          ctx.resume().catch(() => {});
+        }
+      } catch {}
+    };
+    window.addEventListener('click', unlockAudio, { once: true });
+    window.addEventListener('touchstart', unlockAudio, { once: true });
+    return () => {
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+    };
   }, []);
 
   useEffect(() => {
@@ -116,15 +136,15 @@ export default function KitchenDashboardPage() {
       return res.data.data as { orders: KitchenOrder[]; restaurantId: string };
     },
     enabled: !!user && (user.role === 'KITCHEN' || user.role === 'RESTAURANT_OWNER' || user.role === 'SUPER_ADMIN'),
-    refetchInterval: 10000, // Fallback polling every 10s
+    refetchInterval: 30000, // 30s background fallback polling without page flicker
   });
 
   const orders = ordersData?.orders ?? [];
-  const restaurantId = ordersData?.restaurantId;
+  const targetRestId = (user as any)?.restaurantId || ordersData?.restaurantId;
 
   // Socket.io Real-Time Connection
   useEffect(() => {
-    if (!restaurantId) return;
+    if (!targetRestId) return;
 
     const socket = io(getSocketUrl(), {
       transports: ['websocket', 'polling'],
@@ -132,9 +152,15 @@ export default function KitchenDashboardPage() {
     });
     socketRef.current = socket;
 
-    socket.on('connect', () => {
-      socket.emit('join:restaurant', restaurantId);
-    });
+    const joinRestaurant = () => {
+      socket.emit('join:restaurant', targetRestId);
+    };
+
+    if (socket.connected) {
+      joinRestaurant();
+    }
+
+    socket.on('connect', joinRestaurant);
 
     const handleNewOrder = (order?: any) => {
       if (order) {
@@ -145,7 +171,7 @@ export default function KitchenDashboardPage() {
       const locationLabel = order?.table?.tableNumber || order?.tableNumber ? `Table ${order?.table?.tableNumber || order?.tableNumber}` : 'Dine-In / Delivery';
       const totalLabel = order?.total ? `₹${Number(order.total).toFixed(2)}` : '';
 
-      if (soundEnabled) {
+      if (soundEnabledRef.current) {
         processRealTimeEvent(
           'new_order',
           () => {
@@ -167,16 +193,14 @@ export default function KitchenDashboardPage() {
 
       toast.info('🔔 New Order Confirmed for Kitchen!', { duration: 5000 });
       queryClient.invalidateQueries({ queryKey: ['kitchen-orders'] });
-      queryClient.refetchQueries({ queryKey: ['kitchen-orders'] });
     };
 
     const handleOrderUpdated = () => {
       queryClient.invalidateQueries({ queryKey: ['kitchen-orders'] });
-      queryClient.refetchQueries({ queryKey: ['kitchen-orders'] });
     };
 
     const handleWaiterCalled = (payload: { tableNumber: string; calledAt?: string }) => {
-      if (soundEnabled) {
+      if (soundEnabledRef.current) {
         processRealTimeEvent(
           'waiter_called',
           undefined,
@@ -222,7 +246,7 @@ export default function KitchenDashboardPage() {
     return () => {
       socket.disconnect();
     };
-  }, [restaurantId, soundEnabled, queryClient]);
+  }, [targetRestId, queryClient]);
 
   // Status update handler
   const handleUpdateStatus = async (orderId: string, nextStatus: string) => {
