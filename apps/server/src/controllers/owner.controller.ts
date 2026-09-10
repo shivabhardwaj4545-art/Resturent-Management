@@ -1546,11 +1546,13 @@ export async function clearOwnerOrderHistory(req: AuthenticatedRequest, res: Res
     const restaurant = await getOwnerRestaurant(req.user!.id);
     const { status } = req.query as { status?: string };
 
+    const validStatuses = ['PENDING', 'CONFIRMED', 'PREPARING', 'BAKING', 'READY', 'ON_THE_WAY', 'DELIVERED', 'CANCELLED'];
+
     const whereClause: any = { restaurantId: restaurant.id, deletedAt: null };
-    if (status && status !== 'ALL') {
+    if (status && status !== 'ALL' && validStatuses.includes(status)) {
       whereClause.status = status;
     } else {
-      whereClause.status = { in: ['COMPLETED', 'DELIVERED', 'CANCELLED'] };
+      whereClause.status = { in: ['DELIVERED', 'CANCELLED'] };
     }
 
     const result = await prisma.order.updateMany({
@@ -1560,7 +1562,8 @@ export async function clearOwnerOrderHistory(req: AuthenticatedRequest, res: Res
 
     res.json({
       success: true,
-      message: `${result.count} order history records deleted successfully.`,
+      data: { count: result.count },
+      message: `${result.count} order history records cleared successfully.`,
     });
   } catch (error) {
     next(error);
