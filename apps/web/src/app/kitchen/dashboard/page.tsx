@@ -163,9 +163,6 @@ export default function KitchenDashboardPage() {
     socket.on('connect', joinRestaurant);
 
     const handleNewOrder = (order?: any) => {
-      if (order) {
-        setActiveNewOrderAlert(order);
-      }
       const orderIdShort = order?.id ? String(order.id).slice(-8).toUpperCase() : 'NEW';
       const itemsLabel = order?.items?.map((i: any) => `${i.menuItem?.name || i.name || 'Item'} × ${i.quantity}`).join(', ') || 'New items in kitchen';
       const locationLabel = order?.table?.tableNumber || order?.tableNumber ? `Table ${order?.table?.tableNumber || order?.tableNumber}` : 'Dine-In / Delivery';
@@ -174,24 +171,26 @@ export default function KitchenDashboardPage() {
       if (soundEnabledRef.current) {
         processRealTimeEvent(
           'new_order',
-          () => {
-            if (order) setActiveNewOrderAlert(order);
-          },
+          undefined,
           {
-            title: `🔔 KITCHEN: NEW ORDER #${orderIdShort}`,
+            title: `👨‍🍳 ORDER CONFIRMED BY OWNER #${orderIdShort}`,
             body: `${locationLabel} ${totalLabel ? `• ${totalLabel}` : ''}\nItems: ${itemsLabel}`,
-            tag: `kitchen-order-${order?.id || Date.now()}`,
+            tag: `order-${order?.id || Date.now()}`,
           },
           'kitchen'
         );
       } else {
-        sendDesktopNotification(`🔔 KITCHEN: NEW ORDER #${orderIdShort}`, {
+        sendDesktopNotification(`👨‍🍳 ORDER CONFIRMED BY OWNER #${orderIdShort}`, {
           body: `${locationLabel} ${totalLabel ? `• ${totalLabel}` : ''}\nItems: ${itemsLabel}`,
-          tag: `kitchen-order-${order?.id || Date.now()}`,
+          tag: `order-${order?.id || Date.now()}`,
         });
       }
 
-      toast.info('🔔 New Order Confirmed for Kitchen!', { duration: 5000 });
+      toast.success(`👨‍🍳 Order #${orderIdShort} Confirmed by Owner!`, {
+        description: `${locationLabel} • ${itemsLabel}`,
+        duration: 8000,
+        icon: '👨‍🍳',
+      });
       queryClient.invalidateQueries({ queryKey: ['kitchen-orders'] });
     };
 
@@ -628,128 +627,9 @@ export default function KitchenDashboardPage() {
         )}
       </main>
 
-      {/* Global New Order Alert Modal for Kitchen */}
-      <AnimatePresence>
-        {activeNewOrderAlert && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs"
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="bg-slate-900 border-2 border-orange-500 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden text-slate-100"
-            >
-              {/* Header Banner */}
-              <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 p-5 text-white flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-xs">
-                    <ShoppingBag className="w-5 h-5 text-white animate-bounce" />
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-extrabold uppercase tracking-widest bg-white/20 px-2 py-0.5 rounded-full">
-                      New Order Notification
-                    </span>
-                    <h3 className="font-display font-extrabold text-xl leading-tight">
-                      Order #{activeNewOrderAlert.id ? String(activeNewOrderAlert.id).slice(-8).toUpperCase() : 'NEW'}
-                    </h3>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setActiveNewOrderAlert(null)}
-                  className="p-1.5 rounded-full hover:bg-white/20 transition-colors"
-                >
-                  <XIcon className="w-5 h-5 text-white" />
-                </button>
-              </div>
-
-              {/* Order Info */}
-              <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
-                <div className="flex items-center justify-between bg-slate-950/80 p-3 rounded-2xl border border-slate-800">
-                  <div>
-                    <p className="text-xs text-slate-400 font-medium">Order Type / Location</p>
-                    <p className="text-sm font-bold text-white">
-                      {activeNewOrderAlert.tableNumber || activeNewOrderAlert.table?.tableNumber
-                        ? `🍽️ Table ${activeNewOrderAlert.tableNumber || activeNewOrderAlert.table?.tableNumber}`
-                        : '🏠 Home Delivery'}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-slate-400 font-medium">Total Amount</p>
-                    <p className="text-lg font-extrabold text-orange-400">
-                      ₹{Number(activeNewOrderAlert.total || 0).toFixed(2)}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Items Summary */}
-                {activeNewOrderAlert.items && activeNewOrderAlert.items.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Order Items:</p>
-                    <div className="space-y-1.5 bg-slate-950 p-3 rounded-2xl border border-slate-800">
-                      {activeNewOrderAlert.items.map((item: any, idx: number) => (
-                        <div key={idx} className="flex justify-between items-center text-xs py-1.5 border-b border-slate-800/60 last:border-0">
-                          <span className="font-semibold text-slate-100">
-                            {item.menuItem?.name || item.name || 'Item'} × {item.quantity}
-                          </span>
-                          <span className="font-mono text-slate-400">
-                            ₹{Number(item.subtotal || (item.unitPrice * item.quantity) || 0).toFixed(0)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Payment Method Badge */}
-                <div className="flex items-center justify-between text-xs p-2.5 rounded-xl bg-blue-950/40 border border-blue-900/60">
-                  <span className="font-semibold text-blue-300">Payment Method:</span>
-                  <span className="font-bold text-blue-200">
-                    {activeNewOrderAlert.paymentMethod === 'RAZORPAY' ? 'Pay Direct (Online)' : activeNewOrderAlert.paymentMethod === 'PAY_TO_WAITER' ? 'Pay to Waiter' : 'Pay on Counter'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="p-4 border-t border-slate-800 bg-slate-950 flex gap-2 flex-wrap">
-                <button
-                  onClick={async () => {
-                    const orderId = activeNewOrderAlert.id;
-                    try {
-                      await handleUpdateStatus(orderId, 'PREPARING');
-                      setActiveNewOrderAlert(null);
-                    } catch {
-                      setActiveNewOrderAlert(null);
-                    }
-                  }}
-                  className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5"
-                >
-                  <CheckCircle2 className="w-4 h-4" /> Confirm Order
-                </button>
-                <button
-                  onClick={() => {
-                    setActiveNewOrderAlert(null);
-                  }}
-                  className="flex-1 py-3 px-4 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs shadow-md transition-all text-center"
-                >
-                  View All Orders
-                </button>
-                <button
-                  onClick={() => setActiveNewOrderAlert(null)}
-                  className="py-3 px-4 rounded-xl border border-slate-700 text-slate-300 font-semibold text-xs hover:bg-slate-800 transition-colors"
-                >
-                  Dismiss
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
+}
 }
 
 function Loader2Icon(props: any) {
