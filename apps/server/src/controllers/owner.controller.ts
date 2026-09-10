@@ -1551,8 +1551,6 @@ export async function clearOwnerOrderHistory(req: AuthenticatedRequest, res: Res
     const whereClause: any = { restaurantId: restaurant.id, deletedAt: null };
     if (status && status !== 'ALL' && validStatuses.includes(status)) {
       whereClause.status = status;
-    } else {
-      whereClause.status = { in: ['DELIVERED', 'CANCELLED'] };
     }
 
     const result = await prisma.order.updateMany({
