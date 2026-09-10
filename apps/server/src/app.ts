@@ -50,6 +50,8 @@ app.use(
       
       const normalizedOrigin = origin.replace(/\/$/, '');
       
+      const isIpOrigin = /^https?:\/\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(normalizedOrigin);
+
       if (
         allowedOrigins.includes(normalizedOrigin) ||
         normalizedOrigin.startsWith('http://localhost:') ||
@@ -58,6 +60,7 @@ app.use(
         normalizedOrigin.endsWith('.onrender.com') ||
         normalizedOrigin.endsWith('.hostinger.com') ||
         normalizedOrigin.endsWith('.hostingersite.com') ||
+        isIpOrigin ||
         (process.env.CLIENT_URL && normalizedOrigin === process.env.CLIENT_URL.replace(/\/$/, '')) ||
         process.env.NODE_ENV !== 'production'
       ) {

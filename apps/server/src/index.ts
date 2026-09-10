@@ -33,6 +33,7 @@ async function bootstrap() {
         origin: (origin, callback) => {
           if (!origin) return callback(null, true);
           const normalizedOrigin = origin.replace(/\/$/, '');
+          const isIpOrigin = /^https?:\/\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(normalizedOrigin);
           if (
             allowedOrigins.includes(normalizedOrigin) ||
             normalizedOrigin.startsWith('http://localhost:') ||
@@ -42,6 +43,7 @@ async function bootstrap() {
             normalizedOrigin.endsWith('.hostinger.com') ||
             normalizedOrigin.endsWith('.hostingersite.com') ||
             normalizedOrigin.endsWith('ezrestro.online') ||
+            isIpOrigin ||
             (process.env.CLIENT_URL && normalizedOrigin === process.env.CLIENT_URL.replace(/\/$/, '')) ||
             process.env.NODE_ENV !== 'production'
           ) {
