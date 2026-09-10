@@ -1521,14 +1521,15 @@ export async function deleteOwnerOrder(req: AuthenticatedRequest, res: Response,
     const id = req.params.id as string;
 
     const order = await prisma.order.findFirst({
-      where: { id, restaurantId: restaurant.id },
+      where: { id, restaurantId: restaurant.id, deletedAt: null },
     });
     if (!order) {
       throw new AppError('Order not found.', 404, 'ORDER_NOT_FOUND');
     }
 
-    await prisma.order.delete({
+    await prisma.order.update({
       where: { id },
+      data: { deletedAt: new Date() },
     });
 
     res.json({
@@ -1545,15 +1546,16 @@ export async function clearOwnerOrderHistory(req: AuthenticatedRequest, res: Res
     const restaurant = await getOwnerRestaurant(req.user!.id);
     const { status } = req.query as { status?: string };
 
-    const whereClause: any = { restaurantId: restaurant.id };
+    const whereClause: any = { restaurantId: restaurant.id, deletedAt: null };
     if (status && status !== 'ALL') {
       whereClause.status = status;
     } else {
       whereClause.status = { in: ['COMPLETED', 'DELIVERED', 'CANCELLED'] };
     }
 
-    const result = await prisma.order.deleteMany({
+    const result = await prisma.order.updateMany({
       where: whereClause,
+      data: { deletedAt: new Date() },
     });
 
     res.json({
