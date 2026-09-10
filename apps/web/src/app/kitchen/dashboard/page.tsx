@@ -138,6 +138,8 @@ export default function KitchenDashboardPage() {
   const orders = ordersData?.orders ?? [];
   const targetRestId = (user as any)?.restaurantId || ordersData?.restaurantId;
 
+  const processedEventsRef = useRef<Map<string, number>>(new Map());
+
   // Socket.io Real-Time Connection
   useEffect(() => {
     if (!targetRestId) return;
@@ -159,7 +161,15 @@ export default function KitchenDashboardPage() {
     socket.on('connect', joinRestaurant);
 
     const handleNewOrder = (order?: any) => {
-      const orderIdShort = order?.id ? String(order.id).slice(-8).toUpperCase() : 'NEW';
+      const orderId = order?.id || order?.orderId || 'NEW';
+      const eventKey = `kitchen_order_${orderId}`;
+      const now = Date.now();
+      if (processedEventsRef.current.has(eventKey) && now - (processedEventsRef.current.get(eventKey) || 0) < 4000) {
+        return;
+      }
+      processedEventsRef.current.set(eventKey, now);
+
+      const orderIdShort = orderId !== 'NEW' ? String(orderId).slice(-8).toUpperCase() : 'NEW';
       const itemsLabel = order?.items?.map((i: any) => `${i.menuItem?.name || i.name || 'Item'} × ${i.quantity}`).join(', ') || 'New items in kitchen';
       const locationLabel = order?.table?.tableNumber || order?.tableNumber ? `Table ${order?.table?.tableNumber || order?.tableNumber}` : 'Dine-In / Delivery';
       const totalLabel = order?.total ? `₹${Number(order.total).toFixed(2)}` : '';
@@ -171,18 +181,19 @@ export default function KitchenDashboardPage() {
           {
             title: `👨‍🍳 ORDER CONFIRMED BY OWNER #${orderIdShort}`,
             body: `${locationLabel} ${totalLabel ? `• ${totalLabel}` : ''}\nItems: ${itemsLabel}`,
-            tag: `order-${order?.id || Date.now()}`,
+            tag: `order-${orderIdShort}`,
           },
           'kitchen'
         );
       } else {
         sendDesktopNotification(`👨‍🍳 ORDER CONFIRMED BY OWNER #${orderIdShort}`, {
           body: `${locationLabel} ${totalLabel ? `• ${totalLabel}` : ''}\nItems: ${itemsLabel}`,
-          tag: `order-${order?.id || Date.now()}`,
+          tag: `order-${orderIdShort}`,
         });
       }
 
       toast.success(`👨‍🍳 Order #${orderIdShort} Confirmed by Owner!`, {
+        id: `kitchen_order_toast_${orderIdShort}`,
         description: `${locationLabel} • ${itemsLabel}`,
         duration: 8000,
         icon: '👨‍🍳',

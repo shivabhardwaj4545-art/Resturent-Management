@@ -191,6 +191,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       );
 
       toast.info(`${typeLabel}: ${detailLabel}`, {
+        id: `owner_waiter_toast_${payload.tableNumber}_${payload.type || 'default'}`,
         duration: 10000,
         icon: '🔔',
       });
@@ -235,6 +236,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       );
       
       toast.success(`🛍️ New Order Received! #${orderIdShort} for ₹${order.total ? Number(order.total).toFixed(0) : ''}`, {
+        id: `owner_order_toast_${orderIdShort}`,
         description: itemsLabel,
         duration: 12000,
         icon: '🛍️',
