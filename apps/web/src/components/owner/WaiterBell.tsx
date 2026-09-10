@@ -442,7 +442,7 @@ export function WaiterBell() {
                             <div
                               key={order.id}
                               onClick={() => {
-                                router.push('/owner/orders');
+                                useWaiterStore.getState().setActiveNewOrderAlert(order);
                                 setShowWaiterPanel(false);
                               }}
                               className={`p-3 rounded-xl border transition-all cursor-pointer hover:border-emerald-500 hover:scale-[1.01] ${
