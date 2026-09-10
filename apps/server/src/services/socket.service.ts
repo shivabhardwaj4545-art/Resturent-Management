@@ -88,7 +88,7 @@ export function initializeSocketService(socketServer: SocketIOServer): void {
       const payload = {
         tableNumber: cleanTable,
         restaurantId,
-        message: `Waiter is coming to Table ${cleanTable}`,
+        message: `Waiter is coming in a few minutes to Table ${cleanTable}`,
         timestamp: new Date().toISOString(),
       };
       io.to(`table:${restaurantId}:${cleanTable}`).emit('waiter:responded', payload);
@@ -105,7 +105,7 @@ export function initializeSocketService(socketServer: SocketIOServer): void {
       const payload = {
         tableNumber: cleanTable,
         restaurantId,
-        message: `Waiter is occupied right now. You can try again in 30 seconds.`,
+        message: `Waiter is busy right now. You can retry after a few minutes.`,
         timestamp: new Date().toISOString(),
       };
       io.to(`table:${restaurantId}:${cleanTable}`).emit('waiter:dismissed', payload);

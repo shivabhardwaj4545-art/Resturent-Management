@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import { AnimatePresence, motion } from 'framer-motion';
 import { io, Socket } from 'socket.io-client';
 import { useWaiterStore, WaiterCall } from '@/store/waiter.store';
-import { playNewOrderSound, playWaiterCallSound, processRealTimeEvent } from '@/utils/audio';
+import { playNewOrderSound, playWaiterCallSound, processRealTimeEvent, requestDesktopNotificationPermission, sendDesktopNotification } from '@/utils/audio';
 
 // Play attention beep using Web Audio API
 function playAlertBeep() {
@@ -82,6 +82,10 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     setMounted(true);
+    requestDesktopNotificationPermission();
+  }, []);
+
+  useEffect(() => {
     if (mounted) {
       if (!isAuthenticated || !user) {
         router.push('/login');
@@ -151,10 +155,6 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       };
       useWaiterStore.getState().addWaiterCall(payload, true);
 
-      processRealTimeEvent('waiter_called', () => {
-        useWaiterStore.getState().setActiveWaiterAlert(waiterCallObj);
-      });
-      
       const isPayOnCounter = payload.paymentMethod === 'COD';
       const isPayToWaiter = payload.paymentMethod === 'PAY_TO_WAITER';
       
@@ -173,6 +173,19 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
         detailLabel = `Table ${payload.tableNumber} added items${payload.amount ? ` (₹${payload.amount})` : ''}${payload.itemsSummary ? `: ${payload.itemsSummary}` : ''}`;
       }
 
+      processRealTimeEvent(
+        'waiter_called',
+        () => {
+          useWaiterStore.getState().setActiveWaiterAlert(waiterCallObj);
+        },
+        {
+          title: `🔔 ${typeLabel}`,
+          body: detailLabel,
+          tag: `waiter-${payload.tableNumber}-${payload.calledAt || Date.now()}`,
+        },
+        'owner'
+      );
+
       toast.info(`${typeLabel}: ${detailLabel}`, {
         duration: 10000,
         icon: '🔔',
@@ -187,11 +200,8 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     // 2. New order received
     const handleNewOrderEvent = (order: any) => {
       if (!order) return;
-      if (order.status && String(order.status).toUpperCase() !== 'PENDING') {
-        return;
-      }
 
-      const eventKey = `order-${order.id}`;
+      const eventKey = `order-${order.id || Date.now()}`;
       const now = Date.now();
       if (order.id && processedEventsRef.current.has(eventKey) && now - (processedEventsRef.current.get(eventKey) || 0) < 3000) {
         return;
@@ -202,12 +212,23 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
 
       useWaiterStore.getState().addNewOrder(order);
 
-      processRealTimeEvent('new_order', () => {
-        setActiveNewOrderAlert(order);
-      });
-      
-      const orderIdShort = order.id ? order.id.slice(-8).toUpperCase() : 'NEW';
-      const itemsLabel = order.items?.map((i: any) => `${i.menuItem?.name || i.name || 'Item'} × ${i.quantity}`).join(', ');
+      const orderIdShort = order.id ? String(order.id).slice(-8).toUpperCase() : 'NEW';
+      const itemsLabel = order.items?.map((i: any) => `${i.menuItem?.name || i.name || 'Item'} × ${i.quantity}`).join(', ') || 'New order received';
+      const locationLabel = order.tableNumber ? `Table ${order.tableNumber}` : 'Home Delivery';
+      const totalLabel = order.total ? `₹${Number(order.total).toFixed(2)}` : '';
+
+      processRealTimeEvent(
+        'new_order',
+        () => {
+          useWaiterStore.getState().setActiveNewOrderAlert(order);
+        },
+        {
+          title: `🛍️ NEW ORDER RECEIVED #${orderIdShort}`,
+          body: `${locationLabel} ${totalLabel ? `• ${totalLabel}` : ''}\nItems: ${itemsLabel}`,
+          tag: `order-${order.id || Date.now()}`,
+        },
+        'owner'
+      );
       
       toast.success(`🛍️ New Order Received! #${orderIdShort} for ₹${order.total ? Number(order.total).toFixed(0) : ''}`, {
         description: itemsLabel,
@@ -215,7 +236,6 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
         icon: '🛍️',
       });
       
-      // Instant real-time UI refetching without page refresh
       queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
       queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['owner-recent-orders-popover'] });
@@ -273,6 +293,11 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       }
 
       if (notif.title) {
+        sendDesktopNotification(notif.title, {
+          body: notif.message || notif.body || '',
+          tag: `notif-${notif.id || Date.now()}`,
+        });
+
         toast.info(notif.title, {
           description: notif.message,
           duration: 10000,
@@ -302,6 +327,25 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     }
   }, [primaryHsl, foregroundHsl]);
 
+  // Auto-open modal popup for any unhandled pending waiter call or new order
+  const { waiterCalls, newOrders } = useWaiterStore();
+  useEffect(() => {
+    if (!activeWaiterAlert && waiterCalls.length > 0) {
+      useWaiterStore.getState().setActiveWaiterAlert(waiterCalls[0]);
+    }
+  }, [waiterCalls, activeWaiterAlert]);
+
+  useEffect(() => {
+    if (!activeNewOrderAlert && newOrders.length > 0) {
+      const pendingOrder = newOrders.find(
+        (o) => !o.status || !['DELIVERED', 'CANCELLED', 'COMPLETED', 'SERVED'].includes(String(o.status).toUpperCase())
+      );
+      if (pendingOrder) {
+        useWaiterStore.getState().setActiveNewOrderAlert(pendingOrder);
+      }
+    }
+  }, [newOrders, activeNewOrderAlert]);
+
   if (!mounted || !user || user.role !== 'RESTAURANT_OWNER') {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -319,174 +363,181 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       } as React.CSSProperties}
       className="min-h-screen relative"
     >
-      {/* Global Waiter Call Modal */}
+      {children}
+
+      {/* Global Waiter Call Alert Modal */}
       <AnimatePresence>
         {activeWaiterAlert && (() => {
+          const isPayment = activeWaiterAlert.type === 'payment';
+          const isAddons = activeWaiterAlert.type === 'addons';
           const isPayOnCounter = activeWaiterAlert.paymentMethod === 'COD';
           const isPayToWaiter = activeWaiterAlert.paymentMethod === 'PAY_TO_WAITER';
           
-          let title = 'Waiter Called!';
-          let description = 'A table needs your attention';
-          let gradientClass = 'from-orange-500 to-amber-500';
-          let borderClass = 'border-orange-400';
-          let IconComponent = BellRing;
-          
-          if (activeWaiterAlert.type === 'payment') {
-            borderClass = 'border-amber-400';
+          let headerTitle = 'WAITER CALL REQUEST';
+          let headerSubtitle = 'Customer requested staff assistance at table';
+          let badgeText = 'TABLE CALL';
+          let icon = <BellRing className="w-6 h-6 text-white animate-bounce" />;
+          let headerGradient = 'from-amber-500 via-orange-500 to-red-500';
+          let borderClass = 'border-amber-500';
+          let buttonLabel = 'Acknowledge Call';
+          let gradientClass = 'from-amber-600 to-orange-600';
+
+          if (isPayment) {
             if (isPayOnCounter) {
-              title = 'Pay on Counter Cash!';
-              description = 'Table requests counter cash checkout';
-              gradientClass = 'from-amber-600 to-yellow-500';
-              IconComponent = Banknote;
+              headerTitle = 'COUNTER CASH CHECKOUT';
+              headerSubtitle = 'Customer wants to pay cash directly at billing counter';
+              badgeText = 'COUNTER CASH';
+              icon = <Banknote className="w-6 h-6 text-white animate-pulse" />;
+              headerGradient = 'from-emerald-600 via-teal-600 to-green-600';
+              borderClass = 'border-emerald-500';
+              buttonLabel = 'Confirm Counter Cash Checkout';
+              gradientClass = 'from-emerald-600 to-teal-600';
             } else {
-              title = 'Pay to Waiter!';
-              description = 'Table requests waiter cash/UPI checkout';
-              gradientClass = 'from-orange-600 to-amber-500';
-              IconComponent = DollarSign;
+              headerTitle = 'PAY TO WAITER REQUEST';
+              headerSubtitle = 'Customer requested waiter to collect payment';
+              badgeText = 'WAITER CASH';
+              icon = <DollarSign className="w-6 h-6 text-white animate-pulse" />;
+              headerGradient = 'from-blue-600 via-indigo-600 to-purple-600';
+              borderClass = 'border-blue-500';
+              buttonLabel = 'Send Waiter for Payment';
+              gradientClass = 'from-blue-600 to-indigo-600';
             }
-          } else if (activeWaiterAlert.type === 'addons') {
-            borderClass = 'border-blue-400 dark:border-blue-500';
-            if (isPayOnCounter) {
-              title = 'Add-on Pay on Counter!';
-              description = 'Table added items, requests counter checkout';
-              gradientClass = 'from-blue-600 to-cyan-500';
-              IconComponent = Banknote;
-            } else if (isPayToWaiter) {
-              title = 'Add-on Pay to Waiter!';
-              description = 'Table added items, requests waiter checkout';
-              gradientClass = 'from-indigo-600 to-blue-500';
-              IconComponent = DollarSign;
-            } else {
-              title = 'Add-on Waiter Called!';
-              description = 'Table added items, needs waiter attention';
-              gradientClass = 'from-violet-600 to-indigo-500';
-              IconComponent = BellRing;
-            }
+          } else if (isAddons) {
+            headerTitle = 'ADD-ON ITEMS ADDED';
+            headerSubtitle = isPayOnCounter 
+              ? 'Add-on order placed (Pay on Counter)' 
+              : isPayToWaiter 
+                ? 'Add-on order placed (Pay to Waiter)' 
+                : 'Customer added extra items to order';
+            badgeText = 'ADD-ON ORDER';
+            icon = <ShoppingBag className="w-6 h-6 text-white animate-bounce" />;
+            headerGradient = 'from-orange-600 via-amber-600 to-yellow-500';
+            borderClass = 'border-orange-500';
+            buttonLabel = 'Accept Add-on Order';
+            gradientClass = 'from-orange-600 to-amber-600';
           }
 
-          // Parse items list
-          const items = activeWaiterAlert.itemsSummary 
-            ? activeWaiterAlert.itemsSummary.split(', ') 
-            : [];
-          
           return (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+              className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs"
             >
               <motion.div
-                initial={{ scale: 0.7, y: 40 }}
+                initial={{ scale: 0.9, y: 20 }}
                 animate={{ scale: 1, y: 0 }}
-                exit={{ scale: 0.7, y: 40 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 24 }}
-                className={`relative mx-4 w-full max-w-sm bg-card border-2 ${borderClass} rounded-3xl shadow-2xl overflow-hidden`}
+                exit={{ scale: 0.9, y: 20 }}
+                className={`bg-card border-2 ${borderClass} rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden text-card-foreground`}
               >
-                {/* Pulsing top banner */}
-                <div className={`bg-gradient-to-r ${gradientClass} px-6 py-4 flex items-center gap-3`}>
-                  <motion.div
-                    animate={{ scale: [1, 1.15, 1] }}
-                    transition={{ repeat: Infinity, duration: 1.0 }}
-                  >
-                    <IconComponent className="w-8 h-8 text-white" />
-                  </motion.div>
-                  <div>
-                    <p className="text-white font-bold text-lg leading-tight">
-                      {title}
-                    </p>
-                    <p className="text-orange-100 text-xs">
-                      {description}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="p-6 text-center space-y-4">
-                  <div>
-                    <p className="text-muted-foreground text-xs uppercase tracking-wider mb-1">Table Number</p>
-                    <motion.p
-                      animate={{ scale: [1, 1.05, 1] }}
-                      transition={{ repeat: Infinity, duration: 1.5 }}
-                      className="text-6xl font-black text-foreground"
-                    >
-                      {activeWaiterAlert.tableNumber}
-                    </motion.p>
-                  </div>
-
-                  {/* Payment Details */}
-                  {activeWaiterAlert.amount && (
-                    <div className="bg-muted/50 rounded-2xl p-3 border border-border/50">
-                      <p className="text-xs text-muted-foreground mb-0.5">Amount Due</p>
-                      <p className={`text-2xl font-black ${activeWaiterAlert.type === 'addons' ? 'text-blue-500' : 'text-orange-500'}`}>
-                        ₹{activeWaiterAlert.amount.toFixed(2)}
+                {/* Header Banner */}
+                <div className={`bg-gradient-to-r ${headerGradient} p-5 text-white flex items-center justify-between`}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-xs shadow-inner">
+                      {icon}
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-extrabold uppercase tracking-widest bg-white/25 px-2.5 py-0.5 rounded-full">
+                        {badgeText}
+                      </span>
+                      <h3 className="font-display font-extrabold text-xl leading-tight mt-0.5">
+                        {headerTitle}
+                      </h3>
+                      <p className="text-xs text-white/90 font-medium">
+                        {headerSubtitle}
                       </p>
                     </div>
-                  )}
-
-                  {/* Order / Add-on Items list */}
-                  {items.length > 0 && (
-                    <div className="text-left space-y-2">
-                      <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                        {activeWaiterAlert.type === 'addons' ? 'Added Add-on Items' : 'Order Items'}
-                      </p>
-                      <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1 bg-muted/30 rounded-xl border border-border/35">
-                        {items.map((item, idx) => (
-                          <span 
-                            key={idx} 
-                            className={`text-xs px-2.5 py-1 rounded-lg font-semibold border ${
-                              activeWaiterAlert.type === 'addons' 
-                                ? 'bg-blue-50 text-blue-700 border-blue-200/60 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900/30' 
-                                : 'bg-orange-50 text-orange-700 border-orange-200/60 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-900/30'
-                            }`}
-                          >
-                            {item}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <p className="text-xs text-muted-foreground">
-                    Called at {new Date(activeWaiterAlert.calledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                  </p>
-                </div>
-
-                <div className="px-6 pb-6 flex gap-3">
+                  </div>
                   <button
-                    onClick={async () => {
-                      if (socketRef.current && activeWaiterAlert.tableNumber) {
-                        socketRef.current.emit('waiter:dismiss', {
-                          restaurantId: restaurantData?.id,
+                    onClick={() => useWaiterStore.getState().setActiveWaiterAlert(null)}
+                    className="p-2 rounded-full hover:bg-white/20 transition-colors text-white"
+                    title="Dismiss alert"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Table & Call Info Body */}
+                <div className="p-6 space-y-4">
+                  <div className="bg-muted/60 p-4 rounded-2xl border border-border flex items-center justify-between">
+                    <div>
+                      <span className="text-xs text-muted-foreground font-semibold block uppercase tracking-wider">
+                        Location / Table
+                      </span>
+                      <span className="text-2xl font-black text-foreground">
+                        🍽️ Table {activeWaiterAlert.tableNumber}
+                      </span>
+                    </div>
+                    {activeWaiterAlert.amount ? (
+                      <div className="text-right">
+                        <span className="text-xs text-muted-foreground font-semibold block uppercase tracking-wider">
+                          Amount
+                        </span>
+                        <span className="text-xl font-extrabold text-orange-600 dark:text-orange-400">
+                          ₹{Number(activeWaiterAlert.amount).toFixed(2)}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {/* Addons summary if available */}
+                  {activeWaiterAlert.itemsSummary && (
+                    <div className="bg-orange-500/10 border border-orange-500/30 p-3.5 rounded-2xl">
+                      <span className="text-xs font-bold text-orange-600 dark:text-orange-400 uppercase tracking-wider block mb-1">
+                        📦 Added Items:
+                      </span>
+                      <p className="text-xs font-semibold text-foreground">
+                        {activeWaiterAlert.itemsSummary}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Call Timestamp */}
+                  <div className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium px-1">
+                    <span>Requested at:</span>
+                    <span className="font-bold text-foreground">
+                      {activeWaiterAlert.calledAt ? new Date(activeWaiterAlert.calledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="p-4 border-t border-border bg-muted/30 flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      const socket = useWaiterStore.getState().socket;
+                      if (socket && activeWaiterAlert.restaurantId) {
+                        socket.emit('waiter:dismiss', {
+                          restaurantId: activeWaiterAlert.restaurantId,
                           tableNumber: activeWaiterAlert.tableNumber,
                         });
                       }
                       useWaiterStore.getState().dismissWaiterCall(activeWaiterAlert.id, activeWaiterAlert.tableNumber);
-                      try {
-                        await api.patch('/profile/notifications/read');
-                        queryClient.invalidateQueries({ queryKey: ['owner-notifications'] });
-                      } catch {}
+                      useWaiterStore.getState().setActiveWaiterAlert(null);
                     }}
-                    className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold hover:bg-muted transition-colors text-foreground cursor-pointer"
+                    className="py-3 px-5 rounded-xl border border-border text-foreground text-sm font-semibold hover:bg-muted transition-colors cursor-pointer"
                   >
                     Dismiss
                   </button>
                   <button
                     onClick={async () => {
-                      if (socketRef.current && activeWaiterAlert.tableNumber) {
-                        socketRef.current.emit('waiter:respond', {
-                          restaurantId: restaurantData?.id,
+                      const socket = useWaiterStore.getState().socket;
+                      if (socket && activeWaiterAlert.restaurantId) {
+                        socket.emit('waiter:respond', {
+                          restaurantId: activeWaiterAlert.restaurantId,
                           tableNumber: activeWaiterAlert.tableNumber,
                         });
                       }
                       useWaiterStore.getState().dismissWaiterCall(activeWaiterAlert.id, activeWaiterAlert.tableNumber);
+                      useWaiterStore.getState().setActiveWaiterAlert(null);
                       try {
                         await api.patch('/profile/notifications/read');
                         queryClient.invalidateQueries({ queryKey: ['owner-notifications'] });
                       } catch {}
                     }}
-                    className={`flex-1 py-3 rounded-xl text-white text-sm font-bold bg-gradient-to-r ${gradientClass} hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5 cursor-pointer`}
+                    className={`flex-1 py-3 px-5 rounded-xl text-white text-sm font-bold bg-gradient-to-r ${gradientClass} hover:opacity-90 transition-opacity cursor-pointer`}
                   >
-                    <span>{activeWaiterAlert.type === 'payment' ? '✓ Send Waiter for Payment 🏃' : '✓ Send Waiter 🏃'}</span>
+                    {buttonLabel}
                   </button>
                 </div>
               </motion.div>
@@ -497,7 +548,10 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
 
       {/* Global New Order Alert Modal */}
       <AnimatePresence>
-        {activeNewOrderAlert && (!activeNewOrderAlert.status || String(activeNewOrderAlert.status).toUpperCase() === 'PENDING') && (
+        {activeNewOrderAlert && (
+          !activeNewOrderAlert.status ||
+          !['DELIVERED', 'CANCELLED', 'COMPLETED', 'SERVED'].includes(String(activeNewOrderAlert.status).toUpperCase())
+        ) && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -521,7 +575,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                       New Order Notification
                     </span>
                     <h3 className="font-display font-extrabold text-xl leading-tight">
-                      Order #{activeNewOrderAlert.id ? activeNewOrderAlert.id.slice(-8).toUpperCase() : 'NEW'}
+                      Order #{activeNewOrderAlert.id ? String(activeNewOrderAlert.id).slice(-8).toUpperCase() : 'NEW'}
                     </h3>
                   </div>
                 </div>

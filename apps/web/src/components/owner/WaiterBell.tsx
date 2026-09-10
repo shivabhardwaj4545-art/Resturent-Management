@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useWaiterStore, WaiterCall, LiveOrderAlert } from '@/store/waiter.store';
@@ -39,6 +40,14 @@ interface NotificationItem {
 
 export function WaiterBell() {
   const router = useRouter();
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [mounted, setMounted] = useState(false);
+  const [panelPos, setPanelPos] = useState({ top: 60, right: 16 });
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const {
     waiterCalls,
     newOrders,
@@ -52,6 +61,16 @@ export function WaiterBell() {
   const [showWaiterPanel, setShowWaiterPanel] = useState(false);
   const [activeTab, setActiveTab] = useState<'calls' | 'orders' | 'activity'>('calls');
   const queryClient = useQueryClient();
+
+  const togglePanel = () => {
+    if (!showWaiterPanel && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const right = Math.max(16, window.innerWidth - rect.right);
+      const top = rect.bottom + 8;
+      setPanelPos({ top, right });
+    }
+    setShowWaiterPanel((v) => !v);
+  };
 
   // 1. Fetch recent activity notifications
   const { data: notifData, isLoading: isLoadingNotifs } = useQuery({
@@ -122,9 +141,8 @@ export function WaiterBell() {
   return (
     <div className="relative">
       <button
-        onClick={() => {
-          setShowWaiterPanel((v) => !v);
-        }}
+        ref={buttonRef}
+        onClick={togglePanel}
         className="relative p-2.5 rounded-xl hover:bg-muted/80 transition-all duration-200 active:scale-95 group"
         title="Live Notifications, Waiter Calls & Orders"
       >
@@ -140,20 +158,24 @@ export function WaiterBell() {
         )}
       </button>
 
-      {/* Notifications Drawer Popover */}
-      <AnimatePresence>
-        {showWaiterPanel && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setShowWaiterPanel(false)} />
+      {/* Notifications Drawer Popover - Portalled directly to body */}
+      {showWaiterPanel && mounted && createPortal(
+        <AnimatePresence>
+          <div className="fixed inset-0 z-[999999] pointer-events-auto">
+            <div className="fixed inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-[1px]" onClick={() => setShowWaiterPanel(false)} />
             <motion.div
               initial={{ opacity: 0, y: -12, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -12, scale: 0.96 }}
               transition={{ duration: 0.18, ease: 'easeOut' }}
-              className="absolute right-0 mt-2.5 z-50 w-96 max-w-[calc(100vw-2rem)] bg-card border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col"
+              style={{
+                top: `${panelPos.top}px`,
+                right: `${panelPos.right}px`,
+              }}
+              className="fixed z-[1000000] w-96 max-w-[calc(100vw-2rem)] bg-white dark:bg-zinc-950 border-2 border-border shadow-[0_25px_60px_-15px_rgba(0,0,0,0.6)] dark:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.95)] rounded-2xl overflow-hidden flex flex-col opacity-100 text-foreground"
             >
               {/* Sound Controls Header */}
-              <div className="px-4 py-2.5 bg-muted/60 border-b border-border flex items-center justify-between">
+              <div className="px-4 py-2.5 bg-slate-100 dark:bg-zinc-900 border-b border-border flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
                   <span className="text-xs font-bold text-foreground">Live Notification Center</span>
@@ -175,7 +197,7 @@ export function WaiterBell() {
               </div>
 
               {/* Tab Selector Header */}
-              <div className="flex border-b border-border bg-muted/30 p-1 gap-1">
+              <div className="flex border-b border-border bg-slate-100/90 dark:bg-zinc-900 p-1 gap-1">
                 <button
                   onClick={() => setActiveTab('calls')}
                   className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
@@ -273,16 +295,16 @@ export function WaiterBell() {
                           const isAddon = call.type === 'addons';
                           const isPayment = call.type === 'payment';
 
-                          let containerClass = "bg-orange-50/80 dark:bg-orange-950/30 border-orange-200 dark:border-orange-500/30";
+                          let containerClass = "bg-orange-50 dark:bg-zinc-900 border-orange-200 dark:border-orange-500/40";
                           let iconClass = "bg-orange-500 text-white";
                           let IconComponent = BellRing;
 
                           if (isAddon) {
-                            containerClass = "bg-blue-50/80 dark:bg-blue-950/30 border-blue-200 dark:border-blue-500/30";
+                            containerClass = "bg-blue-50 dark:bg-zinc-900 border-blue-200 dark:border-blue-500/40";
                             iconClass = "bg-blue-500 text-white";
                             IconComponent = isPayOnCounter ? Banknote : isPayToWaiter ? DollarSign : Sparkles;
                           } else if (isPayment) {
-                            containerClass = "bg-amber-50/80 dark:bg-amber-950/30 border-amber-200 dark:border-amber-500/30";
+                            containerClass = "bg-amber-50 dark:bg-zinc-900 border-amber-200 dark:border-amber-500/40";
                             iconClass = "bg-amber-500 text-white";
                             IconComponent = isPayOnCounter ? Banknote : DollarSign;
                           }
@@ -425,8 +447,8 @@ export function WaiterBell() {
                               }}
                               className={`p-3 rounded-xl border transition-all cursor-pointer hover:border-emerald-500 hover:scale-[1.01] ${
                                 isPending
-                                  ? 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-500/30'
-                                  : 'bg-card border-border'
+                                  ? 'bg-emerald-50 dark:bg-zinc-900 border-emerald-200 dark:border-emerald-500/40'
+                                  : 'bg-white dark:bg-zinc-900 border-border'
                               }`}
                             >
                               <div className="flex items-center justify-between gap-2 mb-1">
@@ -500,8 +522,8 @@ export function WaiterBell() {
                           key={notif.id}
                           className={`p-2.5 rounded-xl border text-xs space-y-1 transition-all ${
                             !notif.isRead
-                              ? 'bg-blue-50/70 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900/50 font-medium'
-                              : 'bg-card border-border/60'
+                              ? 'bg-blue-50 dark:bg-zinc-900 border-blue-200 dark:border-blue-900/50 font-medium'
+                              : 'bg-white dark:bg-zinc-900 border-border/60'
                           }`}
                         >
                           <div className="flex items-center justify-between gap-2">
@@ -518,9 +540,10 @@ export function WaiterBell() {
                 </>
               )}
             </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+          </div>
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }

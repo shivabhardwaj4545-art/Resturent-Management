@@ -77,9 +77,9 @@ router.get('/restaurant/sign-table', signTable);
 // Menu categories
 router.get('/menu/categories', getCategories);
 router.post('/menu/categories', validate(menuCategorySchema), createCategory);
+router.put('/menu/categories/reorder', reorderCategories);
 router.put('/menu/categories/:id', validate(menuCategorySchema), updateCategory);
 router.delete('/menu/categories/:id', deleteCategory);
-router.put('/menu/categories/reorder', reorderCategories);
 
 // Menu items
 router.get('/menu/items', getMenuItems);

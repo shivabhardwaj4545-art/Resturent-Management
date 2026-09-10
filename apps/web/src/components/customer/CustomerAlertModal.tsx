@@ -24,6 +24,19 @@ export function CustomerAlertModal({ data, onClose }: CustomerAlertModalProps) {
   const [countdown, setCountdown] = useState<number>(0);
 
   useEffect(() => {
+    if (data?.isOpen) {
+      const originalOverflow = document.body.style.overflow;
+      const originalTouchAction = document.body.style.touchAction;
+      document.body.style.overflow = 'hidden';
+      document.body.style.touchAction = 'none';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+        document.body.style.touchAction = originalTouchAction;
+      };
+    }
+  }, [data?.isOpen]);
+
+  useEffect(() => {
     if (!data?.isOpen) return;
     if (data.timerSeconds && data.timerSeconds > 0) {
       setCountdown(data.timerSeconds);
@@ -124,10 +137,15 @@ export function CustomerAlertModal({ data, onClose }: CustomerAlertModalProps) {
 
           {/* Waiter Countdown Timer if applicable */}
           {countdown > 0 && (
-            <div className="py-2 px-4 rounded-2xl bg-muted/60 border border-border/80 flex items-center justify-center gap-2 text-xs font-bold text-foreground">
+            <div className="py-2.5 px-4 rounded-2xl bg-muted/60 border border-border/80 flex items-center justify-center gap-2 text-xs font-bold text-foreground">
               <Clock className="w-4 h-4 text-primary animate-spin" />
               <span>
-                Estimated arrival / retry window: <strong className="text-primary font-mono text-sm">{countdown}s</strong>
+                {data.type === 'WAITER_COMING' ? 'Estimated arrival: ' : 'You can retry in: '}
+                <strong className="text-primary font-mono text-sm ml-1">
+                  {data.type === 'WAITER_COMING'
+                    ? `${String(Math.floor(countdown / 60)).padStart(2, '0')}:${String(countdown % 60).padStart(2, '0')} min (${countdown}s)`
+                    : `${countdown}s`}
+                </strong>
               </span>
             </div>
           )}

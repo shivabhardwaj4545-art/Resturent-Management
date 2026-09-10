@@ -28,6 +28,20 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, themeCo
   const [couponInput, setCouponInput] = useState('');
   const [couponLoading, setCouponLoading] = useState(false);
 
+  // Prevent background scrolling when cart drawer is open
+  useEffect(() => {
+    if (open) {
+      const originalOverflow = document.body.style.overflow;
+      const originalTouchAction = document.body.style.touchAction;
+      document.body.style.overflow = 'hidden';
+      document.body.style.touchAction = 'none';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+        document.body.style.touchAction = originalTouchAction;
+      };
+    }
+  }, [open]);
+
   const subtotalAmount = subtotal();
   const gst = gstAmount();
   const discount = couponDiscount;
@@ -117,8 +131,9 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, themeCo
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[99998]"
             onClick={onClose}
+            onTouchMove={(e) => e.preventDefault()}
           />
 
           {/* Drawer */}
@@ -127,12 +142,12 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, themeCo
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-background shadow-2xl z-50 flex flex-col"
+            className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-background shadow-2xl z-[99999] flex flex-col border-l border-border opacity-100"
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-background">
               <div className="flex items-center gap-2">
-                <ShoppingBag className="w-5 h-5" />
+                <ShoppingBag className="w-5 h-5 text-primary" />
                 <h2 className="font-display font-bold text-lg">Your Cart</h2>
                 <span className="bg-primary text-primary-foreground text-xs font-bold px-2 py-0.5 rounded-full">
                   {items.reduce((sum, i) => sum + i.quantity, 0)}
@@ -144,7 +159,7 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, themeCo
             </div>
 
             {/* Items */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin">
+            <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-3 scrollbar-thin">
               {items.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-center py-16">
                   <ShoppingBag className="w-16 h-16 text-muted-foreground/30 mb-4" />
@@ -358,7 +373,7 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, themeCo
 
                 <button
                   onClick={handleCheckout}
-                  className="w-[calc(100%-3.5rem)] mr-14 py-4 rounded-2xl text-white font-bold text-base flex items-center justify-between px-5"
+                  className="w-full py-4 rounded-2xl text-white font-bold text-base flex items-center justify-between px-5 shadow-lg active:scale-98 transition-all hover:opacity-95"
                   style={{ background: `linear-gradient(135deg, ${themeColor}, #F48C06)` }}
                 >
                   <span>Proceed to Checkout</span>

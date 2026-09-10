@@ -18,6 +18,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  useEffect(() => {
     if (mounted) {
       if (!isAuthenticated || !user) {
         router.push('/login');

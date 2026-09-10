@@ -333,11 +333,14 @@ export async function reorderCategories(req: AuthenticatedRequest, res: Response
   try {
     const restaurant = await getOwnerRestaurant(req.user!.id);
     const { order } = req.body as { order: Array<{ id: string; sortOrder: number }> };
+    if (!Array.isArray(order)) {
+      throw new AppError('Order array is required', 400);
+    }
     await Promise.all(
       order.map((item) =>
         prisma.menuCategory.updateMany({
           where: { id: item.id, restaurantId: restaurant.id },
-          data: { sortOrder: item.sortOrder },
+          data: { sortOrder: Number(item.sortOrder) || 0 },
         })
       )
     );

@@ -53,7 +53,11 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'qr-restaurant-auth',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() =>
+        typeof window !== 'undefined'
+          ? localStorage
+          : { getItem: () => null, setItem: () => {}, removeItem: () => {} }
+      ),
       partialize: (state) => ({
         user: state.user,
         accessToken: state.accessToken,

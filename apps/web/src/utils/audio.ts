@@ -1,15 +1,13 @@
 /**
  * Real-Time Sound, Popup, and Vibration Notification Service
- * Supports:
- * - Real-time audio playback for:
- *   1. new_order -> new_order.mp3 / Order sound 🔔
- *   2. waiter_called -> waiter_call.mp3 / Waiter sound 🛎️
- *   3. order_cancelled -> order_cancelled.mp3 / Cancel sound ⚠️
- *   4. driver_assigned -> driver_assigned.mp3 / Driver sound 🚗
- *   5. order_status_changed -> order_status_changed.mp3 / Status sound 🔔
- * - Web Audio API fallback synthesized tones
+ * Supports distinct role-based audio profiles:
+ * - Owner Side: Sharp cash-register brass chime & rapid waiter alarm
+ * - Kitchen Side: Loud double kitchen gong chime & high-gain buzzer (designed to cut through kitchen noise)
+ * - Customer Side: Soft, warm melodic chord & gentle ding
+ * - Web Audio API synthesized tones + HTML5 audio fallback
  * - Mobile Haptic Vibration (navigator.vibrate)
- * - Sequential execution: Sound -> Popup -> Vibration (mobile)
+ * - Native Browser Desktop Notifications
+ * - Automatic AudioContext unlock & audibility listeners
  */
 
 export type EventType =
@@ -19,6 +17,8 @@ export type EventType =
   | 'driver_assigned'
   | 'order_status_changed';
 
+export type UserRole = 'owner' | 'kitchen' | 'customer';
+
 // Mobile vibration trigger
 export function triggerVibration(pattern: number[] = [200, 100, 200]) {
   if (typeof window !== 'undefined' && 'vibrate' in navigator) {
@@ -27,6 +27,59 @@ export function triggerVibration(pattern: number[] = [200, 100, 200]) {
     } catch {
       /* ignore vibration errors */
     }
+  }
+}
+
+// Browser Desktop Notification Helpers
+export function requestDesktopNotificationPermission() {
+  if (typeof window !== 'undefined' && 'Notification' in window) {
+    if (Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+  }
+}
+
+export function sendDesktopNotification(
+  title: string,
+  options?: {
+    body?: string;
+    icon?: string;
+    tag?: string;
+    data?: any;
+    requireInteraction?: boolean;
+  }
+) {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+
+  const fireNotification = () => {
+    try {
+      const notif = new Notification(title, {
+        icon: options?.icon || '/favicon.png',
+        badge: '/favicon.png',
+        body: options?.body || '',
+        tag: options?.tag || undefined,
+        requireInteraction: options?.requireInteraction ?? true,
+        ...options,
+      });
+
+      notif.onclick = (e) => {
+        e.preventDefault();
+        window.focus();
+        notif.close();
+      };
+    } catch (err) {
+      console.error('Desktop notification trigger error:', err);
+    }
+  };
+
+  if (Notification.permission === 'granted') {
+    fireNotification();
+  } else if (Notification.permission !== 'denied') {
+    Notification.requestPermission().then((permission) => {
+      if (permission === 'granted') {
+        fireNotification();
+      }
+    }).catch(() => {});
   }
 }
 
@@ -51,30 +104,36 @@ if (typeof window !== 'undefined') {
       if (ctx.state === 'suspended') {
         ctx.resume().catch(() => {});
       }
+      requestDesktopNotificationPermission();
     } catch {}
   };
-  ['click', 'keydown', 'touchstart', 'mousemove', 'scroll', 'pointerdown', 'focus'].forEach((evt) => {
+  
+  // Auto unlock on any page interaction or visibility change
+  ['click', 'keydown', 'touchstart', 'mousemove', 'scroll', 'pointerdown', 'focus', 'mouseenter', 'visibilitychange', 'load'].forEach((evt) => {
     window.addEventListener(evt, unlockAudio, { capture: true, passive: true });
   });
+
+  // Call once immediately
+  unlockAudio();
 }
 
-// Synthesized Sound Fallbacks
-export function playNewOrderSynth() {
+// ── 1. OWNER AUDIO SYNTHS (Sharp cash-register & waiter call alarm) ───────────
+export function playOwnerOrderSynth() {
   try {
     const ctx = getAudioContext();
     const now = ctx.currentTime;
     const notes = [
-      { freq: 523.25, time: 0, duration: 0.15 },
-      { freq: 659.25, time: 0.15, duration: 0.15 },
-      { freq: 783.99, time: 0.3, duration: 0.15 },
-      { freq: 1046.5, time: 0.45, duration: 0.4 },
+      { freq: 523.25, time: 0, duration: 0.12 },
+      { freq: 783.99, time: 0.1, duration: 0.12 },
+      { freq: 1046.5, time: 0.2, duration: 0.18 },
+      { freq: 1318.5, time: 0.32, duration: 0.4 },
     ];
     notes.forEach(({ freq, time, duration }) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'triangle';
       osc.frequency.setValueAtTime(freq, now + time);
-      gain.gain.setValueAtTime(0.8, now + time);
+      gain.gain.setValueAtTime(0.9, now + time);
       gain.gain.exponentialRampToValueAtTime(0.001, now + time + duration);
       osc.connect(gain);
       gain.connect(ctx.destination);
@@ -84,32 +143,121 @@ export function playNewOrderSynth() {
   } catch { /* silent fallback */ }
 }
 
-export function playWaiterCallSynth() {
+export function playOwnerWaiterSynth() {
   try {
     const ctx = getAudioContext();
     const now = ctx.currentTime;
-    const pulses = [
-      { freq1: 987.77, freq2: 1318.51, start: 0 },
-      { freq1: 987.77, freq2: 1318.51, start: 0.4 },
-    ];
-    pulses.forEach(({ freq1, freq2, start }) => {
+    [0, 0.35].forEach((delay) => {
       const osc1 = ctx.createOscillator();
       const osc2 = ctx.createOscillator();
       const gain = ctx.createGain();
       osc1.type = 'sine';
-      osc2.type = 'triangle';
-      osc1.frequency.setValueAtTime(freq1, now + start);
-      osc2.frequency.setValueAtTime(freq2, now + start + 0.12);
-      gain.gain.setValueAtTime(0.9, now + start);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + start + 0.35);
+      osc2.type = 'square';
+      osc1.frequency.setValueAtTime(880, now + delay);
+      osc2.frequency.setValueAtTime(1174.66, now + delay + 0.08);
+      gain.gain.setValueAtTime(0.85, now + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.3);
       osc1.connect(gain);
       osc2.connect(gain);
       gain.connect(ctx.destination);
-      osc1.start(now + start);
-      osc2.start(now + start + 0.12);
-      osc1.stop(now + start + 0.35);
-      osc2.stop(now + start + 0.35);
+      osc1.start(now + delay);
+      osc2.start(now + delay + 0.08);
+      osc1.stop(now + delay + 0.3);
+      osc2.stop(now + delay + 0.3);
     });
+  } catch { /* silent fallback */ }
+}
+
+// ── 2. KITCHEN AUDIO SYNTHS (Loud double kitchen bell/gong chime) ────────────
+export function playKitchenOrderSynth() {
+  try {
+    const ctx = getAudioContext();
+    const now = ctx.currentTime;
+    const strokes = [
+      { delay: 0, freq1: 587.33, freq2: 880 },
+      { delay: 0.2, freq1: 880, freq2: 1174.66 },
+      { delay: 0.5, freq1: 587.33, freq2: 880 },
+      { delay: 0.7, freq1: 880, freq2: 1174.66 },
+    ];
+    strokes.forEach(({ delay, freq1, freq2 }) => {
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc1.type = 'triangle';
+      osc2.type = 'sawtooth';
+      osc1.frequency.setValueAtTime(freq1, now + delay);
+      osc2.frequency.setValueAtTime(freq2, now + delay);
+      gain.gain.setValueAtTime(1.0, now + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.4);
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+      osc1.start(now + delay);
+      osc2.start(now + delay);
+      osc1.stop(now + delay + 0.4);
+      osc2.stop(now + delay + 0.4);
+    });
+  } catch { /* silent fallback */ }
+}
+
+export function playKitchenWaiterSynth() {
+  try {
+    const ctx = getAudioContext();
+    const now = ctx.currentTime;
+    [0, 0.25, 0.5].forEach((delay) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(783.99, now + delay);
+      gain.gain.setValueAtTime(0.9, now + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.2);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + delay);
+      osc.stop(now + delay + 0.2);
+    });
+  } catch { /* silent fallback */ }
+}
+
+// ── 3. CUSTOMER AUDIO SYNTHS (Soft, warm, pleasant melodic triad) ────────────
+export function playCustomerStatusSynth() {
+  try {
+    const ctx = getAudioContext();
+    const now = ctx.currentTime;
+    const notes = [
+      { freq: 440, time: 0, duration: 0.3 },
+      { freq: 554.37, time: 0.12, duration: 0.35 },
+      { freq: 659.25, time: 0.24, duration: 0.5 },
+    ];
+    notes.forEach(({ freq, time, duration }) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + time);
+      gain.gain.setValueAtTime(0.5, now + time);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + time + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + time);
+      osc.stop(now + time + duration);
+    });
+  } catch { /* silent fallback */ }
+}
+
+export function playCustomerWaiterComingSynth() {
+  try {
+    const ctx = getAudioContext();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1046.5, now);
+    gain.gain.setValueAtTime(0.4, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.6);
   } catch { /* silent fallback */ }
 }
 
@@ -159,29 +307,6 @@ export function playDriverAssignedSynth() {
   } catch { /* silent fallback */ }
 }
 
-export function playOrderStatusSynth() {
-  try {
-    const ctx = getAudioContext();
-    const now = ctx.currentTime;
-    const tones = [
-      { freq: 659.25, start: 0, duration: 0.15 },
-      { freq: 880, start: 0.15, duration: 0.3 },
-    ];
-    tones.forEach(({ freq, start, duration }) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, now + start);
-      gain.gain.setValueAtTime(0.7, now + start);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + start + duration);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + start);
-      osc.stop(now + start + duration);
-    });
-  } catch { /* silent fallback */ }
-}
-
 // Sound file mapping
 const SOUND_FILES: Record<EventType, string> = {
   new_order: '/sounds/new_order.mp3',
@@ -191,53 +316,68 @@ const SOUND_FILES: Record<EventType, string> = {
   order_status_changed: '/sounds/order_status_changed.mp3',
 };
 
-const SYNTH_FALLBACKS: Record<EventType, () => void> = {
-  new_order: playNewOrderSynth,
-  waiter_called: playWaiterCallSynth,
-  order_cancelled: playOrderCancelledSynth,
-  driver_assigned: playDriverAssignedSynth,
-  order_status_changed: playOrderStatusSynth,
-};
-
-export function playEventSound(event: EventType) {
+// Play event sound with specific role profile
+export function playRoleEventSound(event: EventType, role: UserRole = 'owner') {
   if (typeof window === 'undefined') return;
 
-  // 1. Play instant Web Audio synth sound (0ms latency chime)
-  const synth = SYNTH_FALLBACKS[event];
-  if (synth) {
-    try {
-      synth();
-    } catch {}
-  }
+  // 1. Resume audio context synchronously
+  try {
+    const ctx = getAudioContext();
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+  } catch {}
 
-  // 2. Play MP3 file audio simultaneously
+  // 2. Play role-specific Web Audio synth sound
+  try {
+    if (role === 'kitchen') {
+      if (event === 'new_order') playKitchenOrderSynth();
+      else if (event === 'waiter_called') playKitchenWaiterSynth();
+      else playKitchenOrderSynth();
+    } else if (role === 'customer') {
+      if (event === 'waiter_called') playCustomerWaiterComingSynth();
+      else playCustomerStatusSynth();
+    } else {
+      // Owner (default)
+      if (event === 'new_order') playOwnerOrderSynth();
+      else if (event === 'waiter_called') playOwnerWaiterSynth();
+      else if (event === 'order_cancelled') playOrderCancelledSynth();
+      else playOwnerOrderSynth();
+    }
+  } catch {}
+
+  // 3. Play MP3 file audio simultaneously
   const soundFile = SOUND_FILES[event];
   if (soundFile) {
     try {
       const audio = new Audio(soundFile);
-      audio.volume = 1.0;
+      audio.volume = role === 'kitchen' ? 1.0 : role === 'customer' ? 0.6 : 0.9;
       audio.play().catch(() => {});
     } catch {}
   }
 }
 
 // Named function exports for direct caller usage
-export const playNewOrderSound = () => playEventSound('new_order');
-export const playWaiterCallSound = () => playEventSound('waiter_called');
-export const playOrderCancelledSound = () => playEventSound('order_cancelled');
-export const playDriverAssignedSound = () => playEventSound('driver_assigned');
-export const playOrderStatusSound = () => playEventSound('order_status_changed');
-export const playKitchenOrderSound = () => playEventSound('new_order');
+export const playEventSound = (event: EventType) => playRoleEventSound(event, 'owner');
+export const playNewOrderSound = () => playRoleEventSound('new_order', 'owner');
+export const playWaiterCallSound = () => playRoleEventSound('waiter_called', 'owner');
+export const playOrderCancelledSound = () => playRoleEventSound('order_cancelled', 'owner');
+export const playDriverAssignedSound = () => playRoleEventSound('driver_assigned', 'owner');
+export const playOrderStatusSound = () => playRoleEventSound('order_status_changed', 'owner');
+export const playKitchenOrderSound = () => playRoleEventSound('new_order', 'kitchen');
 
 /**
  * Real-time notification flow:
- * 1. Sound
- * 2. Popup
- * 3. Vibration (mobile)
+ * 1. Popup UI Trigger
+ * 2. Desktop Notification
+ * 3. Role-specific Audio Sound
+ * 4. Vibration (mobile)
  */
 export function processRealTimeEvent(
   event: EventType,
-  popupTrigger?: () => void
+  popupTrigger?: () => void,
+  desktopDetails?: { title: string; body?: string; tag?: string },
+  role: UserRole = 'owner'
 ) {
   // 1. Trigger Popup FIRST for instant UI modal rendering (<10ms)
   if (popupTrigger) {
@@ -246,12 +386,24 @@ export function processRealTimeEvent(
     } catch { /* ignore popup trigger error */ }
   }
 
-  // 2. Play Sound
+  // 2. Trigger Native Desktop System Notification
+  if (desktopDetails) {
+    try {
+      sendDesktopNotification(desktopDetails.title, {
+        body: desktopDetails.body,
+        tag: desktopDetails.tag || `${event}-${Date.now()}`,
+      });
+    } catch { /* ignore desktop notification error */ }
+  }
+
+  // 3. Play Role-Specific Sound
   try {
-    playEventSound(event);
+    playRoleEventSound(event, role);
   } catch { /* ignore audio error */ }
 
-  // 3. Trigger Vibration (mobile)
+  // 4. Trigger Vibration (mobile)
   triggerVibration([200, 100, 200]);
 }
+
+
 

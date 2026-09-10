@@ -134,7 +134,11 @@ export const useCartStore = create<CartState>()(
     }),
     {
       name: 'qr-restaurant-cart',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() =>
+        typeof window !== 'undefined'
+          ? localStorage
+          : { getItem: () => null, setItem: () => {}, removeItem: () => {} }
+      ),
     }
   )
 );

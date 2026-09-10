@@ -150,7 +150,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
     }, 1000);
   }, [clearWaiterTimers, getTableStorageKey, resetWaiterState]);
 
-  const startPendingState = useCallback((tbl?: string | null, seconds: number = 20) => {
+  const startPendingState = useCallback((tbl?: string | null, seconds: number = 30) => {
     clearWaiterTimers();
     setWaiterStatus('PENDING');
     setWaiterPendingTimer(seconds);
@@ -203,7 +203,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
     }
   }, [getTableStorageKey, startComingTimer, startOccupiedTimer, startPendingState, tableNumber, manualTableNumber]);
 
-  const { items: cartItems, itemCount, setRestaurant } = useCartStore();
+  const { items: cartItems, itemCount, setRestaurant, total: getCartTotal } = useCartStore();
   const { user: rawUser, logout } = useAuthStore();
   const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
   const [showNotifModal, setShowNotifModal] = useState(false);
@@ -253,6 +253,21 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
 
   const [showHours, setShowHours] = useState(false);
   const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
+
+  const isAnyModalOpen = showLoyaltyModal || showTableInput || showHours || showNotifModal;
+
+  useEffect(() => {
+    if (isAnyModalOpen) {
+      const originalOverflow = document.body.style.overflow;
+      const originalTouchAction = document.body.style.touchAction;
+      document.body.style.overflow = 'hidden';
+      document.body.style.touchAction = 'none';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+        document.body.style.touchAction = originalTouchAction;
+      };
+    }
+  }, [isAnyModalOpen]);
 
   const [addonOrderId, setAddonOrderId] = useState<string | null>(null);
   const [addonOrderNum, setAddonOrderNum] = useState<string | null>(null);
@@ -552,7 +567,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       });
 
       setShowTableInput(false);
-      startPendingState(cleanTable);
+      startPendingState(cleanTable, 30);
     } catch (err: any) {
       const errMsg = err.response?.data?.error || err.response?.data?.message || 'Could not call waiter. Please try again.';
       toast.error(errMsg);
@@ -600,11 +615,11 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
             isOpen: true,
             type: 'WAITER_COMING',
             title: '👨‍🍳 Waiter Is Coming!',
-            message: resData.message || `Waiter will come in a few minutes to Table ${resData.tableNumber}!`,
+            message: resData.message || `Waiter is coming in a few minutes to Table ${resData.tableNumber}!`,
             tableNumber: resData.tableNumber,
             timerSeconds: 60,
           });
-          toast.success(`👨‍🍳 Waiter will come in a few minutes to Table ${resData.tableNumber}!`, {
+          toast.success(`👨‍🍳 Waiter is coming in a few minutes to Table ${resData.tableNumber}!`, {
             duration: 8000,
             icon: '🏃',
           });
@@ -620,16 +635,16 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       if (!currentTable || !resData?.tableNumber) return;
       if (String(currentTable).trim() === String(resData.tableNumber).trim()) {
         processRealTimeEvent('order_cancelled', () => {
-          startOccupiedTimer(30, resData.tableNumber);
+          startOccupiedTimer(50, resData.tableNumber);
           setCustomerAlert({
             isOpen: true,
             type: 'WAITER_OCCUPIED',
             title: '⏳ Waiter Is Busy Right Now',
-            message: resData.message || `Waiter is busy right now. You can call waiter again after 30 seconds.`,
+            message: resData.message || `Waiter is busy right now. You can call again after 50 seconds.`,
             tableNumber: resData.tableNumber,
-            timerSeconds: 30,
+            timerSeconds: 50,
           });
-          toast.error(`⏳ Waiter is busy right now. You can call waiter again after 30 seconds.`, {
+          toast.error(`⏳ Waiter is busy right now. You can call again after 50 seconds.`, {
             duration: 8000,
             icon: '⏳',
           });
@@ -644,41 +659,51 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       queryClient.invalidateQueries({ queryKey: ['user-profile-loyalty'] });
     });
 
-    const handleOrderStatusUpdated = (payload: { orderId?: string; status?: string; paymentStatus?: string; reason?: string }) => {
+    const handleOrderStatusUpdated = (payload: { orderId?: string; status?: string; paymentStatus?: string; reason?: string; userId?: string }) => {
       queryClient.invalidateQueries({ queryKey: ['active-orders'] });
       queryClient.invalidateQueries({ queryKey: ['previous-orders'] });
+
+      const isMyOrder = !payload?.orderId || recentOrders.some((o) => o.orderId === payload.orderId) || (activeUser?.id && payload?.userId === activeUser.id);
+      if (!isMyOrder) return;
 
       const isCancelled = payload?.status === 'CANCELLED';
       const eventType = isCancelled ? 'order_cancelled' : 'order_status_changed';
 
-      processRealTimeEvent(eventType, () => {
-        const statusMap: Record<string, { label: string; text: string; icon: string }> = {
-          CONFIRMED: { label: 'Order Confirmed', text: 'The restaurant has confirmed your order!', icon: '✅' },
-          PREPARING: { label: 'Preparing Order', text: 'The kitchen has started preparing your delicious food!', icon: '👨‍🍳' },
-          BAKING: { label: 'Cooking & Baking', text: 'Your food is in the kitchen oven/stove!', icon: '🔥' },
-          READY: { label: 'Order Ready!', text: 'Your order is ready to be served!', icon: '🍽️' },
-          ON_THE_WAY: { label: 'Out for Delivery', text: 'Your order is on the way!', icon: '🚴' },
-          DELIVERED: { label: 'Served & Completed', text: 'Your order has been served. Enjoy your meal!', icon: '🎉' },
-          CANCELLED: { label: 'Order Cancelled', text: payload?.reason ? `Order cancelled: ${payload.reason}` : 'Your order was cancelled by the restaurant.', icon: '❌' },
-        };
+      const statusMap: Record<string, { label: string; text: string; icon: string }> = {
+        CONFIRMED: { label: 'Order Confirmed', text: 'The restaurant has confirmed your order!', icon: '✅' },
+        PREPARING: { label: 'Preparing Order', text: 'The kitchen has started preparing your delicious food!', icon: '👨‍🍳' },
+        BAKING: { label: 'Cooking & Baking', text: 'Your food is in the kitchen oven/stove!', icon: '🔥' },
+        READY: { label: 'Order Ready!', text: 'Your order is ready to be served!', icon: '🍽️' },
+        ON_THE_WAY: { label: 'Out for Delivery', text: 'Your order is on the way!', icon: '🚴' },
+        DELIVERED: { label: 'Served & Completed', text: 'Your order has been served. Enjoy your meal!', icon: '🎉' },
+        CANCELLED: { label: 'Order Cancelled', text: payload?.reason ? `Order cancelled: ${payload.reason}` : 'Your order was cancelled by the restaurant.', icon: '❌' },
+      };
 
-        const info = payload?.status && statusMap[payload.status] ? statusMap[payload.status] : {
-          label: `Order ${payload?.status ? payload.status.replace(/_/g, ' ') : 'Updated'}`,
-          text: `Your order status was updated to ${payload?.status || 'UPDATED'}.`,
-          icon: '🔔',
-        };
+      const info = payload?.status && statusMap[payload.status] ? statusMap[payload.status] : {
+        label: `Order ${payload?.status ? payload.status.replace(/_/g, ' ') : 'Updated'}`,
+        text: `Your order status was updated to ${payload?.status || 'UPDATED'}.`,
+        icon: '🔔',
+      };
 
-        setCustomerAlert({
-          isOpen: true,
-          type: 'ORDER_UPDATE',
+      processRealTimeEvent(
+        eventType,
+        () => {
+          setCustomerAlert({
+            isOpen: true,
+            type: 'ORDER_UPDATE',
+            title: `${info.icon} ${info.label}`,
+            message: info.text,
+            orderId: payload?.orderId,
+            orderStatus: payload?.status,
+          });
+          toast.info(`${info.icon} ${info.label}`, { duration: 6000 });
+        },
+        {
           title: `${info.icon} ${info.label}`,
-          message: info.text,
-          orderId: payload?.orderId,
-          orderStatus: payload?.status,
-        });
-
-        toast.info(`${info.icon} ${info.label}`, { duration: 6000 });
-      });
+          body: info.text,
+          tag: `customer-order-${payload?.orderId || Date.now()}`,
+        }
+      );
     };
 
     socket.on('order:status_updated', handleOrderStatusUpdated);
@@ -687,30 +712,52 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
     socket.on('order_cancelled', (payload: any) => {
       queryClient.invalidateQueries({ queryKey: ['active-orders'] });
       queryClient.invalidateQueries({ queryKey: ['previous-orders'] });
-      processRealTimeEvent('order_cancelled', () => {
-        setCustomerAlert({
-          isOpen: true,
-          type: 'ORDER_UPDATE',
+      const isMyOrder = !payload?.orderId || recentOrders.some((o) => o.orderId === payload.orderId) || (activeUser?.id && payload?.userId === activeUser.id);
+      if (!isMyOrder) return;
+
+      processRealTimeEvent(
+        'order_cancelled',
+        () => {
+          setCustomerAlert({
+            isOpen: true,
+            type: 'ORDER_UPDATE',
+            title: '⚠️ Order Cancelled',
+            message: payload?.reason ? `Order cancelled: ${payload.reason}` : 'Your order was cancelled.',
+            orderId: payload?.orderId,
+            orderStatus: 'CANCELLED',
+          });
+        },
+        {
           title: '⚠️ Order Cancelled',
-          message: payload?.reason ? `Order cancelled: ${payload.reason}` : 'Your order was cancelled.',
-          orderId: payload?.orderId,
-          orderStatus: 'CANCELLED',
-        });
-      });
+          body: payload?.reason ? `Order cancelled: ${payload.reason}` : 'Your order was cancelled.',
+          tag: `customer-cancel-${payload?.orderId || Date.now()}`,
+        }
+      );
     });
 
     socket.on('driver_assigned', (payload: any) => {
       queryClient.invalidateQueries({ queryKey: ['active-orders'] });
-      processRealTimeEvent('driver_assigned', () => {
-        setCustomerAlert({
-          isOpen: true,
-          type: 'ORDER_UPDATE',
+      const isMyOrder = !payload?.orderId || recentOrders.some((o) => o.orderId === payload.orderId) || (activeUser?.id && payload?.userId === activeUser.id);
+      if (!isMyOrder) return;
+
+      processRealTimeEvent(
+        'driver_assigned',
+        () => {
+          setCustomerAlert({
+            isOpen: true,
+            type: 'ORDER_UPDATE',
+            title: '🚗 Driver Assigned',
+            message: 'A driver has been assigned to your order!',
+            orderId: payload?.orderId,
+            orderStatus: payload?.status || 'ON_THE_WAY',
+          });
+        },
+        {
           title: '🚗 Driver Assigned',
-          message: 'A driver has been assigned to your order!',
-          orderId: payload?.orderId,
-          orderStatus: payload?.status || 'ON_THE_WAY',
-        });
-      });
+          body: 'A driver has been assigned to your order!',
+          tag: `customer-driver-${payload?.orderId || Date.now()}`,
+        }
+      );
     });
 
     return () => {
@@ -767,7 +814,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
   const restaurantBanner = isPreview && searchParams?.banner !== undefined ? (searchParams.banner || null) : restaurant.banner;
 
   return (
-    <div className="min-h-screen bg-background pb-24 relative w-full max-w-full overflow-x-hidden min-w-0">
+    <div className="min-h-screen bg-background pb-28 sm:pb-32 relative w-full max-w-full overflow-x-hidden min-w-0">
       {isPreview && (
         <style>{`
           [data-sonner-toaster], .data-sonner-toaster {
@@ -1057,9 +1104,9 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                   : waiterStatus === 'PENDING'
                   ? `Waiter Call Sent (${waiterPendingTimer}s)`
                   : waiterStatus === 'COMING'
-                  ? `Wait for 1 min, waiter is coming (${waiterComingTimer}s)`
+                  ? `Waiter is coming in a few minutes (${waiterComingTimer}s)`
                   : waiterStatus === 'OCCUPIED'
-                  ? `Waiter is busy right now (${waiterCooldown}s)`
+                  ? `Waiter is busy, you can call again after (${waiterCooldown}s)`
                   : 'Call Waiter'}
               </span>
             </motion.button>
@@ -1401,22 +1448,22 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
-            className="fixed bottom-6 left-4 right-20 z-30"
+            className="fixed bottom-3 left-14 right-3 sm:bottom-4 sm:left-16 sm:right-6 z-40"
           >
             <button
               onClick={() => setCartOpen(true)}
-              className="w-full flex items-center justify-between px-5 py-4 rounded-2xl text-white shadow-2xl"
+              className="w-full flex items-center justify-between px-5 py-3.5 sm:px-6 sm:py-4 rounded-2xl text-white shadow-[0_10px_30px_rgba(0,0,0,0.4)] hover:brightness-105 active:scale-[0.99] transition-all cursor-pointer border-2 border-white/30 backdrop-blur-md"
               style={{ backgroundColor: themeColor }}
             >
               <div className="flex items-center gap-3">
-                <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center text-sm font-bold">
+                <div className="w-8 h-8 rounded-full bg-white/25 flex items-center justify-center text-sm font-bold shadow-inner">
                   {cartCount}
                 </div>
-                <span className="font-semibold">View Cart</span>
+                <span className="font-semibold text-base sm:text-lg tracking-wide">View Cart</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <ShoppingCart className="w-5 h-5" />
-                <span className="font-bold">₹{useCartStore.getState().total().toFixed(0)}</span>
+                <span className="font-bold text-base sm:text-lg">₹{getCartTotal().toFixed(0)}</span>
               </div>
             </button>
           </motion.div>
@@ -1510,18 +1557,18 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       </AnimatePresence>
 
       {/* Floating Action Buttons — right column */}
-      <div className="fixed bottom-20 sm:bottom-6 right-3 sm:right-4 z-30 flex flex-col gap-2.5 items-center">
+      <div className={`fixed ${cartCount > 0 && !cartOpen ? 'bottom-20 sm:bottom-24' : 'bottom-4 sm:bottom-6'} right-3 sm:right-6 z-40 flex flex-col gap-2.5 items-center transition-all duration-300`}>
         {showScrollTop && (
           <button
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-background border border-border shadow-lg flex items-center justify-center hover:bg-muted transition-colors text-foreground"
+            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-background/95 backdrop-blur-md border border-border/80 shadow-xl flex items-center justify-center hover:bg-muted transition-all active:scale-95 text-foreground"
           >
             <ChevronUp className="w-5 h-5" />
           </button>
         )}
         <button
           onClick={() => setChatOpen(true)}
-          className="w-12 h-12 rounded-full text-white shadow-2xl flex items-center justify-center transition-transform hover:scale-110 active:scale-95 border-2 border-white/20"
+          className="w-12 h-12 rounded-full text-white shadow-2xl flex items-center justify-center transition-transform hover:scale-110 active:scale-95 border-2 border-white/30 backdrop-blur-md"
           style={{ backgroundColor: themeColor }}
           title="Ask AI Assistant"
         >
