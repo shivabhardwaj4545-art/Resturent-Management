@@ -630,7 +630,6 @@ export default function KitchenDashboardPage() {
     </div>
   );
 }
-}
 
 function Loader2Icon(props: any) {
   return <RefreshCw {...props} />;
