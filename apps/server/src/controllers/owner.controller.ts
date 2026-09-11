@@ -51,7 +51,14 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response, nex
         _sum: { total: true },
       }),
       prisma.order.findMany({
-        where: { restaurantId: restaurant.id },
+        where: {
+          restaurantId: restaurant.id,
+          deletedAt: null,
+          NOT: {
+            paymentMethod: 'UPI_INTENT',
+            paymentStatus: 'PENDING',
+          },
+        },
         orderBy: { createdAt: 'desc' },
         take: 10,
         include: {
@@ -173,7 +180,8 @@ export async function updateRestaurant(req: AuthenticatedRequest, res: Response,
       'name', 'slug', 'description', 'cuisineType', 'logo', 'banner',
       'address', 'city', 'state', 'country', 'pincode', 'phone', 'operatingHours',
       'deliveryRadius', 'minOrderValue', 'isOpen', 'hasDelivery',
-      'themeColor', 'menuTemplate', 'customFields', 'paymentQrCode',
+      'themeColor', 'menuTemplate', 'customFields', 'paymentEnabled',
+      'upiEnabled', 'merchantName', 'paymentProvider', 'paymentQrCode',
       'paymentUpiId', 'paymentPhone', 'bankName', 'bankAccountNumber',
       'bankIfsc', 'bankAccountHolder',
     ];
@@ -718,6 +726,10 @@ export async function getOrders(req: AuthenticatedRequest, res: Response, next: 
     const where: Record<string, unknown> = {
       restaurantId: restaurant.id,
       deletedAt: null,
+      NOT: {
+        paymentMethod: 'UPI_INTENT',
+        paymentStatus: 'PENDING',
+      },
       ...(status && status !== 'ALL' && { status }),
       ...(search && {
         OR: [

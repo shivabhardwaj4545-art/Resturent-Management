@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { isRestaurantOpen } from '../utils/operatingHours';
 import { AppError } from '../utils/AppError';
+// Razorpay disabled – stubs retained for legacy endpoints; both throw RAZORPAY_DISABLED errors
 import { createRazorpayOrder, verifyRazorpaySignature } from '../services/payment.razorpay.service';
 import { emitNewOrder, emitNotification, emitWaiterCall, emitOrderStatusUpdate, emitUserLoyaltyUpdate } from '../services/socket.service';
 import { sendOrderConfirmationEmail } from '../services/email.service';
@@ -172,15 +173,7 @@ export async function placeGuestOrder(
       );
     }
 
-    let razorpayOrderId: string | undefined;
-
-    if (paymentMethod === 'RAZORPAY' && !isDirect) {
-      const rzOrder = await createRazorpayOrder(total, 'INR', `guest-${Date.now()}`, {
-        guestName,
-        restaurantName: restaurant.name,
-      });
-      razorpayOrderId = rzOrder.id;
-    }
+    const effectivePaymentMethod = (paymentMethod as string) === 'RAZORPAY' ? 'UPI_INTENT' : paymentMethod;
 
     const order = await prisma.$transaction(async (tx) => {
       const newOrder = await tx.order.create({
@@ -190,8 +183,8 @@ export async function placeGuestOrder(
           guestPhone: guestPhone?.trim() || null,
           tableNumber,
           status: 'PENDING',
-          paymentMethod,
-          paymentStatus: paymentMethod === 'COD' ? 'PENDING' : 'PENDING',
+          paymentMethod: effectivePaymentMethod,
+          paymentStatus: 'PENDING',
           subtotal,
           gstAmount,
           deliveryFee,
@@ -199,7 +192,6 @@ export async function placeGuestOrder(
           discount,
           total,
           couponId,
-          razorpayOrderId,
           items: {
             create: items.map((item) => ({
               menuItemId: item.menuItemId,
@@ -225,28 +217,31 @@ export async function placeGuestOrder(
       await tx.payment.create({
         data: {
           orderId: newOrder.id,
-          method: paymentMethod,
+          method: effectivePaymentMethod,
           status: 'PENDING',
           amount: total,
-          razorpayOrderId,
         },
       });
 
       return newOrder;
     });
 
-    // Notify restaurant via Socket.io
-    emitNewOrder(restaurant.id, order);
+    const isOnlinePayment = effectivePaymentMethod === 'UPI_INTENT';
 
-    // Create notification for restaurant
-    await prisma.notification.create({
-      data: {
-        restaurantId: restaurant.id,
-        type: 'NEW_ORDER',
-        title: 'New Order Received!',
-        message: `New order #${order.id.slice(-8).toUpperCase()} from ${guestName} - ₹${total}`,
-      },
-    });
+    // Only notify restaurant immediately if NOT online payment (COD / PAY_TO_WAITER).
+    // For online payments, restaurant will be notified when payment is verified & confirmed.
+    if (!isOnlinePayment) {
+      emitNewOrder(restaurant.id, order);
+
+      await prisma.notification.create({
+        data: {
+          restaurantId: restaurant.id,
+          type: 'NEW_ORDER',
+          title: 'New Order Received!',
+          message: `New order #${order.id.slice(-8).toUpperCase()} from ${guestName} - ₹${total}`,
+        },
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -255,7 +250,7 @@ export async function placeGuestOrder(
           id: order.id,
           status: order.status,
           total: order.total,
-          razorpayOrderId,
+          // razorpayOrderId: null — Razorpay disabled, use UPI Intent
         },
       },
       message: 'Order placed successfully!',
@@ -398,15 +393,7 @@ export async function placeOrder(
       finalTotal = finalTotal - walletDeduction;
     }
 
-    let razorpayOrderId: string | undefined;
-
-    if (paymentMethod === 'RAZORPAY' && finalTotal > 0 && !isDirect) {
-      const rzOrder = await createRazorpayOrder(finalTotal, 'INR', `order-${userId}-${Date.now()}`, {
-        userId,
-        restaurantName: restaurant.name,
-      });
-      razorpayOrderId = rzOrder.id;
-    }
+    const effectivePaymentMethod = (paymentMethod as string) === 'RAZORPAY' ? 'UPI_INTENT' : paymentMethod;
 
     const order = await prisma.$transaction(async (tx) => {
       const newOrder = await tx.order.create({
@@ -416,7 +403,7 @@ export async function placeOrder(
           addressId: resolvedAddressId,
           tableNumber,
           status: 'PENDING',
-          paymentMethod,
+          paymentMethod: effectivePaymentMethod,
           paymentStatus: 'PENDING',
           subtotal,
           gstAmount,
@@ -425,7 +412,6 @@ export async function placeOrder(
           discount: discount + walletDeduction + pointsValue,
           total: finalTotal,
           couponId,
-          razorpayOrderId,
           items: {
             create: items.map((item) => ({
               menuItemId: item.menuItemId,
@@ -505,10 +491,9 @@ export async function placeOrder(
       await tx.payment.create({
         data: {
           orderId: newOrder.id,
-          method: paymentMethod,
+          method: effectivePaymentMethod,
           status: 'PENDING',
           amount: finalTotal,
-          razorpayOrderId,
         },
       });
 
@@ -527,8 +512,20 @@ export async function placeOrder(
       emitUserLoyaltyUpdate(userId, updatedUser.loyaltyPoints);
     }
 
-    // Notify restaurant
-    emitNewOrder(restaurant.id, order);
+    // Only notify restaurant immediately if NOT online payment (COD / PAY_TO_WAITER).
+    // For online payments, restaurant will be notified when payment is verified & confirmed.
+    if (effectivePaymentMethod !== 'UPI_INTENT') {
+      emitNewOrder(restaurant.id, order);
+
+      await prisma.notification.create({
+        data: {
+          restaurantId: restaurant.id,
+          type: 'NEW_ORDER',
+          title: 'New Order Received!',
+          message: `New order #${order.id.slice(-8).toUpperCase()} - ₹${order.total}`,
+        },
+      });
+    }
 
     emitNotification(userId, {
       type: 'ORDER_PLACED',
@@ -554,7 +551,7 @@ export async function placeOrder(
           id: order.id,
           status: order.status,
           total: finalTotal,
-          razorpayOrderId,
+          // razorpayOrderId: null — Razorpay disabled, use UPI Intent
           walletDeducted: walletDeduction,
         },
       },

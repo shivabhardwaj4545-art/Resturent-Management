@@ -5,7 +5,7 @@ export const guestCheckoutSchema = z.object({
   guestPhone: z.string().optional().or(z.literal('')),
   tableNumber: z.string().optional(),
   tableToken: z.string().optional(),
-  paymentMethod: z.enum(['RAZORPAY', 'COD', 'PAY_TO_WAITER']),
+  paymentMethod: z.enum(['RAZORPAY', 'COD', 'PAY_TO_WAITER', 'UPI_INTENT']),
   isDirect: z.boolean().optional(),
   couponCode: z.string().optional(),
   restaurantSlug: z.string().min(1, 'Restaurant slug is required'),
@@ -39,7 +39,7 @@ export const userCheckoutSchema = z.object({
     })
     .optional(),
   tableNumber: z.string().optional(),
-  paymentMethod: z.enum(['RAZORPAY', 'COD', 'WALLET', 'PAY_TO_WAITER']),
+  paymentMethod: z.enum(['RAZORPAY', 'COD', 'WALLET', 'PAY_TO_WAITER', 'UPI_INTENT']),
   couponCode: z.string().optional(),
   restaurantSlug: z.string().min(1),
   useWallet: z.boolean().default(false),

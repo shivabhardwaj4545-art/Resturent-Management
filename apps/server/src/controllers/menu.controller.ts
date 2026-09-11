@@ -97,6 +97,10 @@ export async function getRestaurantMenu(
         bankAccountNumber: true,
         bankIfsc: true,
         bankAccountHolder: true,
+        // New: UPI Intent payment settings
+        paymentEnabled: true,
+        upiEnabled: true,
+        merchantName: true,
       },
     });
 
@@ -127,8 +131,8 @@ export async function getRestaurantMenu(
           minOrderValue: true,
           deliveryRadius: true,
           themeColor: true,
-        menuTemplate: true,
-        customFields: true,
+          menuTemplate: true,
+          customFields: true,
           paymentQrCode: true,
           paymentUpiId: true,
           paymentPhone: true,
@@ -136,6 +140,10 @@ export async function getRestaurantMenu(
           bankAccountNumber: true,
           bankIfsc: true,
           bankAccountHolder: true,
+          // New: UPI Intent payment settings
+          paymentEnabled: true,
+          upiEnabled: true,
+          merchantName: true,
         },
       });
 

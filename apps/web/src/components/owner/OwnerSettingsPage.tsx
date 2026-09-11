@@ -5,7 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Settings, UtensilsCrossed, LayoutDashboard, ShoppingBag, Tag, BarChart3, LogOut,
-  Menu, Save, Globe, Phone, MapPin, Clock, Palette, QrCode, Download, CreditCard, Banknote, Building2, Smartphone, Star, Printer
+  Menu, Save, Globe, Phone, MapPin, Clock, Palette, QrCode, Download, CreditCard, Banknote, Building2, Smartphone, Star, Printer,
+  Upload, Trash2, CheckCircle2, Sparkles, RefreshCw, FileImage, Info
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -54,7 +55,10 @@ type Restaurant = {
   logo: string | null; banner: string | null; isOpen: boolean;
   hasDelivery: boolean;
   operatingHours: OperatingHours | null;
-  // Direct payment details
+  // Direct & UPI payment settings
+  paymentEnabled?: boolean;
+  upiEnabled?: boolean;
+  merchantName?: string | null;
   paymentQrCode: string | null;
   paymentUpiId: string | null;
   paymentPhone: string | null;
@@ -123,6 +127,20 @@ export function OwnerSettingsPage() {
     }
   }, [paymentQrFile]);
 
+  const [dynamicQrPreviewUrl, setDynamicQrPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const upiId = form.paymentUpiId?.trim();
+    if (upiId && /^[\w.-]+@[\w.-]+$/.test(upiId)) {
+      const upiString = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(form.merchantName || form.name || 'Restaurant')}&cu=INR`;
+      QRCode.toDataURL(upiString, { width: 260, margin: 1 })
+        .then((url) => setDynamicQrPreviewUrl(url))
+        .catch(() => setDynamicQrPreviewUrl(null));
+    } else {
+      setDynamicQrPreviewUrl(null);
+    }
+  }, [form.paymentUpiId, form.merchantName, form.name]);
+
   const { data, isLoading } = useQuery({
     queryKey: ['owner-restaurant'],
     queryFn: async () => {
@@ -158,6 +176,9 @@ export function OwnerSettingsPage() {
         hasDelivery: form.hasDelivery,
         operatingHours: operatingHours,
         themeColor: form.themeColor ?? null,
+        paymentEnabled: form.paymentEnabled ?? true,
+        upiEnabled: form.upiEnabled ?? true,
+        merchantName: form.merchantName ?? null,
         paymentQrCode: form.paymentQrCode ?? null,
         paymentUpiId: form.paymentUpiId ?? null,
         paymentPhone: form.paymentPhone ?? null,
@@ -202,10 +223,10 @@ export function OwnerSettingsPage() {
       return res.data.data.logo as string;
     },
     onSuccess: (newUrl) => {
+      if (newUrl) setForm(f => ({ ...f, logo: newUrl }));
       toast.success('Logo uploaded!');
       setLogoFile(null);
       setLogoPreviewUrl(null);
-      if (newUrl) setForm(f => ({ ...f, logo: newUrl }));
       qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
     },
     onError: () => toast.error('Failed to upload logo'),
@@ -220,10 +241,10 @@ export function OwnerSettingsPage() {
       return res.data.data.banner as string;
     },
     onSuccess: (newUrl) => {
+      if (newUrl) setForm(f => ({ ...f, banner: newUrl }));
       toast.success('Banner uploaded!');
       setBannerFile(null);
       setBannerPreviewUrl(null);
-      if (newUrl) setForm(f => ({ ...f, banner: newUrl }));
       qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
     },
     onError: () => toast.error('Failed to upload banner'),
@@ -231,20 +252,18 @@ export function OwnerSettingsPage() {
 
   const uploadPaymentQrMutation = useMutation({
     mutationFn: async () => {
-      if (!paymentQrFile) return null;
+      if (!paymentQrFile) return;
       const fd = new FormData();
       fd.append('paymentQr', paymentQrFile);
       const res = await api.post('/owner/restaurant/payment-qr', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       return res.data.data.paymentQrCode as string;
     },
     onSuccess: (newUrl) => {
-      if (newUrl) {
-        toast.success('Payment QR uploaded!');
-        setForm(f => ({ ...f, paymentQrCode: newUrl }));
-        setPaymentQrFile(null);
-        setPaymentQrPreviewUrl(null);
-        qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
-      }
+      toast.success('Payment QR uploaded!');
+      setForm(f => ({ ...f, paymentQrCode: newUrl }));
+      setPaymentQrFile(null);
+      setPaymentQrPreviewUrl(null);
+      qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
     },
     onError: () => toast.error('Failed to upload payment QR'),
   });
@@ -254,6 +273,9 @@ export function OwnerSettingsPage() {
       const qrCodeToSave = overrideQrCode !== undefined ? overrideQrCode : (form.paymentQrCode ?? null);
       const res = await api.put('/owner/restaurant', {
         name: form.name ?? '',
+        paymentEnabled: form.paymentEnabled ?? true,
+        upiEnabled: form.upiEnabled ?? true,
+        merchantName: form.merchantName ?? null,
         paymentQrCode: qrCodeToSave,
         paymentUpiId: form.paymentUpiId ?? null,
         paymentPhone: form.paymentPhone ?? null,
@@ -594,76 +616,138 @@ export function OwnerSettingsPage() {
                 </div>
               </motion.div>
 
-              {/* Direct Payment Setup */}
+              {/* Direct & UPI Payment Setup */}
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="bg-card border border-border rounded-2xl p-6">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="font-display font-semibold flex items-center gap-2">
                     <CreditCard className="w-5 h-5 text-primary" />
-                    Direct Payment Setup
+                    Restaurant Payment & UPI Settings
                   </h2>
-                  <span className="text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-lg">Optional</span>
+                  <span className="text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-lg">Configured per Restaurant</span>
                 </div>
                 <p className="text-xs text-muted-foreground mb-5 leading-relaxed">
-                  Add your UPI QR code and payment details so customers can pay directly to you when they select <strong>"Pay Direct to Owner"</strong> at checkout. All fields are optional — at least one of QR code, UPI ID, or Bank details is recommended.
+                  Configure your restaurant's <strong>UPI Intent Payment Settings</strong>. Ensure a valid Merchant UPI ID is configured so customers can launch UPI apps (Google Pay, PhonePe, Paytm) directly during checkout.
                 </p>
 
                 <div className="space-y-5">
-                  {/* QR Code Upload */}
-                  <div>
-                    <p className="text-sm font-semibold text-foreground mb-2 flex items-center gap-1.5"><Smartphone className="w-4 h-4 text-primary" /> UPI / Payment QR Code</p>
-                    <div className="flex gap-4 items-start">
-                      {(paymentQrPreviewUrl || form.paymentQrCode || data?.paymentQrCode) && (
-                        <img
-                          src={paymentQrPreviewUrl || getImageUrl(form.paymentQrCode || data?.paymentQrCode || '')}
-                          alt="Payment QR"
-                          className="w-28 h-28 object-contain border border-border rounded-xl bg-white p-1 flex-shrink-0"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = 'none';
-                          }}
-                        />
-                      )}
-                      <div className="flex-1 space-y-2">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => setPaymentQrFile(e.target.files?.[0] ?? null)}
-                          className="w-full px-3 py-2 text-sm text-muted-foreground border border-dashed border-border rounded-xl"
-                        />
-                        {paymentQrFile && (
-                          <button
-                            onClick={() => uploadPaymentQrMutation.mutate()}
-                            disabled={uploadPaymentQrMutation.isPending}
-                            className="px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-60 w-full"
-                          >
-                            {uploadPaymentQrMutation.isPending ? 'Uploading...' : 'Upload QR Code'}
-                          </button>
-                        )}
-                        <p className="text-[11px] text-muted-foreground">Upload a clear image of your UPI or bank QR code. Max 5MB.</p>
+                  {/* Status Toggles */}
+                  <div className="grid sm:grid-cols-2 gap-4 p-4 bg-muted/20 border border-border/80 rounded-xl">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-semibold text-foreground">Accept Online Payments</p>
+                        <p className="text-[11px] text-muted-foreground">Allow online payments at checkout</p>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, paymentEnabled: !(f.paymentEnabled ?? true) }))}
+                        className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors ${
+                          (form.paymentEnabled ?? true) ? 'bg-green-500 justify-end' : 'bg-muted-foreground/30 justify-start'
+                        }`}
+                      >
+                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-semibold text-foreground">Enable UPI Intent Flow</p>
+                        <p className="text-[11px] text-muted-foreground">Server-verified UPI deep links</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, upiEnabled: !(f.upiEnabled ?? true) }))}
+                        className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors ${
+                          (form.upiEnabled ?? true) ? 'bg-primary justify-end' : 'bg-muted-foreground/30 justify-start'
+                        }`}
+                      >
+                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      </button>
                     </div>
                   </div>
 
-                  {/* UPI ID & Phone */}
+                  {/* UPI ID & Merchant Info */}
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="text-xs font-semibold text-muted-foreground mb-1.5 block flex items-center gap-1"><Smartphone className="w-3 h-3" /> UPI ID</label>
+                      <label className="text-xs font-semibold text-muted-foreground mb-1.5 block flex items-center gap-1">
+                        <Smartphone className="w-3.5 h-3.5 text-primary" /> UPI ID (Merchant VPA) <span className="text-red-500">*</span>
+                      </label>
                       <input
                         type="text"
                         placeholder="yourname@upi"
                         value={form.paymentUpiId ?? ''}
                         onChange={(e) => setForm(f => ({ ...f, paymentUpiId: e.target.value || null }))}
-                        className="w-full px-3 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        className={`w-full px-3 py-2.5 bg-muted/30 border rounded-xl text-sm font-mono focus:outline-none focus:ring-2 ${
+                          form.paymentUpiId && !/^[\w.-]+@[\w.-]+$/.test(form.paymentUpiId.trim())
+                            ? 'border-red-500 focus:ring-red-500/30'
+                            : 'border-border focus:ring-primary/30'
+                        }`}
                       />
+                      {form.paymentUpiId && !/^[\w.-]+@[\w.-]+$/.test(form.paymentUpiId.trim()) ? (
+                        <p className="text-[10px] text-red-500 mt-1">Format must be username@upi (e.g., restaurant@okaxis, 9876543210@paytm)</p>
+                      ) : (
+                        <p className="text-[10px] text-muted-foreground mt-1">Primary UPI ID for generating customer payment links & QR codes.</p>
+                      )}
                     </div>
+
                     <div>
-                      <label className="text-xs font-semibold text-muted-foreground mb-1.5 block flex items-center gap-1"><Phone className="w-3 h-3" /> Payment Phone</label>
+                      <label className="text-xs font-semibold text-muted-foreground mb-1.5 block flex items-center gap-1">
+                        <Building2 className="w-3.5 h-3.5" /> Merchant / Display Name for UPI
+                      </label>
                       <input
-                        type="tel"
-                        placeholder="e.g. 9876543210"
-                        value={form.paymentPhone ?? ''}
-                        onChange={(e) => setForm(f => ({ ...f, paymentPhone: e.target.value || null }))}
+                        type="text"
+                        placeholder={form.name || 'e.g. My Fine Restaurant'}
+                        value={form.merchantName ?? ''}
+                        onChange={(e) => setForm(f => ({ ...f, merchantName: e.target.value || null }))}
                         className="w-full px-3 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                       />
+                      <p className="text-[10px] text-muted-foreground mt-1">Name shown inside customer's UPI app (PhonePe/Google Pay/Paytm).</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground mb-1.5 block flex items-center gap-1">
+                      <Phone className="w-3.5 h-3.5" /> Payment Phone (Optional)
+                    </label>
+                    <input
+                      type="tel"
+                      placeholder="e.g. 9876543210"
+                      value={form.paymentPhone ?? ''}
+                      onChange={(e) => setForm(f => ({ ...f, paymentPhone: e.target.value || null }))}
+                      className="w-full px-3 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </div>
+
+                  {/* Auto-Generated Dynamic QR Code */}
+                  <div className="space-y-3 pt-2 border-t border-border/50">
+                    <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                      <QrCode className="w-4 h-4 text-primary" /> Live Payment QR Code Preview
+                    </p>
+
+                    <div className="p-5 bg-muted/20 border border-border rounded-2xl flex flex-col items-center text-center relative overflow-hidden max-w-md mx-auto">
+                      <div className="flex items-center gap-1.5 mb-3">
+                        <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+                        <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                          System Auto-Generated Dynamic QR
+                        </span>
+                      </div>
+
+                      {dynamicQrPreviewUrl ? (
+                        <div className="bg-white p-3 rounded-xl border border-border/80 shadow-sm mb-2">
+                          <img src={dynamicQrPreviewUrl} alt="Live Dynamic UPI QR" className="w-36 h-36 object-contain" />
+                        </div>
+                      ) : (
+                        <div className="w-36 h-36 rounded-xl border border-dashed border-border flex flex-col items-center justify-center p-3 bg-muted/40 mb-2">
+                          <QrCode className="w-10 h-10 text-muted-foreground/50 mb-1" />
+                          <p className="text-xs text-muted-foreground text-center">Enter valid UPI ID above to generate dynamic QR code</p>
+                        </div>
+                      )}
+
+                      <p className="text-sm font-semibold text-foreground mt-1 font-mono">
+                        {form.paymentUpiId || 'No UPI ID Configured'}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Calculates exact order total dynamically for customer payments via PhonePe, Google Pay, and Paytm.
+                      </p>
                     </div>
                   </div>
 

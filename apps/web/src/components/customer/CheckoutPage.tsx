@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getImageUrl } from '@/lib/image';
+import QRCode from 'qrcode';
 
 declare global {
   interface Window {
@@ -150,23 +151,20 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
     return false;
   }, [tableToken, restaurantSlug]);
 
-  // Mock Payment Modal state
-  const [showMockPaymentModal, setShowMockPaymentModal] = useState(false);
-  const [mockPaymentData, setMockPaymentData] = useState<{
+  // UPI Intent Payment Modal state
+  const [showUpiModal, setShowUpiModal] = useState(false);
+  const [upiData, setUpiData] = useState<{
+    paymentId: string;
     orderId: string;
-    razorpayOrderId: string;
+    txnRef: string;
     amount: number;
-    customerName: string;
-    customerPhone: string;
+    currency: string;
+    merchantVpa: string;
+    merchantName: string;
+    upiIntentUrl: string;
   } | null>(null);
-  const [mockPaymentMethod, setMockPaymentMethod] = useState<'manual' | 'automatic'>('manual');
-  const [isProcessingMockPayment, setIsProcessingMockPayment] = useState(false);
-  const [mockCardNumber, setMockCardNumber] = useState('');
-  const [mockCardExpiry, setMockCardExpiry] = useState('');
-  const [mockCardCVV, setMockCardCVV] = useState('');
-  const [mockCardName, setMockCardName] = useState('');
-  const [mockUPIId, setMockUPIId] = useState('');
-  const [selectedBank, setSelectedBank] = useState('');
+  const [upiQrCodeDataUrl, setUpiQrCodeDataUrl] = useState<string>('');
+  const [isCheckingUpiStatus, setIsCheckingUpiStatus] = useState<boolean>(false);
 
   const formatCardNumber = (value: string) => {
     const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
@@ -334,109 +332,66 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
     defaultValues: { paymentMethod: 'RAZORPAY' },
   });
 
-  const loadRazorpay = (): Promise<boolean> => {
-    return new Promise((resolve) => {
-      const script = document.createElement('script');
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
-    });
+  const handleUpiIntentPayment = async (orderId: string) => {
+    try {
+      const res = await api.post('/payments/create-upi-intent', { orderId });
+      const paymentInfo = res.data?.data;
+      if (!paymentInfo) {
+        throw new Error('Failed to obtain payment configuration.');
+      }
+      setUpiData(paymentInfo);
+
+      if (paymentInfo.upiIntentUrl) {
+        try {
+          const qrUrl = await QRCode.toDataURL(paymentInfo.upiIntentUrl, { width: 300, margin: 1 });
+          setUpiQrCodeDataUrl(qrUrl);
+        } catch (err) {
+          console.error('Failed to generate UPI QR code:', err);
+        }
+      }
+
+      setShowUpiModal(true);
+
+      // Deep link trigger for mobile devices
+      if (typeof window !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+        window.location.href = paymentInfo.upiIntentUrl;
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to initialize UPI Payment.';
+      toast.error(msg);
+    }
   };
 
-  const handleRazorpayPayment = async (orderId: string, razorpayOrderId: string, amount: number, customerName: string, customerPhone: string) => {
-    // Always read from ref or env to get the latest key
-    const key = razorpayKeyRef.current || razorpayKeyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_TAVv5bDEV3HwgB';
+  // QR Tab state inside UPI Modal
+  const [selectedQrTab, setSelectedQrTab] = useState<'dynamic' | 'custom'>('dynamic');
 
-    if (!key) {
-      toast.error('Payment gateway configuration error. Please contact support.');
-      return;
-    }
+  // Status Polling for UPI Payment Verification
+  useEffect(() => {
+    if (!showUpiModal || !upiData?.paymentId) return;
 
-    const loaded = await loadRazorpay();
-    if (!loaded) {
-      toast.error('Failed to load payment gateway. Please check your internet connection.');
-      return;
-    }
-
-    const options: RazorpayOptions = {
-      key,
-      amount: Math.round(amount * 100),
-      currency: 'INR',
-      name: 'EZ- Restaurant',
-      description: `Order #${orderId.slice(-8).toUpperCase()}`,
-      ...(razorpayOrderId ? { order_id: razorpayOrderId } : {}),
-      handler: async (response) => {
-        try {
-          await api.post('/orders/verify-payment', {
-            orderId,
-            razorpayOrderId: response.razorpay_order_id || razorpayOrderId,
-            razorpayPaymentId: response.razorpay_payment_id || `pay_${Date.now()}`,
-            razorpaySignature: response.razorpay_signature || 'direct_signature',
-          });
-          if (activeUser) {
-            queryClient.invalidateQueries({ queryKey: ['user-profile'] });
-            queryClient.invalidateQueries({ queryKey: ['user-profile-loyalty'] });
-          }
-          saveOrderToRecent(orderId, restaurantSlug);
+    const checkStatus = async () => {
+      try {
+        setIsCheckingUpiStatus(true);
+        const res = await api.get(`/payments/${upiData.paymentId}/status`);
+        const status = res.data?.data?.status || res.data?.data?.orderPaymentStatus;
+        if (status === 'PAID') {
+          saveOrderToRecent(upiData.orderId, restaurantSlug);
           clearCart();
-          toast.success('Payment successful! 🎉');
-          router.push(`/r/${restaurantSlug}/order/${orderId}`);
-        } catch {
-          toast.error('Payment verification failed. Please contact support.');
+          setShowUpiModal(false);
+          toast.success('Payment Verified & Order Confirmed! 🎉');
+          router.push(`/r/${restaurantSlug}/order/${upiData.orderId}`);
         }
-      },
-      prefill: {
-        name: customerName,
-        email: activeUser?.email ?? '',
-        contact: customerPhone,
-      },
-      theme: { color: '#E85D04' },
-      modal: {
-        ondismiss: () => {
-          toast.error('Payment cancelled by user.');
-        },
-      },
+      } catch (err) {
+        console.error('Error polling payment status:', err);
+      } finally {
+        setIsCheckingUpiStatus(false);
+      }
     };
 
-    try {
-      const rzp = new window.Razorpay(options);
-      rzp.on('payment.failed', (response: any) => {
-        toast.error(response?.error?.description || 'Payment failed. Please try again.');
-      });
-      rzp.open();
-    } catch (err: any) {
-      console.error('Failed to initialize Razorpay payment modal:', err);
-      toast.error('Could not open Razorpay checkout window. Please try again.');
-    }
-  };
-
-  const handleConfirmMockPayment = async () => {
-    if (!mockPaymentData) return;
-    setIsProcessingMockPayment(true);
-    try {
-      await api.post('/orders/verify-payment', {
-        orderId: mockPaymentData.orderId,
-        razorpayOrderId: mockPaymentData.razorpayOrderId,
-        razorpayPaymentId: `pay_mock_${Math.random().toString(36).substring(2, 15)}`,
-        razorpaySignature: 'mock_signature',
-      });
-      if (activeUser) {
-        queryClient.invalidateQueries({ queryKey: ['user-profile'] });
-        queryClient.invalidateQueries({ queryKey: ['user-profile-loyalty'] });
-      }
-      saveOrderToRecent(mockPaymentData.orderId, restaurantSlug);
-      clearCart();
-      toast.success('Payment simulated successfully! 🎉');
-      setShowMockPaymentModal(false);
-      setMockPaymentData(null);
-      router.push(`/r/${restaurantSlug}/order/${mockPaymentData.orderId}`);
-    } catch {
-      toast.error('Payment verification failed. Please try again.');
-    } finally {
-      setIsProcessingMockPayment(false);
-    }
-  };
+    checkStatus();
+    const interval = setInterval(checkStatus, 3000);
+    return () => clearInterval(interval);
+  }, [showUpiModal, upiData, restaurantSlug, router, clearCart]);
 
   const onGuestSubmit = async (formData: GuestForm) => {
     if (items.length === 0) {
@@ -471,13 +426,12 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
         order: { id: string; total: number; razorpayOrderId: string | null };
       };
 
-      if (selectedPayment === 'RAZORPAY' && order.razorpayOrderId && onlinePaymentType === 'RAZORPAY') {
-        await handleRazorpayPayment(order.id, order.razorpayOrderId, order.total, formData.guestName || 'Guest', formData.guestPhone || '');
+      if (selectedPayment === 'RAZORPAY') {
+        await handleUpiIntentPayment(order.id);
       } else {
         saveOrderToRecent(order.id, restaurantSlug);
         clearCart();
-        const hasDirectPayment = !!(restaurant?.paymentQrCode || restaurant?.paymentUpiId || restaurant?.paymentPhone || restaurant?.bankAccountNumber);
-        toast.success(hasDirectPayment && selectedPayment === 'RAZORPAY' ? 'Order placed! Please pay direct to the restaurant.' : 'Order placed successfully! 🎉');
+        toast.success('Order placed successfully! 🎉');
         router.push(`/r/${restaurantSlug}/order/${order.id}`);
       }
     } catch (err: any) {
@@ -531,15 +485,14 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
         order: { id: string; total: number; razorpayOrderId: string | null };
       };
 
-      if (selectedPayment === 'RAZORPAY' && order.razorpayOrderId && onlinePaymentType === 'RAZORPAY') {
-        await handleRazorpayPayment(order.id, order.razorpayOrderId, order.total, activeUser!.name, activeUser!.phone ?? '');
+      if (selectedPayment === 'RAZORPAY') {
+        await handleUpiIntentPayment(order.id);
       } else {
         queryClient.invalidateQueries({ queryKey: ['user-profile'] });
         queryClient.invalidateQueries({ queryKey: ['user-profile-loyalty'] });
         saveOrderToRecent(order.id, restaurantSlug);
         clearCart();
-        const hasDirectPayment = !!(restaurant?.paymentQrCode || restaurant?.paymentUpiId || restaurant?.paymentPhone || restaurant?.bankAccountNumber);
-        toast.success(hasDirectPayment && selectedPayment === 'RAZORPAY' ? 'Order placed! Please pay direct to the restaurant.' : 'Order placed! 🎉');
+        toast.success('Order placed! 🎉');
         router.push(`/r/${restaurantSlug}/order/${order.id}`);
       }
     } catch (err: any) {
@@ -853,148 +806,32 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
           </div>
         )}
 
-        {selectedPayment === 'RAZORPAY' && (restaurant?.paymentQrCode || restaurant?.paymentUpiId || restaurant?.paymentPhone || restaurant?.bankAccountNumber) && (
+        {selectedPayment === 'RAZORPAY' && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-card border border-border rounded-2xl p-5 space-y-4 shadow-sm"
+            className="bg-card border border-border rounded-2xl p-4 space-y-2.5 shadow-sm"
           >
-            <div className="flex items-center gap-2 border-b border-border pb-3">
-              <CreditCard className="w-5 h-5 text-primary" />
-              <h3 className="font-display font-semibold text-sm">Direct Payment Details</h3>
+            <div className="flex items-center gap-2 text-primary">
+              <Smartphone className="w-4.5 h-4.5" />
+              <h3 className="font-display font-semibold text-xs text-foreground">Pay Online via UPI</h3>
             </div>
-            
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Please transfer the total amount of <strong className="text-foreground">₹{grandTotal.toFixed(2)}</strong> directly to the restaurant owner using the details below:
+              When you click <strong>Place Order</strong> below, a secure UPI payment window will open allowing you to pay <strong>₹{grandTotal.toFixed(2)}</strong> via Google Pay, PhonePe, Paytm, or QR scan.
             </p>
-
-            {restaurant.paymentQrCode && (
-              <div className="flex flex-col items-center justify-center p-3 bg-white rounded-2xl border border-border max-w-[200px] mx-auto">
-                <img
-                  src={getImageUrl(restaurant.paymentQrCode)}
-                  alt="Restaurant Payment QR"
-                  className="w-40 h-40 object-contain"
-                />
-                <span className="text-[10px] text-gray-500 mt-1 font-semibold">Scan to Pay</span>
+            {restaurant?.merchantName && (
+              <div className="flex items-center justify-between pt-1 border-t border-border/50 text-[11px]">
+                <span className="text-muted-foreground">Merchant / Payee Name:</span>
+                <span className="font-semibold text-foreground">{restaurant.merchantName}</span>
               </div>
             )}
-
-            <div className="space-y-2.5 text-xs">
-              {restaurant.paymentUpiId && (
-                <div className="flex items-center justify-between p-2.5 bg-muted/40 rounded-xl">
-                  <div>
-                    <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">UPI ID</span>
-                    <span className="font-mono font-medium text-foreground">{restaurant.paymentUpiId}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(restaurant.paymentUpiId || '');
-                      toast.success('UPI ID copied!');
-                    }}
-                    className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
-                    title="Copy UPI ID"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
-
-              {restaurant.paymentPhone && (
-                <div className="flex items-center justify-between p-2.5 bg-muted/40 rounded-xl">
-                  <div>
-                    <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Phone for Payment</span>
-                    <span className="font-mono font-medium text-foreground">{restaurant.paymentPhone}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(restaurant.paymentPhone || '');
-                      toast.success('Phone number copied!');
-                    }}
-                    className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
-                    title="Copy Phone"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
-
-              {restaurant.bankAccountNumber && (
-                <div className="p-3 bg-muted/20 border border-border/60 rounded-xl space-y-2">
-                  <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Bank Account Details</span>
-                  
-                  <div className="grid grid-cols-2 gap-2 text-[11px]">
-                    {restaurant.bankAccountHolder && (
-                      <div>
-                        <span className="text-muted-foreground block">Holder Name</span>
-                        <span className="font-medium text-foreground">{restaurant.bankAccountHolder}</span>
-                      </div>
-                    )}
-                    {restaurant.bankName && (
-                      <div>
-                        <span className="text-muted-foreground block">Bank Name</span>
-                        <span className="font-medium text-foreground">{restaurant.bankName}</span>
-                      </div>
-                    )}
-                    <div className="col-span-2 flex items-center justify-between border-t border-border/50 pt-1.5 mt-1">
-                      <div>
-                        <span className="text-muted-foreground block">Account Number</span>
-                        <span className="font-mono font-medium text-foreground">{restaurant.bankAccountNumber}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(restaurant.bankAccountNumber || '');
-                          toast.success('Account number copied!');
-                        }}
-                        className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
-                        title="Copy Account Number"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                    {restaurant.bankIfsc && (
-                      <div className="col-span-2 flex items-center justify-between border-t border-border/50 pt-1.5 mt-1">
-                        <div>
-                          <span className="text-muted-foreground block">IFSC Code</span>
-                          <span className="font-mono font-medium text-foreground">{restaurant.bankIfsc}</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(restaurant.bankIfsc || '');
-                            toast.success('IFSC Code copied!');
-                          }}
-                          className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
-                          title="Copy IFSC Code"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="p-3 bg-primary/5 border border-primary/10 rounded-xl text-[11px] text-primary leading-relaxed font-medium">
-              After transfer, click <strong>Place Order / Settle Payment</strong> below. Your order will be placed as pending, and will be confirmed once the restaurant owner verifies the transaction.
-            </div>
+            {restaurant?.paymentUpiId && (
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-muted-foreground">Merchant UPI ID:</span>
+                <span className="font-mono font-medium text-foreground">{restaurant.paymentUpiId}</span>
+              </div>
+            )}
           </motion.div>
-        )}
-
-        {/* Guest or user form or login required prompt */}
-        {selectedPayment === 'RAZORPAY' && !(restaurant?.paymentQrCode || restaurant?.paymentUpiId || restaurant?.paymentPhone || restaurant?.bankAccountNumber) && (
-          <div className="bg-card border border-border rounded-2xl p-4 space-y-2 shadow-sm">
-            <div className="flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-primary" />
-              <h3 className="font-display font-semibold text-xs text-foreground">Online Payment Requested</h3>
-            </div>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Please enter your details below to place your order. You can settle the payment with the restaurant owner upon order confirmation.
-            </p>
-          </div>
         )}
 
         {diningOption === 'DELIVERY' && !activeUser ? (
@@ -1187,9 +1024,9 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
         )}
       </div>
 
-      {/* Mock Payment Modal */}
+      {/* UPI Intent Payment Modal & Verification Screen */}
       <AnimatePresence>
-        {showMockPaymentModal && mockPaymentData && (
+        {showUpiModal && upiData && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             {/* Backdrop */}
             <motion.div
@@ -1197,19 +1034,17 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => {
-                if (!isProcessingMockPayment) {
-                  setShowMockPaymentModal(false);
-                  toast.error('Payment cancelled');
-                }
+                setShowUpiModal(false);
+                toast.info('Payment window closed. You can track payment verification on your order page.');
               }}
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             />
 
             {/* Modal Body */}
             <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ type: 'spring', damping: 25, stiffness: 350 }}
               className="bg-card border border-border w-full max-w-md rounded-3xl shadow-2xl overflow-hidden relative z-10"
             >
@@ -1217,282 +1052,147 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
               <div className="bg-gradient-to-r from-orange-500 to-amber-500 text-white p-6 relative">
                 <button
                   type="button"
-                  disabled={isProcessingMockPayment}
                   onClick={() => {
-                    setShowMockPaymentModal(false);
-                    toast.error('Payment cancelled');
+                    setShowUpiModal(false);
+                    toast.info('Payment window closed.');
                   }}
-                  className="absolute top-4 right-4 p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors disabled:opacity-50"
+                  className="absolute top-4 right-4 p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
                 <div className="flex items-center gap-2 mb-1">
                   <div className="bg-white/20 p-1.5 rounded-lg">
-                    <Lock className="w-4 h-4 text-white" />
+                    <Smartphone className="w-4 h-4 text-white" />
                   </div>
-                  <span className="text-xs font-bold tracking-wider uppercase opacity-90">Secure Checkout</span>
+                  <span className="text-xs font-bold tracking-wider uppercase opacity-90">UPI Deep Link Payment</span>
                 </div>
-                <h3 className="font-display font-bold text-xl">Online Payment Gateway</h3>
-                <p className="text-xs opacity-75 mt-1">Simulated transaction for Development Mode</p>
+                <h3 className="font-display font-bold text-xl">Pay with UPI App</h3>
+                <p className="text-xs opacity-85 mt-1">Google Pay · PhonePe · Paytm · BHIM</p>
               </div>
 
-              {/* Order Info */}
+              {/* Order Info & Reference */}
               <div className="p-6 border-b border-border bg-muted/30 flex justify-between items-center">
                 <div>
-                  <p className="text-xs text-muted-foreground">Amount to Pay</p>
-                  <p className="font-display font-extrabold text-2xl text-foreground font-mono">₹{mockPaymentData.amount.toFixed(2)}</p>
+                  <p className="text-xs text-muted-foreground">Authoritative Amount</p>
+                  <p className="font-display font-extrabold text-2xl text-foreground font-mono">₹{upiData.amount.toFixed(2)}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-[10px] bg-primary/10 text-primary px-2.5 py-1 rounded-full font-bold inline-block border border-primary/20">
-                    Order ID: #{mockPaymentData.orderId.slice(-6).toUpperCase()}
+                  <p className="text-[10px] bg-primary/10 text-primary px-2.5 py-1 rounded-full font-bold inline-block border border-primary/20 font-mono">
+                    Ref: {upiData.txnRef}
                   </p>
+                  <p className="text-[11px] text-muted-foreground mt-1">Pay to: <span className="font-semibold text-foreground">{upiData.merchantName}</span></p>
                 </div>
               </div>
 
-              {/* Tabs */}
-              <div className="flex border-b border-border p-2 bg-muted/10">
-                <button
-                  type="button"
-                  onClick={() => setMockPaymentMethod('manual')}
-                  className={`flex-1 flex flex-col items-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                    mockPaymentMethod === 'manual'
-                      ? 'bg-card text-primary shadow-sm border border-border'
-                      : 'text-muted-foreground hover:bg-muted/50'
-                  }`}
+              {/* QR Code Selection Tabs if owner uploaded custom QR image */}
+              {restaurant?.paymentQrCode && (
+                <div className="flex border-b border-border p-1 bg-muted/20 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedQrTab('dynamic')}
+                    className={`flex-1 py-2 font-semibold rounded-lg transition-all ${
+                      selectedQrTab === 'dynamic' ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:bg-muted/50'
+                    }`}
+                  >
+                    Auto Dynamic QR (₹{upiData.amount.toFixed(0)})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedQrTab('custom')}
+                    className={`flex-1 py-2 font-semibold rounded-lg transition-all ${
+                      selectedQrTab === 'custom' ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:bg-muted/50'
+                    }`}
+                  >
+                    Owner Uploaded QR Image
+                  </button>
+                </div>
+              )}
+
+              {/* QR Code & Mobile Launch */}
+              <div className="p-6 space-y-5 text-center">
+                {selectedQrTab === 'custom' && restaurant?.paymentQrCode ? (
+                  <div className="flex flex-col items-center justify-center p-4 bg-white rounded-2xl border border-border max-w-[220px] mx-auto shadow-sm">
+                    <img
+                      src={getImageUrl(restaurant.paymentQrCode)}
+                      alt="Owner Uploaded Payment QR"
+                      className="w-44 h-44 object-contain"
+                    />
+                    <span className="text-[10px] text-gray-500 mt-2 font-semibold flex items-center gap-1">
+                      <QrCode className="w-3 h-3 text-primary" /> Owner's Uploaded QR Image
+                    </span>
+                  </div>
+                ) : upiQrCodeDataUrl ? (
+                  <div className="flex flex-col items-center justify-center p-4 bg-white rounded-2xl border border-border max-w-[220px] mx-auto shadow-sm">
+                    <img
+                      src={upiQrCodeDataUrl}
+                      alt="UPI Payment QR Code"
+                      className="w-44 h-44 object-contain"
+                    />
+                    <span className="text-[10px] text-gray-500 mt-2 font-semibold flex items-center gap-1">
+                      <QrCode className="w-3 h-3 text-primary" /> Scan with any UPI App (Exact ₹{upiData.amount.toFixed(2)})
+                    </span>
+                  </div>
+                ) : (
+                  <div className="w-44 h-44 rounded-2xl bg-muted flex items-center justify-center mx-auto text-muted-foreground">
+                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                  </div>
+                )}
+
+                {/* Open UPI App Button */}
+                <a
+                  href={upiData.upiIntentUrl}
+                  className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20"
                 >
                   <Smartphone className="w-4 h-4" />
-                  Pay Manually
-                </button>
+                  Open UPI App to Pay ₹{upiData.amount.toFixed(0)}
+                </a>
+
+                {/* Details Copy Bar */}
+                <div className="space-y-2 text-xs text-left pt-1">
+                  <div className="flex items-center justify-between p-2.5 bg-muted/40 rounded-xl">
+                    <div>
+                      <span className="text-muted-foreground block text-[9px] uppercase font-bold tracking-wider">Merchant VPA / UPI ID</span>
+                      <span className="font-mono font-medium text-foreground">{upiData.merchantVpa}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(upiData.merchantVpa);
+                        toast.success('UPI ID copied!');
+                      }}
+                      className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
+                      title="Copy UPI ID"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Real-time Verification Status Box */}
+                <div className="p-4 bg-primary/5 border border-primary/20 rounded-2xl flex items-center gap-3 text-left">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary flex-shrink-0">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-xs text-foreground">Verifying payment with backend server...</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      {isCheckingUpiStatus ? 'Checking provider transaction state...' : 'Waiting for payment confirmation. Page will auto-update upon payment.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="p-6 pt-3 border-t border-border flex gap-3 bg-muted/10">
                 <button
                   type="button"
-                  onClick={() => setMockPaymentMethod('automatic')}
-                  className={`flex-1 flex flex-col items-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                    mockPaymentMethod === 'automatic'
-                      ? 'bg-card text-primary shadow-sm border border-border'
-                      : 'text-muted-foreground hover:bg-muted/50'
-                  }`}
-                >
-                  <CreditCard className="w-4 h-4" />
-                  Razorpay (Automatic)
-                </button>
-              </div>
-
-              {/* Content area */}
-              <div className="p-6 space-y-4 min-h-[220px]">
-                {mockPaymentMethod === 'manual' && (
-                  <div className="space-y-4 max-h-[300px] overflow-y-auto pr-1">
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      Please transfer the total amount directly to the restaurant owner using the details below, then click <strong>Confirm Manual Payment</strong>.
-                    </p>
-
-                    {restaurant?.paymentQrCode && (
-                      <div className="flex flex-col items-center justify-center p-3 bg-white rounded-2xl border border-border max-w-[180px] mx-auto">
-                        <img
-                          src={getImageUrl(restaurant.paymentQrCode)}
-                          alt="Restaurant Payment QR"
-                          className="w-36 h-36 object-contain"
-                        />
-                        <span className="text-[10px] text-gray-500 mt-1 font-semibold">Scan to Pay</span>
-                      </div>
-                    )}
-
-                    <div className="space-y-2 text-xs">
-                      {restaurant?.paymentUpiId && (
-                        <div className="flex items-center justify-between p-2.5 bg-muted/40 rounded-xl">
-                          <div>
-                            <span className="text-muted-foreground block text-[9px] uppercase font-bold tracking-wider">UPI ID</span>
-                            <span className="font-mono font-medium text-foreground">{restaurant.paymentUpiId}</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              navigator.clipboard.writeText(restaurant.paymentUpiId || '');
-                              toast.success('UPI ID copied!');
-                            }}
-                            className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
-                            title="Copy UPI ID"
-                          >
-                            <Copy className="w-3 h-3" />
-                          </button>
-                        </div>
-                      )}
-
-                      {restaurant?.paymentPhone && (
-                        <div className="flex items-center justify-between p-2.5 bg-muted/40 rounded-xl">
-                          <div>
-                            <span className="text-muted-foreground block text-[9px] uppercase font-bold tracking-wider">Phone for Payment</span>
-                            <span className="font-mono font-medium text-foreground">{restaurant.paymentPhone}</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              navigator.clipboard.writeText(restaurant.paymentPhone || '');
-                              toast.success('Phone number copied!');
-                            }}
-                            className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
-                            title="Copy Phone"
-                          >
-                            <Copy className="w-3 h-3" />
-                          </button>
-                        </div>
-                      )}
-
-                      {restaurant?.bankAccountNumber && (
-                        <div className="p-3 bg-muted/20 border border-border/60 rounded-xl space-y-2">
-                          <span className="text-muted-foreground block text-[9px] uppercase font-bold tracking-wider">Bank Account Details</span>
-                          <div className="grid grid-cols-2 gap-2 text-[10px]">
-                            {restaurant.bankAccountHolder && (
-                              <div>
-                                <span className="text-muted-foreground block">Holder Name</span>
-                                <span className="font-medium text-foreground">{restaurant.bankAccountHolder}</span>
-                              </div>
-                            )}
-                            {restaurant.bankName && (
-                              <div>
-                                <span className="text-muted-foreground block">Bank Name</span>
-                                <span className="font-medium text-foreground">{restaurant.bankName}</span>
-                              </div>
-                            )}
-                            <div className="col-span-2 flex items-center justify-between border-t border-border/50 pt-1.5 mt-1">
-                              <div>
-                                <span className="text-muted-foreground block">Account Number</span>
-                                <span className="font-mono font-medium text-foreground">{restaurant.bankAccountNumber}</span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  navigator.clipboard.writeText(restaurant.bankAccountNumber || '');
-                                  toast.success('Account number copied!');
-                                }}
-                                className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
-                                title="Copy Account Number"
-                              >
-                                <Copy className="w-3 h-3" />
-                              </button>
-                            </div>
-                            {restaurant.bankIfsc && (
-                              <div className="col-span-2 flex items-center justify-between border-t border-border/50 pt-1.5 mt-1">
-                                <div>
-                                  <span className="text-muted-foreground block">IFSC Code</span>
-                                  <span className="font-mono font-medium text-foreground">{restaurant.bankIfsc}</span>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(restaurant.bankIfsc || '');
-                                    toast.success('IFSC Code copied!');
-                                  }}
-                                  className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
-                                  title="Copy IFSC Code"
-                                >
-                                  <Copy className="w-3 h-3" />
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {!restaurant?.paymentQrCode && !restaurant?.paymentUpiId && !restaurant?.paymentPhone && !restaurant?.bankAccountNumber && (
-                        <div className="text-center py-6 text-muted-foreground text-xs flex flex-col items-center gap-1">
-                          <QrCode className="w-8 h-8 text-muted-foreground/50 mb-1" />
-                          <span>No manual payment details entered by the restaurant owner.</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {mockPaymentMethod === 'automatic' && (
-                  <div className="space-y-3">
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      Pay online instantly using our simulated Razorpay secure gateway.
-                    </p>
-                    <div className="space-y-3">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Card Number</label>
-                        <input
-                          type="text"
-                          placeholder="4111 2222 3333 4444"
-                          maxLength={19}
-                          value={mockCardNumber}
-                          onChange={(e) => setMockCardNumber(formatCardNumber(e.target.value))}
-                          className="w-full px-3.5 py-2.5 bg-muted rounded-xl text-sm border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 text-foreground font-mono"
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Expiry Date</label>
-                          <input
-                            type="text"
-                            placeholder="MM/YY"
-                            maxLength={5}
-                            value={mockCardExpiry}
-                            onChange={(e) => setMockCardExpiry(formatExpiry(e.target.value))}
-                            className="w-full px-3.5 py-2.5 bg-muted rounded-xl text-sm border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 text-foreground font-mono"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">CVV</label>
-                          <input
-                            type="password"
-                            placeholder="•••"
-                            maxLength={3}
-                            value={mockCardCVV}
-                            onChange={(e) => setMockCardCVV(e.target.value.replace(/[^0-9]/g, ''))}
-                            className="w-full px-3.5 py-2.5 bg-muted rounded-xl text-sm border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 text-foreground font-mono"
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Card Holder Name</label>
-                        <input
-                          type="text"
-                          placeholder={mockPaymentData.customerName}
-                          value={mockCardName}
-                          onChange={(e) => setMockCardName(e.target.value)}
-                          className="w-full px-3.5 py-2.5 bg-muted rounded-xl text-sm border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 text-foreground"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Secure footer bar */}
-              <div className="px-6 py-3 bg-muted/20 border-t border-border flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground font-medium">
-                <span>🔒 Secure 256-bit SSL encrypted simulation</span>
-              </div>
-
-              {/* Actions */}
-              <div className="p-6 pt-4 border-t border-border flex gap-3 bg-muted/10">
-                <button
-                  type="button"
-                  disabled={isProcessingMockPayment}
                   onClick={() => {
-                    setShowMockPaymentModal(false);
-                    toast.error('Payment cancelled');
+                    setShowUpiModal(false);
+                    toast.info('You can track payment status on the order tracking page.');
                   }}
-                  className="flex-1 py-3 rounded-xl border border-border font-semibold text-sm hover:bg-muted transition-colors disabled:opacity-50 text-foreground"
+                  className="flex-1 py-3 rounded-xl border border-border font-semibold text-sm hover:bg-muted transition-colors text-foreground"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={isProcessingMockPayment}
-                  onClick={handleConfirmMockPayment}
-                  className="flex-1 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-semibold text-sm transition-all active:scale-95 disabled:opacity-60 flex items-center justify-center gap-1.5 shadow-lg shadow-orange-500/20"
-                >
-                  {isProcessingMockPayment ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Processing...
-                    </>
-                  ) : mockPaymentMethod === 'manual' ? (
-                    'Confirm Manual Payment'
-                  ) : (
-                    `Pay ₹${mockPaymentData.amount.toFixed(0)}`
-                  )}
+                  Close & View Order
                 </button>
               </div>
             </motion.div>

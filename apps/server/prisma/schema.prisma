@@ -37,6 +37,7 @@ enum PaymentMethod {
   COD
   WALLET
   PAY_TO_WAITER
+  UPI_INTENT
 }
 
 enum PaymentStatus {
@@ -151,7 +152,11 @@ model Restaurant {
   commissionRate  Float    @default(5)
   ownerId         String
 
-  // Payment Details (Optional for direct owner payment)
+  // Payment Details & Settings
+  paymentEnabled    Boolean  @default(true)
+  upiEnabled        Boolean  @default(true)
+  merchantName      String?
+  paymentProvider   String?  @default("DIRECT_UPI")
   paymentQrCode     String?
   paymentUpiId      String?
   paymentPhone      String?
@@ -450,8 +455,11 @@ model Payment {
   method            PaymentMethod
   status            PaymentStatus @default(PENDING)
   amount            Float
+  txnRef            String?       @unique
+  providerTxnId     String?
   razorpayOrderId   String?
   razorpayPaymentId String?
+  paidAt            DateTime?
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
@@ -459,6 +467,7 @@ model Payment {
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
+  @@index([txnRef])
   @@index([razorpayOrderId])
   @@map("payments")
 }

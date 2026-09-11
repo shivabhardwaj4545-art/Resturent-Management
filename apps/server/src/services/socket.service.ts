@@ -131,6 +131,7 @@ export function emitOrderStatusUpdate(orderId: string, restaurantId: string, dat
   estimatedTime?: number;
   driverId?: string;
   driverName?: string;
+  paidAt?: string;
 }): void {
   if (!io) return;
   io.to(`order:${orderId}`).emit('order:status_updated', data);

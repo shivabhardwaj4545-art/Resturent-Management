@@ -26,6 +26,7 @@ export enum PaymentMethod {
   COD = 'COD',
   WALLET = 'WALLET',
   PAY_TO_WAITER = 'PAY_TO_WAITER',
+  UPI_INTENT = 'UPI_INTENT',
 }
 
 export enum PaymentStatus {
