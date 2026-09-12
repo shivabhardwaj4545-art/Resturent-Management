@@ -16,9 +16,11 @@ export default async function Checkout({ params, searchParams }: PageProps) {
     try {
       const decoded = Buffer.from(resolvedSearchParams.t, 'base64').toString('utf-8');
       const parts = decoded.split(':');
-      if (parts.length === 2 && parts[0] && parts[1]) {
+      if (parts.length >= 2 && parts[0]) {
         effectiveTable = parts[0];
         effectiveToken = parts[1];
+      } else if (parts.length === 1 && parts[0]) {
+        effectiveTable = parts[0];
       }
     } catch {
       // Invalid t token payload

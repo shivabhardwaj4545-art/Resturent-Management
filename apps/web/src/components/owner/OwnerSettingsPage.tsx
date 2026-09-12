@@ -19,6 +19,7 @@ import { getImageUrl } from '@/lib/image';
 import { DAYS_OF_WEEK } from '@/utils/operatingHours';
 import QRCode from 'qrcode';
 import { downloadPlacardImage, printPlacard } from '@/utils/qrPlacard';
+import { generateUniqueTableCode } from '@/utils/tableCode';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
@@ -332,12 +333,15 @@ export function OwnerSettingsPage() {
     return () => clearTimeout(delayDebounce);
   }, [tableNumber]);
 
-  const secureTablePayload = tableNumber.trim() && tableToken
-    ? (typeof window !== 'undefined' ? btoa(`${tableNumber.trim()}:${tableToken}`) : Buffer.from(`${tableNumber.trim()}:${tableToken}`).toString('base64'))
+  // Unique, non-predictable, restaurant-isolated, permanent table code
+  const uniqueTableCode = data?.slug && tableNumber.trim()
+    ? generateUniqueTableCode(data.slug, tableNumber.trim())
     : '';
 
+  // Clean, obfuscated unique table QR code URL (e.g. /r/burger-hub?t=MTo3MWIyYzNkNA)
+  // Hides raw table numbers, prevents table number guessing, and stays 100% permanent per restaurant
   const qrUrl = data
-    ? `${typeof window !== 'undefined' ? window.location.origin : ''}/r/${data.slug}${secureTablePayload ? `?t=${encodeURIComponent(secureTablePayload)}` : ''}`
+    ? `${typeof window !== 'undefined' ? window.location.origin : ''}/r/${data.slug}${uniqueTableCode ? `?t=${encodeURIComponent(uniqueTableCode)}` : ''}`
     : '';
 
   useEffect(() => {
@@ -355,13 +359,19 @@ export function OwnerSettingsPage() {
     }
   }, [qrUrl]);
 
+  // Strip base64 data URLs to prevent 414 Request-URI Too Large error on Nginx
+  const safeLogo = (logoPreviewUrl || data?.logo || '');
+  const safeBanner = (bannerPreviewUrl || data?.banner || '');
+  const logoParam = safeLogo.startsWith('data:') ? '' : safeLogo;
+  const bannerParam = safeBanner.startsWith('data:') ? '' : safeBanner;
+
   const iframeUrl = data?.slug
     ? `/r/${data.slug}?preview=true` +
       `&themeColor=${encodeURIComponent(form.themeColor ?? '#E85D04')}` +
-      `&name=${encodeURIComponent(form.name ?? '')}` +
-      `&description=${encodeURIComponent(form.description ?? '')}` +
-      `&logo=${encodeURIComponent(logoPreviewUrl || data.logo || '')}` +
-      `&banner=${encodeURIComponent(bannerPreviewUrl || data.banner || '')}`
+      `&name=${encodeURIComponent((form.name ?? '').slice(0, 80))}` +
+      `&description=${encodeURIComponent((form.description ?? '').slice(0, 150))}` +
+      (logoParam ? `&logo=${encodeURIComponent(logoParam)}` : '') +
+      (bannerParam ? `&banner=${encodeURIComponent(bannerParam)}` : '')
     : '';
 
   return (
@@ -892,7 +902,7 @@ export function OwnerSettingsPage() {
                       {/* Actions */}
                       <div className="flex flex-wrap gap-3 pt-2">
                         <Link
-                          href={qrUrl ? `/r/${data.slug}${secureTablePayload ? `?t=${encodeURIComponent(secureTablePayload)}` : ''}` : '#'}
+                          href={qrUrl ? `/r/${data.slug}${uniqueTableCode ? `?t=${encodeURIComponent(uniqueTableCode)}` : ''}` : '#'}
                           target="_blank"
                           className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-muted hover:bg-muted/70 rounded-xl text-sm font-semibold transition-colors text-foreground"
                         >
