@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
@@ -9,7 +9,8 @@ import {
   Mail, Phone, CreditCard, Receipt, Check, Wallet, Banknote, Sparkles, Star, AlertTriangle, ChefHat, Trash2
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
-import api from '@/lib/api';
+import api, { getSocketUrl } from '@/lib/api';
+import { io, Socket } from 'socket.io-client';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
@@ -110,6 +111,44 @@ export function OwnerOrdersPage() {
     refetchInterval: 15000,
   });
 
+  const restId = (user as any)?.restaurantId;
+
+  useEffect(() => {
+    if (!restId) return;
+
+    const socket: Socket = io(getSocketUrl(), {
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 10,
+    });
+
+    const joinRest = () => {
+      socket.emit('join:restaurant', restId);
+    };
+
+    if (socket.connected) {
+      joinRest();
+    }
+    socket.on('connect', joinRest);
+
+    const handleRefresh = () => {
+      qc.invalidateQueries({ queryKey: ['owner-orders'] });
+      qc.invalidateQueries({ queryKey: ['owner-dashboard'] });
+      qc.invalidateQueries({ queryKey: ['owner-recent-orders'] });
+      qc.invalidateQueries({ queryKey: ['kitchen-orders'] });
+    };
+
+    socket.on('order:new', handleRefresh);
+    socket.on('new_order', handleRefresh);
+    socket.on('order:status_updated', handleRefresh);
+    socket.on('order_status_changed', handleRefresh);
+    socket.on('order_cancelled', handleRefresh);
+    socket.on('order_deleted', handleRefresh);
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [restId, qc]);
+
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status, addOnStatus }: { id: string; status?: string; addOnStatus?: string }) => {
       await api.patch(`/owner/orders/${id}/status`, { status, addOnStatus });
@@ -117,6 +156,9 @@ export function OwnerOrdersPage() {
     onSuccess: () => {
       toast.success('Order status updated');
       qc.invalidateQueries({ queryKey: ['owner-orders'] });
+      qc.invalidateQueries({ queryKey: ['owner-dashboard'] });
+      qc.invalidateQueries({ queryKey: ['owner-recent-orders'] });
+      qc.invalidateQueries({ queryKey: ['kitchen-orders'] });
     },
     onError: () => toast.error('Failed to update order status'),
   });
@@ -128,6 +170,8 @@ export function OwnerOrdersPage() {
     onSuccess: () => {
       toast.success('Payment marked as PAID');
       qc.invalidateQueries({ queryKey: ['owner-orders'] });
+      qc.invalidateQueries({ queryKey: ['owner-dashboard'] });
+      qc.invalidateQueries({ queryKey: ['owner-recent-orders'] });
     },
     onError: () => toast.error('Failed to update payment status'),
   });
@@ -139,6 +183,8 @@ export function OwnerOrdersPage() {
     onSuccess: () => {
       toast.warning('Customer notified: payment not received');
       qc.invalidateQueries({ queryKey: ['owner-orders'] });
+      qc.invalidateQueries({ queryKey: ['owner-dashboard'] });
+      qc.invalidateQueries({ queryKey: ['owner-recent-orders'] });
     },
     onError: () => toast.error('Failed to send payment notification'),
   });
@@ -151,6 +197,8 @@ export function OwnerOrdersPage() {
       toast.success('Order deleted successfully');
       qc.invalidateQueries({ queryKey: ['owner-orders'] });
       qc.invalidateQueries({ queryKey: ['owner-dashboard'] });
+      qc.invalidateQueries({ queryKey: ['owner-recent-orders'] });
+      qc.invalidateQueries({ queryKey: ['kitchen-orders'] });
     },
     onError: () => toast.error('Failed to delete order'),
   });
@@ -163,6 +211,8 @@ export function OwnerOrdersPage() {
       toast.success(res?.data?.message || 'Order history cleared');
       qc.invalidateQueries({ queryKey: ['owner-orders'] });
       qc.invalidateQueries({ queryKey: ['owner-dashboard'] });
+      qc.invalidateQueries({ queryKey: ['owner-recent-orders'] });
+      qc.invalidateQueries({ queryKey: ['kitchen-orders'] });
     },
     onError: () => toast.error('Failed to clear order history'),
   });

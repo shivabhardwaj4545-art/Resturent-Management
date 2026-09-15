@@ -212,6 +212,7 @@ export default function KitchenDashboardPage() {
     socket.on('kitchen:order_updated', handleOrderUpdated);
     socket.on('order_status_changed', handleOrderUpdated);
     socket.on('order_cancelled', handleOrderUpdated);
+    socket.on('order_deleted', handleOrderUpdated);
     socket.on('driver_assigned', handleOrderUpdated);
 
     return () => {

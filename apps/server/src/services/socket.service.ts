@@ -245,7 +245,16 @@ export function emitPaymentNotReceived(orderId: string, amount: number): void {
   });
 }
 
+export function emitOrderDeleted(orderId: string, restaurantId: string): void {
+  if (!io) return;
+  io.to(`order:${orderId}`).emit('order_deleted', { orderId });
+  io.to(`restaurant:${restaurantId}`).emit('order_deleted', { orderId });
+  io.to(`restaurant:${restaurantId}`).emit('order:status_updated', { orderId, status: 'DELETED' });
+  io.to(`restaurant:${restaurantId}`).emit('order_status_changed', { orderId, status: 'DELETED' });
+}
+
 export function getSocketIO(): SocketIOServer {
   if (!io) throw new Error('Socket.IO not initialized');
   return io;
 }
+

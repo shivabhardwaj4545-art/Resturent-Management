@@ -9,7 +9,8 @@ import {
   Power, Star, Palette, BellRing, ChefHat
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
-import api from '@/lib/api';
+import api, { getSocketUrl } from '@/lib/api';
+import { io, Socket } from 'socket.io-client';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
@@ -43,8 +44,6 @@ export function OwnerDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showChatModal, setShowChatModal] = useState(false);
 
-
-
   const { data, isLoading } = useQuery({
     queryKey: ['owner-dashboard'],
     queryFn: async () => {
@@ -74,6 +73,43 @@ export function OwnerDashboard() {
     },
     refetchInterval: 30000, // Refresh every 30s
   });
+
+  const restId = (user as any)?.restaurantId || data?.restaurant?.id;
+
+  // Real-time socket updates for order status, new orders, deleted orders
+  useEffect(() => {
+    if (!restId) return;
+
+    const socket: Socket = io(getSocketUrl(), {
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 10,
+    });
+
+    const joinRest = () => {
+      socket.emit('join:restaurant', restId);
+    };
+
+    if (socket.connected) {
+      joinRest();
+    }
+    socket.on('connect', joinRest);
+
+    const handleRefresh = () => {
+      qc.invalidateQueries({ queryKey: ['owner-dashboard'] });
+      qc.invalidateQueries({ queryKey: ['owner-recent-orders'] });
+    };
+
+    socket.on('order:new', handleRefresh);
+    socket.on('new_order', handleRefresh);
+    socket.on('order:status_updated', handleRefresh);
+    socket.on('order_status_changed', handleRefresh);
+    socket.on('order_cancelled', handleRefresh);
+    socket.on('order_deleted', handleRefresh);
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [restId, qc]);
 
   const handleLogout = async () => {
     try {
@@ -147,14 +183,6 @@ export function OwnerDashboard() {
               <MessageSquare className="w-4 h-4 text-indigo-500 shrink-0" />
               <span className="hidden sm:inline">Admin Support Chat</span>
             </button>
-
-            {/* Pending orders indicator */}
-            {(data?.stats?.pendingOrders ?? 0) > 0 && (
-              <span className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 text-xs font-semibold shrink-0">
-                <Clock className="w-3.5 h-3.5 shrink-0" />
-                <span>{data?.stats.pendingOrders} pending</span>
-              </span>
-            )}
           </div>
         </header>
 

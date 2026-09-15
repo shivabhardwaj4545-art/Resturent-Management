@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { uploadMenuItemImage, uploadRestaurantLogo, uploadRestaurantBanner, uploadRestaurantPaymentQr } from '../services/cloudinary.service';
-import { emitOrderStatusUpdate, emitNotification, emitUserLoyaltyUpdate, emitPaymentNotReceived } from '../services/socket.service';
+import { emitOrderStatusUpdate, emitNotification, emitUserLoyaltyUpdate, emitPaymentNotReceived, emitOrderDeleted } from '../services/socket.service';
 import { cacheDelPattern, cacheSet } from '../services/redis.service';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { generateTableSignature } from '../utils/tableSignature';
@@ -68,7 +68,14 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response, nex
       }),
       prisma.order.groupBy({
         by: ['status'],
-        where: { restaurantId: restaurant.id },
+        where: {
+          restaurantId: restaurant.id,
+          deletedAt: null,
+          NOT: {
+            paymentMethod: 'UPI_INTENT',
+            paymentStatus: 'PENDING',
+          },
+        },
         _count: { status: true },
       }),
       // Last 7 days revenue
@@ -1544,6 +1551,8 @@ export async function deleteOwnerOrder(req: AuthenticatedRequest, res: Response,
       data: { deletedAt: new Date() },
     });
 
+    emitOrderDeleted(id, restaurant.id);
+
     res.json({
       success: true,
       message: 'Order deleted successfully.',
@@ -1570,6 +1579,8 @@ export async function clearOwnerOrderHistory(req: AuthenticatedRequest, res: Res
       data: { deletedAt: new Date() },
     });
 
+    emitOrderDeleted('ALL', restaurant.id);
+
     res.json({
       success: true,
       data: { count: result.count },
@@ -1579,4 +1590,5 @@ export async function clearOwnerOrderHistory(req: AuthenticatedRequest, res: Res
     next(error);
   }
 }
+
 
