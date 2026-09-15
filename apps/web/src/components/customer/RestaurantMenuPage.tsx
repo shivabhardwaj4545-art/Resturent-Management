@@ -55,6 +55,11 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
   const [cartOpen, setCartOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [showFilterDrawer, setShowFilterDrawer] = useState(false);
+  const [maxPrice, setMaxPrice] = useState<number | null>(null);
+  const [priceSort, setPriceSort] = useState<'DEFAULT' | 'LOW_TO_HIGH' | 'HIGH_TO_LOW'>('DEFAULT');
+
+  const hasActiveFilters = activeFilter !== 'ALL' || maxPrice !== null || priceSort !== 'DEFAULT' || !!searchQuery;
   type WaiterStatus = 'IDLE' | 'PENDING' | 'COMING' | 'OCCUPIED';
   const [waiterStatus, setWaiterStatus] = useState<WaiterStatus>('IDLE');
   const [waiterCooldown, setWaiterCooldown] = useState(0);
@@ -355,7 +360,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       if (recentOrders.length === 0) return [];
       const promises = recentOrders.map(async (o) => {
         try {
-          const res = await api.get(`/orders/${o.orderId}`);
+          const res = await api.get(`/orders/${o.orderId}`, { skipToast: true });
           return res.data.data.order;
         } catch (err: any) {
           const status = err?.response?.status;
@@ -762,23 +767,31 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
     return data.categories
       .map((cat) => ({
         ...cat,
-        items: cat.items.filter((item) => {
-          const matchesSearch =
-            !searchQuery ||
-            item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.description?.toLowerCase().includes(searchQuery.toLowerCase());
+        items: cat.items
+          .filter((item) => {
+            const matchesSearch =
+              !searchQuery ||
+              item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              item.description?.toLowerCase().includes(searchQuery.toLowerCase());
 
-          const matchesFilter =
-            activeFilter === 'ALL' ||
-            (activeFilter === 'VEG' && item.isVeg && !item.isVegan) ||
-            (activeFilter === 'NON_VEG' && !item.isVeg) ||
-            (activeFilter === 'VEGAN' && item.isVegan);
+            const matchesFilter =
+              activeFilter === 'ALL' ||
+              (activeFilter === 'VEG' && item.isVeg && !item.isVegan) ||
+              (activeFilter === 'NON_VEG' && !item.isVeg) ||
+              (activeFilter === 'VEGAN' && item.isVegan);
 
-          return matchesSearch && matchesFilter;
-        }),
+            const matchesMaxPrice = maxPrice === null || item.price <= maxPrice;
+
+            return matchesSearch && matchesFilter && matchesMaxPrice;
+          })
+          .sort((a, b) => {
+            if (priceSort === 'LOW_TO_HIGH') return a.price - b.price;
+            if (priceSort === 'HIGH_TO_LOW') return b.price - a.price;
+            return 0;
+          }),
       }))
       .filter((cat) => cat.items.length > 0);
-  }, [data, searchQuery, activeFilter]);
+  }, [data, searchQuery, activeFilter, maxPrice, priceSort]);
 
   const cartCount = itemCount();
 
@@ -1359,10 +1372,142 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
               </button>
             )}
           </div>
-          <button className="p-2.5 bg-muted rounded-xl">
-            <Filter className="w-4 h-4 text-muted-foreground" />
+          {/* Interactive Filter Button */}
+          <button
+            onClick={() => setShowFilterDrawer((prev) => !prev)}
+            className={`relative p-2.5 rounded-xl border transition-all active:scale-95 flex items-center justify-center shrink-0 ${
+              hasActiveFilters
+                ? 'text-white shadow-md'
+                : 'bg-muted text-muted-foreground hover:text-foreground border-transparent'
+            }`}
+            style={hasActiveFilters ? { backgroundColor: themeColor } : {}}
+            title="Filter & Sort Menu"
+          >
+            <Filter className="w-4 h-4" />
+            {hasActiveFilters && (
+              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping border border-background" />
+            )}
           </button>
         </div>
+
+        {/* Filter Popup Panel */}
+        <AnimatePresence>
+          {showFilterDrawer && (
+            <motion.div
+              initial={{ opacity: 0, height: 0, y: -10 }}
+              animate={{ opacity: 1, height: 'auto', y: 0 }}
+              exit={{ opacity: 0, height: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="mb-3 bg-card border border-border rounded-2xl p-4 shadow-xl space-y-4 text-card-foreground overflow-hidden"
+            >
+              <div className="flex items-center justify-between border-b border-border pb-2.5">
+                <h4 className="font-display font-bold text-sm flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-primary" style={{ color: themeColor }} /> Menu Filters & Sorting
+                </h4>
+                {hasActiveFilters && (
+                  <button
+                    onClick={() => {
+                      setActiveFilter('ALL');
+                      setMaxPrice(null);
+                      setPriceSort('DEFAULT');
+                      setSearchQuery('');
+                    }}
+                    className="text-xs font-semibold text-red-500 hover:underline"
+                  >
+                    Reset All Filters
+                  </button>
+                )}
+              </div>
+
+              {/* Dietary Filter */}
+              <div className="space-y-1.5">
+                <p className="text-xs font-bold text-muted-foreground">Dietary Type</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { key: 'ALL', label: 'All Items' },
+                    { key: 'VEG', label: '🟢 Veg Only' },
+                    { key: 'NON_VEG', label: '🔴 Non-Veg' },
+                    { key: 'VEGAN', label: '🌿 Vegan' },
+                  ].map((f) => (
+                    <button
+                      key={f.key}
+                      onClick={() => setActiveFilter(f.key as any)}
+                      className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
+                        activeFilter === f.key
+                          ? 'text-white border-transparent shadow-sm'
+                          : 'bg-muted border-border text-muted-foreground hover:text-foreground'
+                      }`}
+                      style={activeFilter === f.key ? { backgroundColor: themeColor } : {}}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Max Price Filter */}
+              <div className="space-y-1.5">
+                <p className="text-xs font-bold text-muted-foreground">Max Budget Price</p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: 'Any Price', val: null },
+                    { label: 'Under ₹150', val: 150 },
+                    { label: 'Under ₹250', val: 250 },
+                    { label: 'Under ₹500', val: 500 },
+                  ].map((p) => (
+                    <button
+                      key={p.label}
+                      onClick={() => setMaxPrice(p.val)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                        maxPrice === p.val
+                          ? 'text-white border-transparent shadow-sm'
+                          : 'bg-muted border-border text-muted-foreground hover:text-foreground'
+                      }`}
+                      style={maxPrice === p.val ? { backgroundColor: themeColor } : {}}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sorting Options */}
+              <div className="space-y-1.5">
+                <p className="text-xs font-bold text-muted-foreground">Sort By Price</p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { key: 'DEFAULT', label: 'Default Order' },
+                    { key: 'LOW_TO_HIGH', label: 'Price: Low to High 📈' },
+                    { key: 'HIGH_TO_LOW', label: 'Price: High to Low 📉' },
+                  ].map((s) => (
+                    <button
+                      key={s.key}
+                      onClick={() => setPriceSort(s.key as any)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                        priceSort === s.key
+                          ? 'text-white border-transparent shadow-sm'
+                          : 'bg-muted border-border text-muted-foreground hover:text-foreground'
+                      }`}
+                      style={priceSort === s.key ? { backgroundColor: themeColor } : {}}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Close Button */}
+              <div className="pt-1 flex justify-end">
+                <button
+                  onClick={() => setShowFilterDrawer(false)}
+                  className="px-4 py-2 bg-muted hover:bg-muted/80 rounded-xl text-xs font-extrabold text-foreground transition-all"
+                >
+                  Done
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Veg/Non-veg filters */}
         <div className="flex gap-2 overflow-x-auto no-scrollbar scrollbar-hide pb-1 pr-6 whitespace-nowrap flex-nowrap min-w-0 max-w-full">
@@ -1440,7 +1585,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
-            className="fixed bottom-3 left-14 right-3 sm:bottom-4 sm:left-16 sm:right-6 z-40"
+            className="fixed bottom-3 left-3 right-3 sm:bottom-4 sm:left-6 sm:right-6 z-40"
           >
             <button
               onClick={() => setCartOpen(true)}
@@ -1558,15 +1703,41 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
             <ChevronUp className="w-5 h-5" />
           </button>
         )}
-        <button
-          onClick={() => setChatOpen(true)}
-          className="w-12 h-12 rounded-full text-white shadow-2xl flex items-center justify-center transition-transform hover:scale-110 active:scale-95 border-2 border-white/30 backdrop-blur-md"
-          style={{ backgroundColor: themeColor }}
-          title="Ask AI Assistant"
-        >
-          <Bot className="w-6 h-6" />
-        </button>
+        {!chatOpen && (
+          <button
+            onClick={() => setChatOpen(true)}
+            className="w-12 h-12 rounded-full text-white shadow-2xl flex items-center justify-center transition-transform hover:scale-110 active:scale-95 border-2 border-white/30 backdrop-blur-md"
+            style={{ backgroundColor: themeColor }}
+            title="Ask AI Assistant"
+          >
+            <Bot className="w-6 h-6" />
+          </button>
+        )}
       </div>
+
+      {/* AI Assistant Chatbot Window */}
+      <AnimatePresence>
+        {chatOpen && (
+          <AIChatbot
+            restaurantId={restaurant?.id || ''}
+            restaurantName={restaurant?.name || searchParams?.name || 'Restaurant'}
+            themeColor={themeColor}
+            onClose={() => setChatOpen(false)}
+            onSearchDish={(dishName) => {
+              setSearchQuery(dishName);
+              setChatOpen(false);
+              const searchInput = document.querySelector('input[type="text"]') as HTMLInputElement;
+              if (searchInput) {
+                searchInput.focus();
+              }
+            }}
+            onSelectCategory={(catName) => {
+              setActiveCategory(catName);
+              setChatOpen(false);
+            }}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Loyalty Points Instructions & Info Modal */}
       <AnimatePresence>

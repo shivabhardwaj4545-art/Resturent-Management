@@ -42,7 +42,7 @@ export function WaiterBell() {
   const router = useRouter();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [mounted, setMounted] = useState(false);
-  const [panelPos, setPanelPos] = useState({ top: 60, right: 16 });
+  const [panelPos, setPanelPos] = useState<{ top: number; right: number; left?: number | string; width?: string }>({ top: 60, right: 16, left: 'auto', width: '384px' });
 
   useEffect(() => {
     setMounted(true);
@@ -62,15 +62,38 @@ export function WaiterBell() {
   const [activeTab, setActiveTab] = useState<'calls' | 'orders' | 'activity'>('calls');
   const queryClient = useQueryClient();
 
-  const togglePanel = () => {
-    if (!showWaiterPanel && buttonRef.current) {
+  const calculatePanelPos = () => {
+    if (buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
-      const right = Math.max(16, window.innerWidth - rect.right);
-      const top = rect.bottom + 8;
-      setPanelPos({ top, right });
+      const isMobile = window.innerWidth < 640;
+      if (isMobile) {
+        setPanelPos({
+          top: Math.min(rect.bottom + 8, window.innerHeight - 100),
+          right: 8,
+          left: 8,
+          width: 'calc(100vw - 16px)'
+        });
+      } else {
+        const right = Math.max(16, window.innerWidth - rect.right);
+        const top = rect.bottom + 8;
+        setPanelPos({ top, right, left: 'auto', width: '384px' });
+      }
+    }
+  };
+
+  const togglePanel = () => {
+    if (!showWaiterPanel) {
+      calculatePanelPos();
     }
     setShowWaiterPanel((v) => !v);
   };
+
+  useEffect(() => {
+    if (!showWaiterPanel) return;
+    const handleResize = () => calculatePanelPos();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [showWaiterPanel]);
 
   // 1. Fetch recent activity notifications
   const { data: notifData, isLoading: isLoadingNotifs } = useQuery({
@@ -171,16 +194,18 @@ export function WaiterBell() {
               style={{
                 top: `${panelPos.top}px`,
                 right: `${panelPos.right}px`,
+                left: panelPos.left !== 'auto' ? `${panelPos.left}px` : undefined,
+                width: panelPos.width || undefined,
               }}
-              className="fixed z-[1000000] w-96 max-w-[calc(100vw-2rem)] bg-white dark:bg-zinc-950 border-2 border-border shadow-[0_25px_60px_-15px_rgba(0,0,0,0.6)] dark:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.95)] rounded-2xl overflow-hidden flex flex-col opacity-100 text-foreground"
+              className="fixed z-[1000000] max-w-[calc(100vw-1rem)] bg-white dark:bg-zinc-950 border-2 border-border shadow-[0_25px_60px_-15px_rgba(0,0,0,0.6)] dark:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.95)] rounded-2xl overflow-hidden flex flex-col opacity-100 text-foreground"
             >
               {/* Sound Controls Header */}
-              <div className="px-4 py-2.5 bg-slate-100 dark:bg-zinc-900 border-b border-border flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                  <span className="text-xs font-bold text-foreground">Live Notification Center</span>
+              <div className="px-3 sm:px-4 py-2.5 bg-slate-100 dark:bg-zinc-900 border-b border-border flex items-center justify-between gap-2 min-w-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                  <span className="text-xs font-bold text-foreground truncate">Live Notification Center</span>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     onClick={() => setSoundEnabled(!soundEnabled)}
                     className={`p-1 px-2 rounded-lg transition-colors border text-[10px] font-bold flex items-center gap-1 ${
@@ -190,26 +215,26 @@ export function WaiterBell() {
                     }`}
                     title="Toggle Sound Alerts"
                   >
-                    {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+                    {soundEnabled ? <Volume2 className="w-3.5 h-3.5 shrink-0" /> : <VolumeX className="w-3.5 h-3.5 shrink-0" />}
                     <span>{soundEnabled ? 'Sound On' : 'Muted'}</span>
                   </button>
                 </div>
               </div>
 
               {/* Tab Selector Header */}
-              <div className="flex border-b border-border bg-slate-100/90 dark:bg-zinc-900 p-1 gap-1">
+              <div className="flex border-b border-border bg-slate-100/90 dark:bg-zinc-900 p-1 gap-1 min-w-0">
                 <button
                   onClick={() => setActiveTab('calls')}
-                  className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  className={`flex-1 min-w-0 py-2 px-1.5 sm:px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 sm:gap-1.5 ${
                     activeTab === 'calls'
                       ? 'bg-card text-primary shadow-xs border border-border/80'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  <BellRing className="w-3.5 h-3.5 text-orange-500" />
-                  <span>Waiter Calls</span>
+                  <BellRing className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                  <span className="truncate">Calls</span>
                   {waiterCalls.length > 0 && (
-                    <span className="px-1.5 py-0.2 bg-orange-500 text-white rounded-full text-[10px] font-extrabold">
+                    <span className="px-1.5 py-0.2 bg-orange-500 text-white rounded-full text-[10px] font-extrabold shrink-0">
                       {waiterCalls.length}
                     </span>
                   )}
@@ -217,16 +242,16 @@ export function WaiterBell() {
 
                 <button
                   onClick={() => setActiveTab('orders')}
-                  className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  className={`flex-1 min-w-0 py-2 px-1.5 sm:px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 sm:gap-1.5 ${
                     activeTab === 'orders'
                       ? 'bg-card text-emerald-600 dark:text-emerald-400 shadow-xs border border-border/80'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  <ShoppingBag className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>Orders</span>
+                  <ShoppingBag className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                  <span className="truncate">Orders</span>
                   {combinedOrdersCount > 0 && (
-                    <span className="px-1.5 py-0.2 bg-emerald-500 text-white rounded-full text-[10px] font-extrabold">
+                    <span className="px-1.5 py-0.2 bg-emerald-500 text-white rounded-full text-[10px] font-extrabold shrink-0">
                       {combinedOrdersCount}
                     </span>
                   )}
@@ -234,16 +259,16 @@ export function WaiterBell() {
 
                 <button
                   onClick={() => setActiveTab('activity')}
-                  className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  className={`flex-1 min-w-0 py-2 px-1.5 sm:px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 sm:gap-1.5 ${
                     activeTab === 'activity'
                       ? 'bg-card text-blue-600 dark:text-blue-400 shadow-xs border border-border/80'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  <Megaphone className="w-3.5 h-3.5 text-blue-500" />
-                  <span>Activity</span>
+                  <Megaphone className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                  <span className="truncate">Activity</span>
                   {unreadNotifCount > 0 && (
-                    <span className="px-1.5 py-0.2 bg-blue-500 text-white rounded-full text-[10px] font-extrabold">
+                    <span className="px-1.5 py-0.2 bg-blue-500 text-white rounded-full text-[10px] font-extrabold shrink-0">
                       {unreadNotifCount}
                     </span>
                   )}
@@ -253,8 +278,8 @@ export function WaiterBell() {
               {/* TAB 1: Waiter Calls */}
               {activeTab === 'calls' && (
                 <>
-                  <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-orange-500/5 dark:bg-orange-950/20">
-                    <span className="text-[11px] font-extrabold text-orange-600 dark:text-orange-400 uppercase tracking-wider">
+                  <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-border bg-orange-500/5 dark:bg-orange-950/20 gap-2 min-w-0">
+                    <span className="text-[10px] sm:text-[11px] font-extrabold text-orange-600 dark:text-orange-400 uppercase tracking-wider truncate">
                       Live Table & Payment Requests
                     </span>
                     {waiterCalls.length > 0 && (
@@ -271,7 +296,7 @@ export function WaiterBell() {
                           });
                           clearAll();
                         }}
-                        className="text-[10px] font-bold text-muted-foreground hover:text-foreground transition-colors"
+                        className="text-[10px] font-bold text-muted-foreground hover:text-foreground transition-colors shrink-0"
                       >
                         Clear All
                       </button>

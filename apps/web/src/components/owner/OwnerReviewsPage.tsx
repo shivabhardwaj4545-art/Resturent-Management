@@ -81,17 +81,17 @@ export function OwnerReviewsPage() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* Top Bar */}
-        <header className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-background/95 backdrop-blur-sm">
-          <div className="flex items-center gap-3">
+        <header className="flex items-center justify-between px-3.5 sm:px-5 py-3 border-b border-border bg-background/95 backdrop-blur-sm gap-2 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="lg:hidden p-2 rounded-xl hover:bg-muted transition-colors"
+              className="lg:hidden p-2 rounded-xl hover:bg-muted transition-colors shrink-0"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <h1 className="font-display font-bold text-xl">Customer Reviews</h1>
+            <h1 className="font-display font-bold text-base sm:text-xl truncate">Customer Reviews</h1>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <WaiterBell />
           </div>
         </header>

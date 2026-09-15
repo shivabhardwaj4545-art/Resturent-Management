@@ -170,6 +170,23 @@ export async function chatWithBot(
       userMessage: message,
     });
 
+    // Extract matched menu items for structured interactive cards
+    const matchedMenuItems = menuItems.filter((item) => {
+      const nameLower = item.name.toLowerCase();
+      const respLower = response.toLowerCase();
+      const msgLower = message.toLowerCase();
+      return respLower.includes(nameLower) || (nameLower.length > 3 && msgLower.includes(nameLower));
+    }).map((item) => ({
+      id: item.id,
+      name: item.name,
+      price: item.price,
+      category: item.category?.name,
+      isVeg: item.isVeg,
+      isVegan: item.isVegan,
+      image: item.image,
+      description: item.description,
+    })).slice(0, 6);
+
     // Save messages to DB
     await prisma.$transaction([
       prisma.chatMessage.create({
@@ -192,7 +209,13 @@ export async function chatWithBot(
       }),
     ]);
 
-    res.json({ success: true, data: { reply: response } });
+    res.json({
+      success: true,
+      data: {
+        reply: response,
+        suggestedItems: matchedMenuItems,
+      },
+    });
   } catch (error) {
     next(error);
   }

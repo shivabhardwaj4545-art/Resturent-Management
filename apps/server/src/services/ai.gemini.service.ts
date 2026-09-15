@@ -158,8 +158,8 @@ function getRuleBasedChatResponse(params: {
   menuContext: string;
   userMessage: string;
 }): string {
-  const message = params.userMessage.toLowerCase();
-  
+  const message = params.userMessage.toLowerCase().trim();
+
   // 1. Parse menu context correctly
   const parsedItems: ParsedMenuItem[] = [];
   const lines = params.menuContext.split('\n');
@@ -181,100 +181,80 @@ function getRuleBasedChatResponse(params: {
     }
   }
 
-  // 2. Handle common greetings
+  if (parsedItems.length === 0) {
+    return `Welcome to ${params.restaurantName}! I can answer questions about our menu and suggest dishes for you. What are you in the mood for today?`;
+  }
+
+  // 2. Handle common greetings & polite replies
   if (/\b(hi|hello|hey|hola|greetings|good morning|good afternoon|good evening)\b/i.test(message)) {
-    return `Hello! Welcome to ${params.restaurantName}. 🍽️ I can help you with menu questions, suggest dishes, or help you find something that fits your taste or budget. What would you like to know?`;
+    return `Hello! Welcome to ${params.restaurantName}. 🍽️ I can help you find dishes by price, dietary preference (Veg/Non-Veg/Vegan), or category. What would you like to order today?`;
   }
-
-  // 3. Handle budget queries
-  const budgetMatch = message.match(/\b(under|less than|below|budget of|limit of)\s*₹?\s*(\d+)\b/i) || message.match(/\b₹?\s*(\d+)\s*(budget|limit)\b/i);
-  if (budgetMatch) {
-    const limit = parseInt(budgetMatch[2] || budgetMatch[1], 10);
-    const options = parsedItems.filter(item => item.price <= limit).slice(0, 5);
-    if (options.length > 0) {
-      return `Here are some delicious options under ₹${limit} at ${params.restaurantName}:\n` + 
-        options.map(item => `- **${item.name}** (${item.category}) - ₹${item.price} [${item.isVeg ? 'Veg' : 'Non-Veg'}]`).join('\n') + 
-        `\n\nWould you like to try any of these?`;
-    } else {
-      const sorted = [...parsedItems].sort((a,b)=>a.price-b.price);
-      return `We don't have any items under ₹${limit} on the menu. The most budget-friendly item we have is **${sorted[0]?.name}** for ₹${sorted[0]?.price}. Would you like to check it out?`;
-    }
-  }
-
-  if (message.includes('budget') || message.includes('cheap') || message.includes('affordable') || message.includes('least expensive')) {
-    const cheapOptions = [...parsedItems].sort((a, b) => a.price - b.price).slice(0, 3);
-    if (cheapOptions.length > 0) {
-      return `Here are some of our most affordable options:\n` +
-        cheapOptions.map(item => `- **${item.name}** - ₹${item.price} (${item.category}) [${item.isVeg ? 'Veg' : 'Non-Veg'}]`).join('\n');
-    }
-  }
-
-  // 4. Handle dietary restriction queries
-  const wantsVegan = message.includes('vegan');
-  const wantsNonVeg = message.includes('non-veg') || message.includes('non veg') || message.includes('nonveg') || message.includes('meat') || message.includes('chicken') || message.includes('mutton') || message.includes('fish') || message.includes('egg');
-  const wantsVeg = !wantsNonVeg && !wantsVegan && (message.includes('vegetarian') || /\bveg\b/i.test(message) || message.includes('veg '));
-
-  if (wantsVegan) {
-    const veganItems = parsedItems.filter(item => item.isVegan).slice(0, 5);
-    if (veganItems.length > 0) {
-      return `Here are our vegan options:\n` +
-        veganItems.map(item => `- **${item.name}** - ₹${item.price}`).join('\n');
-    }
-    return `We do not have items explicitly marked as Vegan, but many of our vegetarian dishes can be prepared vegan. Please ask our staff when ordering!`;
-  }
-
-  if (wantsNonVeg) {
-    const nonVegItems = parsedItems.filter(item => !item.isVeg).slice(0, 5);
-    if (nonVegItems.length > 0) {
-      return `Here are our non-vegetarian options:\n` +
-        nonVegItems.map(item => `- **${item.name}** (${item.category}) - ₹${item.price}`).join('\n');
-    }
-    return `We don't have non-vegetarian items on the menu at the moment.`;
-  }
-
-  if (wantsVeg) {
-    const vegItems = parsedItems.filter(item => item.isVeg).slice(0, 5);
-    if (vegItems.length > 0) {
-      return `Here are some popular vegetarian items on our menu:\n` +
-        vegItems.map(item => `- **${item.name}** (${item.category}) - ₹${item.price}`).join('\n');
-    }
-    return `We don't have vegetarian items on the menu at the moment.`;
-  }
-
-  // 5. Handle category queries
-  for (const item of parsedItems) {
-    if (message.includes(item.category.toLowerCase())) {
-      const category = item.category;
-      const catItems = parsedItems.filter(i => i.category.toLowerCase() === category.toLowerCase()).slice(0, 5);
-      return `Here are the items in our **${category}** section:\n` +
-        catItems.map(i => `- **${i.name}** - ₹${i.price} [${i.isVeg ? 'Veg' : 'Non-Veg'}]`).join('\n');
-    }
-  }
-
-  // 6. Handle specific item queries
-  for (const item of parsedItems) {
-    if (message.includes(item.name.toLowerCase())) {
-      return `Yes, we serve **${item.name}**! It belongs to the **${item.category}** category, costs ₹${item.price}, and is a ${item.isVeg ? 'vegetarian 🥗' : 'non-vegetarian 🍗'} dish. Would you like to add it to your order?`;
-    }
-  }
-
-  // 7. General recommendation / suggestion queries
-  if (message.includes('recommend') || message.includes('suggest') || message.includes('popular') || message.includes('best') || message.includes('special')) {
-    const suggestions = parsedItems.slice(0, 3);
-    if (suggestions.length > 0) {
-      return `I highly recommend trying these customer favorites at ${params.restaurantName}:\n` +
-        suggestions.map(item => `- **${item.name}** - ₹${item.price} (${item.category})`).join('\n') +
-        `\n\nAll of them are prepared fresh daily! What would you like to try?`;
-    }
-  }
-
-  // 8. Handle thank you
   if (message.includes('thank you') || message.includes('thanks')) {
     return "You're very welcome! Let me know if there's anything else you'd like to know about our menu. Enjoy your meal! 🍽️";
   }
 
-  // 9. Off-topic/Generic fallback
-  return `I'm your assistant for ${params.restaurantName}. I can recommend dishes, search our menu, or tell you prices. How can I help you with your order today?`;
+  // 3. Extract multiple query parameters
+  const budgetMatch = message.match(/\b(under|less than|below|budget of|limit of)\s*₹?\s*(\d+)\b/i) || message.match(/\b₹?\s*(\d+)\s*(budget|limit)\b/i);
+  const budgetLimit = budgetMatch ? parseInt(budgetMatch[2] || budgetMatch[1], 10) : null;
+
+  const wantsVegan = message.includes('vegan');
+  const wantsNonVeg = message.includes('non-veg') || message.includes('non veg') || message.includes('nonveg') || message.includes('chicken') || message.includes('mutton') || message.includes('fish') || message.includes('egg') || message.includes('meat');
+  const wantsVeg = !wantsNonVeg && !wantsVegan && (message.includes('vegetarian') || /\bveg\b/i.test(message) || message.includes('veg '));
+
+  const categoriesInMenu = Array.from(new Set(parsedItems.map((i) => i.category.toLowerCase())));
+  const matchedCategory = categoriesInMenu.find((cat) => message.includes(cat));
+
+  const foodKeywords = ['pizza', 'burger', 'biryani', 'pasta', 'shake', 'starter', 'dessert', 'beverage', 'drink', 'noodle', 'fries', 'paneer', 'chicken', 'soup', 'salad', 'curry', 'rice', 'bread', 'momo', 'roll', 'ice cream', 'coffee', 'tea'];
+  const matchedKeyword = foodKeywords.find((kw) => message.includes(kw));
+
+  const wantsBestseller = message.includes('best seller') || message.includes('bestseller') || message.includes('popular') || message.includes('trending') || message.includes('recommend') || message.includes('suggest') || message.includes('special') || message.includes('top');
+
+  // 4. Combine filters
+  let filtered = [...parsedItems];
+
+  if (wantsVegan) {
+    filtered = filtered.filter((i) => i.isVegan);
+  } else if (wantsNonVeg) {
+    filtered = filtered.filter((i) => !i.isVeg);
+  } else if (wantsVeg) {
+    filtered = filtered.filter((i) => i.isVeg);
+  }
+
+  if (budgetLimit !== null) {
+    filtered = filtered.filter((i) => i.price <= budgetLimit);
+  }
+
+  if (matchedCategory) {
+    filtered = filtered.filter((i) => i.category.toLowerCase().includes(matchedCategory));
+  } else if (matchedKeyword) {
+    filtered = filtered.filter((i) => i.name.toLowerCase().includes(matchedKeyword) || i.category.toLowerCase().includes(matchedKeyword));
+  }
+
+  // 5. Generate Response
+  if (filtered.length > 0) {
+    const suggestions = filtered.slice(0, 5);
+    const filterLabels = [
+      wantsVegan ? 'Vegan' : wantsNonVeg ? 'Non-Veg' : wantsVeg ? 'Veg' : '',
+      matchedCategory ? matchedCategory : matchedKeyword ? matchedKeyword : '',
+      budgetLimit !== null ? `under ₹${budgetLimit}` : '',
+    ].filter(Boolean).join(' ');
+
+    return `Here are delicious options ${filterLabels ? `(${filterLabels}) ` : ''}at ${params.restaurantName}:\n` +
+      suggestions.map((item) => `- **${item.name}** (${item.category}) - ₹${item.price} [${item.isVeg ? 'Veg' : 'Non-Veg'}]`).join('\n') +
+      `\n\nClick on any dish below to search or view it in the menu!`;
+  }
+
+  // 6. If tight filter yielded 0, provide closest alternatives
+  if (budgetLimit !== null) {
+    const sortedByPrice = [...parsedItems].sort((a, b) => a.price - b.price);
+    return `We don't have items matching all those criteria under ₹${budgetLimit}. Our most affordable dish is **${sortedByPrice[0]?.name}** for ₹${sortedByPrice[0]?.price}. Would you like to check it out?`;
+  }
+
+  // Fallback: Show menu highlights
+  const topHighlights = parsedItems.slice(0, 4);
+  return `I'm your assistant for ${params.restaurantName}. Here are some popular menu highlights:\n` +
+    topHighlights.map((i) => `- **${i.name}** - ₹${i.price} (${i.category}) [${i.isVeg ? 'Veg' : 'Non-Veg'}]`).join('\n') +
+    `\n\nYou can ask me for Veg/Non-Veg dishes, items under a specific budget, or specific categories!`;
 }
 
 // ── 3. Smart Coupon Suggestion ───────────────────────────────

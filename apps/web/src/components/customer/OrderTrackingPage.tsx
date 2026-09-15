@@ -219,7 +219,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
   const { data: order, isLoading } = useQuery({
     queryKey: ['order', orderId],
     queryFn: async () => {
-      const response = await api.get(`/orders/${orderId}`);
+      const response = await api.get(`/orders/${orderId}`, { skipToast: true });
       return response.data.data.order as Order;
     },
     enabled: mounted && !!orderId,
