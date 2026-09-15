@@ -1109,9 +1109,9 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                   : waiterStatus === 'PENDING'
                   ? `Waiter Call Sent (${waiterPendingTimer}s)`
                   : waiterStatus === 'COMING'
-                  ? `Waiter is coming in a few minutes (${waiterComingTimer}s)`
+                  ? `Waiter Coming (${waiterComingTimer}s)`
                   : waiterStatus === 'OCCUPIED'
-                  ? `Waiter is busy, you can call again after (${waiterCooldown}s)`
+                  ? `Waiter Busy (retry in ${waiterCooldown}s)`
                   : 'Call Waiter'}
               </span>
             </motion.button>
