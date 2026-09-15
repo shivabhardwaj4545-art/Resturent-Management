@@ -10,6 +10,7 @@ import { generateTableSignature } from '../utils/tableSignature';
 import { parseMenuDocumentAI } from '../services/ai.gemini.service';
 import { sortOperatingHours } from '../utils/operatingHours';
 import { logger } from '../utils/logger';
+import { sendKitchenStaffWelcomeEmail } from '../services/email.service';
 
 async function getOwnerRestaurant(ownerId: string) {
   let restaurant = await prisma.restaurant.findFirst({
@@ -1467,6 +1468,10 @@ export async function createKitchenStaff(req: AuthenticatedRequest, res: Respons
         kitchenRestaurantId: true,
         createdAt: true,
       },
+    });
+
+    sendKitchenStaffWelcomeEmail(cleanEmail, name.trim(), restaurant.name, password).catch((err) => {
+      logger.error(`Failed to send welcome email to kitchen staff ${cleanEmail}:`, err);
     });
 
     res.status(201).json({

@@ -144,7 +144,8 @@ export async function register(req: Request, res: Response, next: NextFunction):
           city: restaurant.city,
           address: restaurant.address,
           phone: restaurant.phone,
-        }
+        },
+        password
       ).catch((err) => {
         logger.error(`Failed to send restaurant welcome email on registration to ${userEmail}:`, err);
       });

@@ -656,3 +656,80 @@ export async function sendCustomerWelcomeEmail(
   await sendEmail(to, 'Welcome to EZ- Restaurant Platform! 🍽️', html);
 }
 
+export async function sendKitchenStaffWelcomeEmail(
+  to: string,
+  staffName: string,
+  restaurantName: string,
+  loginPassword?: string
+): Promise<void> {
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:3001';
+  const loginUrl = `${clientUrl}/login`;
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px; color: #1e293b; }
+        .container { max-width: 580px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
+        .header { background: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%); padding: 36px 30px; text-align: center; color: #ffffff; }
+        .header h1 { margin: 0; font-size: 24px; font-weight: 800; }
+        .body { padding: 36px 30px; font-size: 15px; line-height: 1.6; color: #334155; }
+        .info-box { background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px; padding: 20px; margin: 20px 0; }
+        .info-item { display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px dashed #93c5fd; padding-bottom: 8px; font-size: 14px; }
+        .info-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .info-label { font-weight: 600; color: #0369a1; }
+        .info-value { font-weight: 700; color: #0f172a; text-align: right; }
+        .btn { display: inline-block; background: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%); color: #ffffff !important; padding: 14px 34px; border-radius: 10px; text-decoration: none; font-weight: 700; font-size: 15px; box-shadow: 0 4px 14px rgba(2, 132, 199, 0.3); margin-top: 10px; }
+        .footer { background-color: #f8fafc; border-top: 1px solid #f1f5f9; padding: 24px 30px; text-align: center; color: #94a3b8; font-size: 12px; }
+        .pass-badge { background-color: #fef3c7; color: #92400e; padding: 4px 12px; border-radius: 8px; font-family: monospace; font-size: 15px; font-weight: 700; border: 1px solid #fde68a; display: inline-block; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>👨‍🍳 Kitchen Staff Account Credentials</h1>
+        </div>
+        <div class="body">
+          <h2 style="margin-top:0; color: #0f172a; font-size: 20px;">Welcome ${staffName}!</h2>
+          <p>You have been added as a Kitchen Staff member for <strong>${restaurantName}</strong> on the EZ- Restaurant platform.</p>
+          
+          <div class="info-box">
+            <div class="info-item">
+              <span class="info-label">Restaurant:</span>
+              <span class="info-value">${restaurantName}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Login Email / ID:</span>
+              <span class="info-value">${to}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Password:</span>
+              <span class="info-value">${
+                loginPassword
+                  ? `<span class="pass-badge">${loginPassword}</span>`
+                  : 'Contact your restaurant owner for your password'
+              }</span>
+            </div>
+          </div>
+
+          <p style="color: #64748b; font-size: 13px;">
+            Use these credentials to log in and access the Kitchen Display System (KDS) to view and manage live order preparation queues.
+          </p>
+
+          <p style="text-align: center; margin: 32px 0;">
+            <a href="${loginUrl}" class="btn">Login to Kitchen Display System</a>
+          </p>
+        </div>
+        <div class="footer">
+          <p>© 2026 EZ- Restaurant Platform. Kitchen Staff Notification.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+  await sendEmail(to, `Kitchen Staff Credentials - ${restaurantName}`, html);
+}
+
