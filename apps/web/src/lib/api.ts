@@ -244,8 +244,9 @@ export function getSocketUrl(): string {
   if (typeof window !== 'undefined') {
     const envSocketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
     if (envSocketUrl && !envSocketUrl.includes('localhost')) {
-      return envSocketUrl;
+      return envSocketUrl.replace(/\/+$/, '');
     }
+
     const hostname = window.location.hostname;
     const protocol = window.location.protocol;
 
@@ -254,9 +255,18 @@ export function getSocketUrl(): string {
       return `${protocol}//${serverHostname}`;
     }
 
+    // Automatically derive socket URL from resolved API base URL
+    const apiBase = getApiBaseUrl();
+    if (apiBase && !apiBase.includes('localhost') && !apiBase.includes('127.0.0.1')) {
+      const derived = apiBase.replace(/\/api\/v1\/?$/, '').replace(/\/+$/, '');
+      if (derived && !derived.includes(hostname)) {
+        return derived;
+      }
+    }
+
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       if (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost')) {
-        return process.env.NEXT_PUBLIC_API_URL.replace('/api/v1', '').replace(/\/$/, '');
+        return process.env.NEXT_PUBLIC_API_URL.replace(/\/api\/v1\/?$/, '').replace(/\/+$/, '');
       }
       return 'http://localhost:4000';
     }
@@ -264,8 +274,8 @@ export function getSocketUrl(): string {
     return `${window.location.origin}`;
   }
 
-  const envSocket = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '');
-  return envSocket || 'http://localhost:4000';
+  const envSocket = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/v1\/?$/, '');
+  return envSocket ? envSocket.replace(/\/+$/, '') : 'http://localhost:4000';
 }
 
 export default api;
