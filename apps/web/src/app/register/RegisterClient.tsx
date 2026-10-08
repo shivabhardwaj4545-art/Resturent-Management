@@ -33,28 +33,17 @@ export default function RegisterClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const restaurantSlugFromUrl = searchParams.get('restaurant');
-  const [scannedSlug, setScannedSlug] = useState<string | null>(null);
 
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedSlug = localStorage.getItem('scanned_restaurant_slug');
-      if (storedSlug) {
-        setScannedSlug(storedSlug);
-      }
-    }
-  }, []);
-
-  const activeRestaurantSlug = restaurantSlugFromUrl || scannedSlug;
+  const activeRestaurantSlug = restaurantSlugFromUrl;
 
   const handleGoogleAuth = () => {
-    if (!activeRestaurantSlug) {
-      toast.error('Please scan a restaurant table QR code first to register as a customer.');
-      return;
-    }
-    const googleTarget = `${API_BASE_URL}/auth/google?restaurant=${encodeURIComponent(activeRestaurantSlug)}`;
+    const googleTarget = activeRestaurantSlug
+      ? `${API_BASE_URL}/auth/google?restaurant=${encodeURIComponent(activeRestaurantSlug)}`
+      : `${API_BASE_URL}/auth/google`;
+
     window.location.href = googleTarget;
   };
 
@@ -63,11 +52,6 @@ export default function RegisterClient() {
   });
 
   const onSubmit = async (data: RegisterForm) => {
-    if (!activeRestaurantSlug) {
-      toast.error('Please scan a restaurant table QR code first to register as a customer.');
-      return;
-    }
-
     setLoading(true);
     // Sanitize optional empty phone and set role to CUSTOMER
     const payload = {
@@ -123,44 +107,8 @@ export default function RegisterClient() {
         </div>
 
         <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl">
-          {!activeRestaurantSlug ? (
-            <div className="text-center py-4 space-y-4">
-              <div className="w-16 h-16 rounded-2xl bg-amber-500/10 text-amber-400 mx-auto flex items-center justify-center border border-amber-500/20 shadow-inner">
-                <QrCode className="w-8 h-8" />
-              </div>
-              <div>
-                <h2 className="font-display text-xl font-bold text-white mb-1">
-                  Scan Table QR Code Required
-                </h2>
-                <p className="text-slate-400 text-xs leading-relaxed max-w-xs mx-auto">
-                  Customer registration is linked to a restaurant dining session. Please scan the QR code on your dining table before registering.
-                </p>
-              </div>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
 
-              <div className="p-3 bg-white/5 border border-white/10 rounded-xl text-xs text-slate-400 flex items-center justify-center gap-2">
-                <Smartphone className="w-4 h-4 text-orange-400 animate-pulse" />
-                <span>Scan table QR code with your phone camera</span>
-              </div>
-
-              <div className="pt-2 space-y-2">
-                <Link
-                  href="/r"
-                  className="w-full py-3 px-4 rounded-xl text-white font-semibold bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 transition-all shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2 text-sm"
-                >
-                  <QrCode className="w-4 h-4" /> Scan QR / Select Demo Restaurant
-                </Link>
-
-                <Link
-                  href="/login?partner=true"
-                  className="block w-full py-2.5 text-xs text-slate-400 hover:text-white transition-colors"
-                >
-                  Are you a Restaurant Owner? Partner Login →
-                </Link>
-              </div>
-            </div>
-          ) : (
-            <>
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 <div>
                   <label className="text-sm font-medium text-slate-300 mb-1.5 block">Full Name</label>
                   <div className="relative">
@@ -265,10 +213,9 @@ export default function RegisterClient() {
                   Sign in
                 </Link>
               </p>
-            </>
-          )}
         </div>
       </motion.div>
     </div>
   );
 }
+

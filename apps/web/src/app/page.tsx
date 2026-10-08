@@ -54,17 +54,13 @@ export default function HomePage() {
                   Restaurant Dashboard
                 </Link>
               )}
-              {user.role === 'CUSTOMER' && (
-                <Link href="/r" className="text-sm bg-muted hover:bg-accent border border-border px-4 py-2 rounded-lg transition-all font-medium text-foreground">
-                  Select Restaurant
-                </Link>
-              )}
             </div>
           ) : (
             <Link href="/login" className="text-sm bg-muted hover:bg-accent border border-border px-4 py-2 rounded-lg transition-all text-foreground font-medium">
               Login
             </Link>
           )}
+
         </div>
       </nav>
 

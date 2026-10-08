@@ -210,6 +210,16 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
     enabled: !!activeUser,
   });
 
+  const { data: loyaltySettings } = useQuery({
+    queryKey: ['loyalty-settings'],
+    queryFn: async () => {
+      const res = await api.get('/menu/loyalty-settings');
+      return res.data.data?.settings || {};
+    },
+  });
+  const loyaltyEnabled = loyaltySettings?.enabled !== false;
+  const pointsPerDiscountRupee = Number(loyaltySettings?.pointsPerDiscountRupee) || 50;
+
   const [usePoints, setUsePoints] = useState(false);
 
   const addresses = addressesData ?? [];
@@ -323,8 +333,8 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
   const grandTotalBeforePoints = Math.max(subtotalAmount + gst + deliveryPlusPackaging - finalCouponDiscount, 0);
 
   const pointsAvailable = profileData?.loyaltyPoints ?? activeUser?.loyaltyPoints ?? 0;
-  const maxPointsDiscount = pointsAvailable / 50;
-  const pointsDiscount = usePoints && !addonOrderId ? Math.min(maxPointsDiscount, grandTotalBeforePoints) : 0;
+  const maxPointsDiscount = pointsAvailable / pointsPerDiscountRupee;
+  const pointsDiscount = loyaltyEnabled && usePoints && !addonOrderId ? Math.min(maxPointsDiscount, grandTotalBeforePoints) : 0;
   const grandTotal = Math.max(grandTotalBeforePoints - pointsDiscount, 0);
 
   const { register, handleSubmit, formState: { errors } } = useForm<GuestForm>({
@@ -739,7 +749,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
         )}
 
         {/* Loyalty Points Card */}
-        {activeUser && pointsAvailable > 0 && !addonOrderId && (
+        {loyaltyEnabled && activeUser && pointsAvailable > 0 && !addonOrderId && (
           <div className="bg-card border border-border rounded-2xl p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-orange-100 dark:bg-orange-950/40 flex items-center justify-center text-orange-500">

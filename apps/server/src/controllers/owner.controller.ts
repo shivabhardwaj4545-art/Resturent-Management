@@ -34,31 +34,47 @@ async function getOwnerRestaurant(ownerId: string) {
 export async function getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const restaurant = await getOwnerRestaurant(req.user!.id);
+    
+    // Local start of today (00:00:00.000)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    // Local start of month (1st of month 00:00:00.000)
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
-    const [todayStats, monthlyStats, recentOrders, orderStatusBreakdown, last7DaysRevenue, reviewStats, todayHourlyRaw] = await Promise.all([
-      prisma.order.aggregate({
-        where: { restaurantId: restaurant.id, createdAt: { gte: today }, status: { not: 'CANCELLED' }, deletedAt: null },
-        _count: { id: true },
-        _sum: { total: true },
-        _avg: { total: true },
+    // Last 7 days start date
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+
+    const [todayOrders, monthlyOrders, recentOrders, orderStatusBreakdown, pastSevenDaysOrders, reviewStats] = await Promise.all([
+      // Today's non-cancelled, non-deleted orders
+      prisma.order.findMany({
+        where: {
+          restaurantId: restaurant.id,
+          createdAt: { gte: today },
+          status: { not: 'CANCELLED' },
+          deletedAt: null,
+          NOT: { paymentMethod: 'UPI_INTENT', paymentStatus: 'PENDING' },
+        },
+        select: { id: true, total: true, createdAt: true, paymentStatus: true },
       }),
-      prisma.order.aggregate({
-        where: { restaurantId: restaurant.id, createdAt: { gte: startOfMonth }, status: { not: 'CANCELLED' }, deletedAt: null },
-        _count: { id: true },
-        _sum: { total: true },
+      // Monthly non-cancelled, non-deleted orders
+      prisma.order.findMany({
+        where: {
+          restaurantId: restaurant.id,
+          createdAt: { gte: startOfMonth },
+          status: { not: 'CANCELLED' },
+          deletedAt: null,
+          NOT: { paymentMethod: 'UPI_INTENT', paymentStatus: 'PENDING' },
+        },
+        select: { id: true, total: true, paymentStatus: true },
       }),
+      // Recent orders list
       prisma.order.findMany({
         where: {
           restaurantId: restaurant.id,
           deletedAt: null,
-          NOT: {
-            paymentMethod: 'UPI_INTENT',
-            paymentStatus: 'PENDING',
-          },
+          NOT: { paymentMethod: 'UPI_INTENT', paymentStatus: 'PENDING' },
         },
         orderBy: { createdAt: 'desc' },
         take: 10,
@@ -67,72 +83,111 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response, nex
           items: { include: { menuItem: { select: { name: true } } }, take: 3 },
         },
       }),
+      // Order status breakdown for pending order count
       prisma.order.groupBy({
         by: ['status'],
         where: {
           restaurantId: restaurant.id,
           deletedAt: null,
-          NOT: {
-            paymentMethod: 'UPI_INTENT',
-            paymentStatus: 'PENDING',
-          },
+          NOT: { paymentMethod: 'UPI_INTENT', paymentStatus: 'PENDING' },
         },
         _count: { status: true },
       }),
-      // Last 7 days revenue
-      prisma.$queryRaw<Array<{ date: string; revenue: number; orders: number }>>`
-        SELECT 
-          DATE("createdAt")::text as date,
-          SUM(total)::float as revenue,
-          COUNT(id)::int as orders
-        FROM orders
-        WHERE "restaurantId" = ${restaurant.id}
-          AND "createdAt" >= NOW() - INTERVAL '7 days'
-          AND status != 'CANCELLED'
-          AND "deletedAt" IS NULL
-        GROUP BY DATE("createdAt")
-        ORDER BY date ASC
-      `,
+      // Last 7 days orders
+      prisma.order.findMany({
+        where: {
+          restaurantId: restaurant.id,
+          createdAt: { gte: sevenDaysAgo },
+          status: { not: 'CANCELLED' },
+          deletedAt: null,
+          NOT: { paymentMethod: 'UPI_INTENT', paymentStatus: 'PENDING' },
+        },
+        select: { id: true, total: true, createdAt: true, paymentStatus: true },
+      }),
+      // Reviews stats
       prisma.review.aggregate({
         where: { restaurantId: restaurant.id },
         _avg: { rating: true },
         _count: { rating: true },
       }),
-      // Today hourly breakdown (0 to 23 hours)
-      prisma.$queryRaw<Array<{ hour: number; revenue: number; orders: number }>>`
-        SELECT 
-          EXTRACT(HOUR FROM "createdAt")::int as hour,
-          SUM(total)::float as revenue,
-          COUNT(id)::int as orders
-        FROM orders
-        WHERE "restaurantId" = ${restaurant.id}
-          AND "createdAt" >= ${today}
-          AND status != 'CANCELLED'
-          AND "deletedAt" IS NULL
-        GROUP BY EXTRACT(HOUR FROM "createdAt")
-        ORDER BY hour ASC
-      `,
     ]);
 
+    // Calculate today's revenue and count (ONLY PAID orders count toward revenue & average order value)
+    const paidTodayOrders = todayOrders.filter((o) => o.paymentStatus === 'PAID');
+    const todayRevenue = paidTodayOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+    const todayOrderCount = todayOrders.length;
+    const avgOrderValue = paidTodayOrders.length > 0 ? todayRevenue / paidTodayOrders.length : (todayOrderCount > 0 ? todayRevenue / todayOrderCount : 0);
+
+    // Calculate monthly revenue and count (ONLY PAID orders count toward revenue)
+    const paidMonthlyOrders = monthlyOrders.filter((o) => o.paymentStatus === 'PAID');
+    const monthlyRevenue = paidMonthlyOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+    const monthlyOrderCount = monthlyOrders.length;
+
+    // Pending orders count
     const pendingOrders = orderStatusBreakdown.find((s) => s.status === 'PENDING')?._count.status ?? 0;
 
-    // Format 24-hour array for today's hourly earnings chart
+    // Hourly breakdown for Today (0..23) using local hour (ONLY PAID orders count toward revenue)
+    const hourlyMap: Record<number, { revenue: number; orders: number }> = {};
+    for (let h = 0; h < 24; h++) {
+      hourlyMap[h] = { revenue: 0, orders: 0 };
+    }
+    for (const order of todayOrders) {
+      const h = new Date(order.createdAt).getHours();
+      if (order.paymentStatus === 'PAID') {
+        hourlyMap[h].revenue += Number(order.total || 0);
+      }
+      hourlyMap[h].orders += 1;
+    }
     const todayHourlyEarnings = Array.from({ length: 24 }, (_, h) => {
-      const found = todayHourlyRaw.find((item) => Number(item.hour) === h);
       const ampm = h >= 12 ? 'PM' : 'AM';
       const formattedHour = `${h % 12 === 0 ? 12 : h % 12} ${ampm}`;
       return {
         hour: formattedHour,
         rawHour: h,
-        revenue: found ? Number(found.revenue) : 0,
-        orders: found ? Number(found.orders) : 0,
+        revenue: Math.round((hourlyMap[h].revenue + Number.EPSILON) * 100) / 100,
+        orders: hourlyMap[h].orders,
       };
     });
 
+    // Today's hourly average earning
     const currentHour = new Date().getHours();
     const activeHours = Math.max(1, currentHour + 1);
-    const todayRevenueVal = todayStats._sum.total ?? 0;
-    const todayHourlyAverage = todayRevenueVal > 0 ? todayRevenueVal / activeHours : 0;
+    const todayHourlyAverage = todayRevenue > 0 ? todayRevenue / activeHours : 0;
+
+    // Last 7 Days revenue map using local dates (ONLY PAID orders count toward revenue)
+    const daysMap = new Map<string, { revenue: number; orders: number }>();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(sevenDaysAgo);
+      d.setDate(d.getDate() + i);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+      daysMap.set(dateStr, { revenue: 0, orders: 0 });
+    }
+
+    for (const order of pastSevenDaysOrders) {
+      const d = new Date(order.createdAt);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+
+      const existing = daysMap.get(dateStr) || { revenue: 0, orders: 0 };
+      if (order.paymentStatus === 'PAID') {
+        existing.revenue += Number(order.total || 0);
+      }
+      existing.orders += 1;
+      daysMap.set(dateStr, existing);
+    }
+
+    const last7DaysRevenue = Array.from(daysMap.entries())
+      .map(([date, val]) => ({
+        date,
+        revenue: Math.round((val.revenue + Number.EPSILON) * 100) / 100,
+        orders: val.orders,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
 
     res.json({
       success: true,
@@ -144,13 +199,13 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response, nex
           themeColor: restaurant.themeColor,
         },
         stats: {
-          todayRevenue: todayRevenueVal,
-          todayOrders: todayStats._count.id,
-          monthlyRevenue: monthlyStats._sum.total ?? 0,
-          monthlyOrders: monthlyStats._count.id,
-          todayHourlyAverage,
+          todayRevenue: Math.round((todayRevenue + Number.EPSILON) * 100) / 100,
+          todayOrders: todayOrderCount,
+          monthlyRevenue: Math.round((monthlyRevenue + Number.EPSILON) * 100) / 100,
+          monthlyOrders: monthlyOrderCount,
+          todayHourlyAverage: Math.round((todayHourlyAverage + Number.EPSILON) * 100) / 100,
           pendingOrders,
-          avgOrderValue: todayStats._avg.total ?? 0,
+          avgOrderValue: Math.round((avgOrderValue + Number.EPSILON) * 100) / 100,
           avgRating: reviewStats._avg.rating ?? 0,
           totalReviews: reviewStats._count.rating ?? 0,
         },
@@ -191,7 +246,7 @@ export async function updateRestaurant(req: AuthenticatedRequest, res: Response,
       'themeColor', 'menuTemplate', 'customFields', 'paymentEnabled',
       'upiEnabled', 'merchantName', 'paymentProvider', 'paymentQrCode',
       'paymentUpiId', 'paymentPhone', 'bankName', 'bankAccountNumber',
-      'bankIfsc', 'bankAccountHolder',
+      'bankIfsc', 'bankAccountHolder', 'qrSettings',
     ];
 
     const body: Record<string, any> = {};
@@ -1014,9 +1069,10 @@ export async function confirmPayment(req: AuthenticatedRequest, res: Response, n
       where: { key: 'loyalty_settings' },
     });
     const loyaltyVal = (loyaltySetting?.value as Record<string, any>) ?? {};
+    const loyaltyEnabled = loyaltyVal.enabled !== false;
     const pointsPerSpendRupees = Number(loyaltyVal.pointsPerSpendRupees) || 10;
 
-    const pointsEarned = Math.floor(Number(order.total) / pointsPerSpendRupees);
+    const pointsEarned = loyaltyEnabled ? Math.floor(Number(order.total) / pointsPerSpendRupees) : 0;
 
     await prisma.$transaction(async (tx) => {
       await tx.order.update({
@@ -1143,67 +1199,109 @@ export async function getAnalytics(req: AuthenticatedRequest, res: Response, nex
     const restaurant = await getOwnerRestaurant(req.user!.id);
     const { period = '7d' } = req.query as { period?: string };
 
-    const days = period === '30d' ? 30 : 7;
-    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-
+    const numDays = period === '30d' ? 30 : 7;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    const startDate = new Date(today);
+    startDate.setDate(startDate.getDate() - (numDays - 1));
+
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
-    const [revenueData, topItems, reviewStats, todayStats, monthlyStats, todayHourlyRaw] = await Promise.all([
-      prisma.$queryRaw<Array<{ date: string; revenue: number; orders: number }>>`
-        SELECT 
-          DATE("createdAt")::text as date,
-          SUM(total)::float as revenue,
-          COUNT(id)::int as orders
-        FROM orders
-        WHERE "restaurantId" = ${restaurant.id}
-          AND "createdAt" >= ${startDate}
-          AND status != 'CANCELLED'
-          AND "deletedAt" IS NULL
-        GROUP BY DATE("createdAt")
-        ORDER BY date ASC
-      `,
+    const [periodOrders, topItems, reviewStats, todayOrders, monthlyOrders] = await Promise.all([
+      // Period non-cancelled, non-deleted orders
+      prisma.order.findMany({
+        where: {
+          restaurantId: restaurant.id,
+          createdAt: { gte: startDate },
+          status: { not: 'CANCELLED' },
+          deletedAt: null,
+          NOT: { paymentMethod: 'UPI_INTENT', paymentStatus: 'PENDING' },
+        },
+        select: { id: true, total: true, createdAt: true, paymentStatus: true },
+      }),
+      // Top selling items in period (ONLY from confirmed PAID orders)
       prisma.orderItem.groupBy({
         by: ['menuItemId'],
         where: {
-          order: { restaurantId: restaurant.id, createdAt: { gte: startDate }, status: { not: 'CANCELLED' } },
+          order: {
+            restaurantId: restaurant.id,
+            createdAt: { gte: startDate },
+            status: { not: 'CANCELLED' },
+            paymentStatus: 'PAID',
+            deletedAt: null,
+          },
         },
         _sum: { quantity: true, subtotal: true },
         orderBy: { _sum: { subtotal: 'desc' } },
         take: 5,
       }),
+      // Review stats
       prisma.review.aggregate({
         where: { restaurantId: restaurant.id },
         _avg: { rating: true },
         _count: { rating: true },
       }),
-      prisma.order.aggregate({
-        where: { restaurantId: restaurant.id, createdAt: { gte: today }, status: { not: 'CANCELLED' }, deletedAt: null },
-        _count: { id: true },
-        _sum: { total: true },
+      // Today orders
+      prisma.order.findMany({
+        where: {
+          restaurantId: restaurant.id,
+          createdAt: { gte: today },
+          status: { not: 'CANCELLED' },
+          deletedAt: null,
+          NOT: { paymentMethod: 'UPI_INTENT', paymentStatus: 'PENDING' },
+        },
+        select: { id: true, total: true, createdAt: true, paymentStatus: true },
       }),
-      prisma.order.aggregate({
-        where: { restaurantId: restaurant.id, createdAt: { gte: startOfMonth }, status: { not: 'CANCELLED' }, deletedAt: null },
-        _count: { id: true },
-        _sum: { total: true },
+      // Monthly orders
+      prisma.order.findMany({
+        where: {
+          restaurantId: restaurant.id,
+          createdAt: { gte: startOfMonth },
+          status: { not: 'CANCELLED' },
+          deletedAt: null,
+          NOT: { paymentMethod: 'UPI_INTENT', paymentStatus: 'PENDING' },
+        },
+        select: { id: true, total: true, paymentStatus: true },
       }),
-      prisma.$queryRaw<Array<{ hour: number; revenue: number; orders: number }>>`
-        SELECT 
-          EXTRACT(HOUR FROM "createdAt")::int as hour,
-          SUM(total)::float as revenue,
-          COUNT(id)::int as orders
-        FROM orders
-        WHERE "restaurantId" = ${restaurant.id}
-          AND "createdAt" >= ${today}
-          AND status != 'CANCELLED'
-          AND "deletedAt" IS NULL
-        GROUP BY EXTRACT(HOUR FROM "createdAt")
-        ORDER BY hour ASC
-      `,
     ]);
 
+    // Build day map for revenueData (ONLY PAID orders count toward revenue)
+    const daysMap = new Map<string, { revenue: number; orders: number }>();
+    for (let i = 0; i < numDays; i++) {
+      const d = new Date(startDate);
+      d.setDate(d.getDate() + i);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+      daysMap.set(dateStr, { revenue: 0, orders: 0 });
+    }
+
+    for (const order of periodOrders) {
+      const d = new Date(order.createdAt);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+
+      const existing = daysMap.get(dateStr) || { revenue: 0, orders: 0 };
+      if (order.paymentStatus === 'PAID') {
+        existing.revenue += Number(order.total || 0);
+      }
+      existing.orders += 1;
+      daysMap.set(dateStr, existing);
+    }
+
+    const revenueData = Array.from(daysMap.entries())
+      .map(([date, val]) => ({
+        date,
+        revenue: Math.round((val.revenue + Number.EPSILON) * 100) / 100,
+        orders: val.orders,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // Top items formatting
     const topItemIds = topItems.map((t) => t.menuItemId);
     const topItemsWithNames = await prisma.menuItem.findMany({
       where: { id: { in: topItemIds } },
@@ -1213,24 +1311,40 @@ export async function getAnalytics(req: AuthenticatedRequest, res: Response, nex
     const topItemsFormatted = topItems.map((t) => ({
       name: topItemsWithNames.find((i) => i.id === t.menuItemId)?.name ?? 'Unknown',
       quantity: t._sum.quantity ?? 0,
-      revenue: t._sum.subtotal ?? 0,
+      revenue: Math.round(((t._sum.subtotal ?? 0) + Number.EPSILON) * 100) / 100,
     }));
 
+    // Hourly breakdown for Today (ONLY PAID orders count toward revenue)
+    const hourlyMap: Record<number, { revenue: number; orders: number }> = {};
+    for (let h = 0; h < 24; h++) {
+      hourlyMap[h] = { revenue: 0, orders: 0 };
+    }
+    for (const order of todayOrders) {
+      const h = new Date(order.createdAt).getHours();
+      if (order.paymentStatus === 'PAID') {
+        hourlyMap[h].revenue += Number(order.total || 0);
+      }
+      hourlyMap[h].orders += 1;
+    }
     const todayHourlyEarnings = Array.from({ length: 24 }, (_, h) => {
-      const found = todayHourlyRaw.find((item) => Number(item.hour) === h);
       const ampm = h >= 12 ? 'PM' : 'AM';
       const formattedHour = `${h % 12 === 0 ? 12 : h % 12} ${ampm}`;
       return {
         hour: formattedHour,
         rawHour: h,
-        revenue: found ? Number(found.revenue) : 0,
-        orders: found ? Number(found.orders) : 0,
+        revenue: Math.round((hourlyMap[h].revenue + Number.EPSILON) * 100) / 100,
+        orders: hourlyMap[h].orders,
       };
     });
 
+    const paidTodayOrders = todayOrders.filter((o) => o.paymentStatus === 'PAID');
+    const paidMonthlyOrders = monthlyOrders.filter((o) => o.paymentStatus === 'PAID');
+
+    const todayRevenueVal = paidTodayOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+    const monthlyRevenueVal = paidMonthlyOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+
     const currentHour = new Date().getHours();
     const activeHours = Math.max(1, currentHour + 1);
-    const todayRevenueVal = todayStats._sum.total ?? 0;
     const todayHourlyAverage = todayRevenueVal > 0 ? todayRevenueVal / activeHours : 0;
 
     res.json({
@@ -1240,14 +1354,14 @@ export async function getAnalytics(req: AuthenticatedRequest, res: Response, nex
         topItems: topItemsFormatted,
         reviewStats: {
           avgRating: reviewStats._avg.rating ?? 0,
-          totalReviews: reviewStats._count.rating,
+          totalReviews: reviewStats._count.rating ?? 0,
         },
         summaryStats: {
-          todayRevenue: todayRevenueVal,
-          todayOrders: todayStats._count.id,
-          monthlyRevenue: monthlyStats._sum.total ?? 0,
-          monthlyOrders: monthlyStats._count.id,
-          todayHourlyAverage,
+          todayRevenue: Math.round((todayRevenueVal + Number.EPSILON) * 100) / 100,
+          todayOrders: todayOrders.length,
+          monthlyRevenue: Math.round((monthlyRevenueVal + Number.EPSILON) * 100) / 100,
+          monthlyOrders: monthlyOrders.length,
+          todayHourlyAverage: Math.round((todayHourlyAverage + Number.EPSILON) * 100) / 100,
         },
         todayHourlyEarnings,
       },

@@ -82,6 +82,8 @@ export function AdminRestaurantsPage() {
   const [editPhone, setEditPhone] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editAddress, setEditAddress] = useState('');
+  const [editOwnerEmail, setEditOwnerEmail] = useState('');
+  const [editOwnerPassword, setEditOwnerPassword] = useState('');
   const [editIsApproved, setEditIsApproved] = useState(false);
   const [editIsSuspended, setEditIsSuspended] = useState(false);
   const [editIsOpen, setEditIsOpen] = useState(false);
@@ -96,6 +98,8 @@ export function AdminRestaurantsPage() {
     setEditPhone(r.phone || '');
     setEditEmail(r.email || '');
     setEditAddress(r.address || '');
+    setEditOwnerEmail(r.owner?.email || '');
+    setEditOwnerPassword('');
     setEditIsApproved(r.isApproved ?? false);
     setEditIsSuspended(r.isSuspended ?? false);
     setEditIsOpen(r.isOpen ?? false);
@@ -118,11 +122,13 @@ export function AdminRestaurantsPage() {
         phone: editPhone || undefined,
         email: editEmail || undefined,
         address: editAddress || undefined,
+        ownerEmail: editOwnerEmail || undefined,
+        ownerPassword: editOwnerPassword || undefined,
         isApproved: editIsApproved,
         isSuspended: editIsSuspended,
         isOpen: editIsOpen,
       });
-      toast.success('Restaurant details updated successfully! 🎉');
+      toast.success('Restaurant & owner credentials updated successfully! Email notification dispatched. 🎉');
       setEditingRestaurant(null);
       qc.invalidateQueries({ queryKey: ['admin-restaurants'] });
     } catch (err: any) {
@@ -132,6 +138,7 @@ export function AdminRestaurantsPage() {
       setUpdating(false);
     }
   };
+
 
   const handleCreateRestaurant = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -734,6 +741,35 @@ export function AdminRestaurantsPage() {
               </div>
 
               <div className="space-y-3 border-t border-border pt-4">
+                <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Owner Account Credentials</h4>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Owner Login Email</label>
+                    <input
+                      type="email"
+                      value={editOwnerEmail}
+                      onChange={(e) => setEditOwnerEmail(e.target.value)}
+                      placeholder="owner@example.com"
+                      className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">New Password (Optional)</label>
+                    <input
+                      type="text"
+                      value={editOwnerPassword}
+                      onChange={(e) => setEditOwnerPassword(e.target.value)}
+                      placeholder="Leave blank to keep current"
+                      className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                    />
+                  </div>
+                </div>
+                <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-600 dark:text-amber-400">
+                  📧 <strong>Credential Updates:</strong> Changing the owner&apos;s email or entering a new password will automatically dispatch an official notification email to the owner with their updated credentials.
+                </div>
+              </div>
+
+              <div className="space-y-3 border-t border-border pt-4">
                 <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Status & Access Controls</h4>
                 <div className="grid grid-cols-3 gap-3">
                   <label className="flex items-center gap-2 p-2.5 bg-muted rounded-xl border border-border cursor-pointer hover:bg-muted/80">
@@ -765,6 +801,7 @@ export function AdminRestaurantsPage() {
                   </label>
                 </div>
               </div>
+
 
               <div className="flex gap-2 justify-end border-t border-border pt-4 mt-2">
                 <button

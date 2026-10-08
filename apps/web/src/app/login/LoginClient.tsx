@@ -26,23 +26,13 @@ export default function LoginClient() {
   const restaurantSlugFromUrl = searchParams.get('restaurant');
   const isPartnerFromUrl = searchParams.get('partner') === 'true';
 
-  const [scannedSlug, setScannedSlug] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'CUSTOMER' | 'PARTNER'>(isPartnerFromUrl ? 'PARTNER' : 'CUSTOMER');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const { setUser, user, isAuthenticated } = useAuthStore();
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedSlug = localStorage.getItem('scanned_restaurant_slug');
-      if (storedSlug) {
-        setScannedSlug(storedSlug);
-      }
-    }
-  }, []);
-
-  const activeRestaurantSlug = restaurantSlugFromUrl || scannedSlug;
+  const activeRestaurantSlug = restaurantSlugFromUrl;
 
   useEffect(() => {
     const errorParam = searchParams.get('error');
@@ -60,10 +50,11 @@ export default function LoginClient() {
       } else if (activeRestaurantSlug) {
         router.push(`/r/${activeRestaurantSlug}`);
       } else {
-        router.push('/');
+        router.push('/scan-qr');
       }
     }
   }, [isAuthenticated, user, router, activeRestaurantSlug, searchParams]);
+
 
   const handleGoogleAuth = () => {
     const googleTarget = activeRestaurantSlug
@@ -122,7 +113,7 @@ export default function LoginClient() {
       } else if (activeRestaurantSlug) {
         router.push(`/r/${activeRestaurantSlug}`);
       } else {
-        router.push('/');
+        router.push('/scan-qr');
       }
 
       toast.success(`Welcome back, ${user.name}! 👋`);
@@ -166,9 +157,17 @@ export default function LoginClient() {
             <h1 className="font-display text-2xl sm:text-3xl font-bold text-foreground mb-1">
               Sign In
             </h1>
-            <p className="text-xs text-muted-foreground mb-2">
-              Sign in to your account to continue
-            </p>
+            {activeRestaurantSlug ? (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-orange-500/20 border border-orange-500/40 rounded-full text-xs font-medium text-orange-400 mt-1 mb-2">
+                <Store className="w-3.5 h-3.5" />
+                <span>Ordering for: <strong>{activeRestaurantSlug.toUpperCase()}</strong></span>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground mb-2">
+                Sign in to your account to continue
+              </p>
+            )}
+
           </div>
 
           <div className="bg-card backdrop-blur-xl border border-border rounded-2xl p-6 shadow-2xl flex-1 flex flex-col justify-center">
@@ -192,21 +191,15 @@ export default function LoginClient() {
                 </div>
 
                 <div className="pt-2 space-y-2">
-                  <Link
-                    href="/r"
-                    className="w-full py-3 px-4 rounded-xl text-white font-semibold bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 transition-all shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2 text-sm"
-                  >
-                    <QrCode className="w-4 h-4" /> Scan QR / Select Demo Restaurant
-                  </Link>
-
                   <button
                     type="button"
                     onClick={() => setActiveTab('PARTNER')}
-                    className="w-full py-2.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                    className="w-full py-3 px-4 rounded-xl text-white font-semibold bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 transition-all shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2 text-sm cursor-pointer"
                   >
-                    Are you a Restaurant Owner? Log in here →
+                    Restaurant Owner Login →
                   </button>
                 </div>
+
               </div>
             ) : (
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

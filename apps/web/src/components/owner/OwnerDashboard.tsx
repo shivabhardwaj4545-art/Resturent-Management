@@ -97,6 +97,7 @@ export function OwnerDashboard() {
     const handleRefresh = () => {
       qc.invalidateQueries({ queryKey: ['owner-dashboard'] });
       qc.invalidateQueries({ queryKey: ['owner-recent-orders'] });
+      qc.invalidateQueries({ queryKey: ['owner-analytics'] });
     };
 
     socket.on('order:new', handleRefresh);
@@ -197,88 +198,104 @@ export function OwnerDashboard() {
           ) : (
             <>
               {/* Stats */}
-              <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
-                {[
-                  {
-                    label: "Today's Earnings",
-                    value: `₹${(data?.stats?.todayRevenue ?? 0).toLocaleString('en-IN')}`,
-                    subtitle: `${data?.stats?.todayOrders ?? 0} orders today`,
-                    icon: DollarSign,
-                    color: 'from-green-500/20 to-emerald-500/20',
-                    border: 'border-green-500/20',
-                    text: 'text-green-600 dark:text-green-400',
-                  },
-                  {
-                    label: "Monthly Earnings",
-                    value: `₹${(data?.stats?.monthlyRevenue ?? 0).toLocaleString('en-IN')}`,
-                    subtitle: `${data?.stats?.monthlyOrders ?? 0} orders this month`,
-                    icon: TrendingUp,
-                    color: 'from-blue-500/20 to-cyan-500/20',
-                    border: 'border-blue-500/20',
-                    text: 'text-blue-600 dark:text-blue-400',
-                  },
-                  {
-                    label: "Today Hourly Avg",
-                    value: `₹${(data?.stats?.todayHourlyAverage ?? 0).toFixed(0)}/hr`,
-                    subtitle: 'Avg earning per hour',
-                    icon: Clock,
-                    color: 'from-purple-500/20 to-indigo-500/20',
-                    border: 'border-purple-500/20',
-                    text: 'text-purple-600 dark:text-purple-400',
-                  },
-                  {
-                    label: 'Pending Orders',
-                    value: data?.stats?.pendingOrders ?? 0,
-                    subtitle: 'Needs confirmation',
-                    icon: Clock,
-                    color: 'from-orange-500/20 to-amber-500/20',
-                    border: 'border-orange-500/20',
-                    text: 'text-orange-600 dark:text-orange-400',
-                  },
-                  {
-                    label: 'Avg. Order',
-                    value: `₹${(data?.stats?.avgOrderValue ?? 0).toFixed(0)}`,
-                    subtitle: 'Per completed order',
-                    icon: ShoppingBag,
-                    color: 'from-pink-500/20 to-rose-500/20',
-                    border: 'border-pink-500/20',
-                    text: 'text-pink-600 dark:text-pink-400',
-                  },
-                  {
-                    label: 'Avg. Rating',
-                    value: data?.stats?.avgRating ? `${(data.stats.avgRating as number).toFixed(1)} ★` : '0.0 ★',
-                    subtitle: `${data?.stats?.totalReviews ?? 0} reviews`,
-                    icon: Star,
-                    color: 'from-amber-500/20 to-yellow-500/20',
-                    border: 'border-amber-500/20',
-                    text: 'text-amber-600 dark:text-amber-400',
-                  },
-                ].map((stat, i) => {
-                  const Icon = stat.icon;
-                  return (
-                    <motion.div
-                      key={stat.label}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.08 }}
-                      className={`bg-gradient-to-br ${stat.color} border ${stat.border} rounded-2xl p-4 flex flex-col justify-between`}
-                    >
-                      <div className={`w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center mb-2 ${stat.text}`}>
-                        <Icon className="w-4.5 h-4.5" />
-                      </div>
-                      <div>
-                        <p className="font-display text-xl font-bold tracking-tight">{stat.value}</p>
-                        <p className="font-semibold text-xs text-foreground/80 mt-0.5">{stat.label}</p>
-                        <p className="text-[11px] text-muted-foreground">{stat.subtitle}</p>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
+              {(() => {
+                const formatCurrency = (val: number | undefined | null) => {
+                  const num = Number(val) || 0;
+                  if (Number.isInteger(num)) return `₹${num.toLocaleString('en-IN')}`;
+                  return `₹${num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                };
+
+                return (
+                  <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+                    {[
+                      {
+                        label: "Today's Earnings",
+                        value: formatCurrency(data?.stats?.todayRevenue),
+                        subtitle: `${data?.stats?.todayOrders ?? 0} orders today`,
+                        icon: DollarSign,
+                        color: 'from-green-500/20 to-emerald-500/20',
+                        border: 'border-green-500/20',
+                        text: 'text-green-600 dark:text-green-400',
+                      },
+                      {
+                        label: "Monthly Earnings",
+                        value: formatCurrency(data?.stats?.monthlyRevenue),
+                        subtitle: `${data?.stats?.monthlyOrders ?? 0} orders this month`,
+                        icon: TrendingUp,
+                        color: 'from-blue-500/20 to-cyan-500/20',
+                        border: 'border-blue-500/20',
+                        text: 'text-blue-600 dark:text-blue-400',
+                      },
+                      {
+                        label: "Today Hourly Avg",
+                        value: `${formatCurrency(data?.stats?.todayHourlyAverage)}/hr`,
+                        subtitle: 'Avg earning per hour',
+                        icon: Clock,
+                        color: 'from-purple-500/20 to-indigo-500/20',
+                        border: 'border-purple-500/20',
+                        text: 'text-purple-600 dark:text-purple-400',
+                      },
+                      {
+                        label: 'Pending Orders',
+                        value: data?.stats?.pendingOrders ?? 0,
+                        subtitle: 'Needs confirmation',
+                        icon: Clock,
+                        color: 'from-orange-500/20 to-amber-500/20',
+                        border: 'border-orange-500/20',
+                        text: 'text-orange-600 dark:text-orange-400',
+                      },
+                      {
+                        label: 'Avg. Order',
+                        value: formatCurrency(data?.stats?.avgOrderValue),
+                        subtitle: 'Per completed order',
+                        icon: ShoppingBag,
+                        color: 'from-pink-500/20 to-rose-500/20',
+                        border: 'border-pink-500/20',
+                        text: 'text-pink-600 dark:text-pink-400',
+                      },
+                      {
+                        label: 'Avg. Rating',
+                        value: data?.stats?.avgRating ? `${(data.stats.avgRating as number).toFixed(1)} ★` : '0.0 ★',
+                        subtitle: `${data?.stats?.totalReviews ?? 0} reviews`,
+                        icon: Star,
+                        color: 'from-amber-500/20 to-yellow-500/20',
+                        border: 'border-amber-500/20',
+                        text: 'text-amber-600 dark:text-amber-400',
+                      },
+                    ].map((stat, i) => {
+                      const Icon = stat.icon;
+                      return (
+                        <motion.div
+                          key={stat.label}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: i * 0.08 }}
+                          className={`bg-gradient-to-br ${stat.color} border ${stat.border} rounded-2xl p-4 flex flex-col justify-between`}
+                        >
+                          <div className={`w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center mb-2 ${stat.text}`}>
+                            <Icon className="w-4.5 h-4.5" />
+                          </div>
+                          <div>
+                            <p className="font-display text-xl font-bold tracking-tight">{stat.value}</p>
+                            <p className="font-semibold text-xs text-foreground/80 mt-0.5">{stat.label}</p>
+                            <p className="text-[11px] text-muted-foreground">{stat.subtitle}</p>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
 
               {/* Charts Grid: Today's Hourly Earnings + 7 Days Revenue */}
               {(() => {
                 const themeColor = data?.restaurant.themeColor ?? '#E85D04';
+                const formatCurrency = (val: number | undefined | null) => {
+                  const num = Number(val) || 0;
+                  if (Number.isInteger(num)) return `₹${num.toLocaleString('en-IN')}`;
+                  return `₹${num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                };
+
                 return (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                     {/* Today's Hourly Earnings Chart */}
@@ -291,7 +308,7 @@ export function OwnerDashboard() {
                           <p className="text-xs text-muted-foreground">Earnings broken down by hour (12 AM - 11 PM)</p>
                         </div>
                         <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-primary/10 text-primary border border-primary/20">
-                          Today: ₹{(data?.stats.todayRevenue ?? 0).toLocaleString('en-IN')}
+                          Today: {formatCurrency(data?.stats.todayRevenue)}
                         </span>
                       </div>
                       <ResponsiveContainer width="100%" height={210}>
@@ -380,9 +397,11 @@ export function OwnerDashboard() {
                         </p>
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <p className="font-bold text-sm">₹{order.total.toFixed(0)}</p>
+                        <p className="font-bold text-sm">
+                          ₹{order.total % 1 === 0 ? order.total.toLocaleString('en-IN') : order.total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
                         <p className="text-xs text-muted-foreground">
-                          {new Date(order.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(order.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}
                         </p>
                       </div>
                     </div>

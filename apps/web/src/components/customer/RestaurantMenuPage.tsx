@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
-import { Search, Filter, ShoppingCart, Clock, MapPin, Star, Bot, X, ChevronUp, QrCode, ChevronRight, BellRing, Gift } from 'lucide-react';
+import { Search, Filter, ShoppingCart, Clock, MapPin, Star, Bot, X, ChevronUp, QrCode, ChevronRight, BellRing, Gift, Ban } from 'lucide-react';
 import api, { getSocketUrl } from '@/lib/api';
 import { useCartStore } from '@/store/cart.store';
 import { useAuthStore } from '@/store/auth.store';
@@ -234,6 +234,8 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       return res.data.data?.settings || {};
     },
   });
+
+  const loyaltyEnabled = loyaltySettings?.enabled !== false;
 
   // Fetch unread notifications count for customer
   const { data: customerNotifData } = useQuery({
@@ -506,6 +508,20 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
     if (!data?.restaurant) return { status: 'CLOSED' as const, badgeText: 'Closed', detailText: 'Closed' };
     return getDetailedStatus(data.restaurant.operatingHours as any, data.restaurant.isOpen);
   }, [data]);
+
+  const isQrDisabledGlobally = (data?.restaurant as any)?.qrSettings?.enabled === false;
+  const disabledLocations: string[] = Array.isArray((data?.restaurant as any)?.qrSettings?.disabledLocations)
+    ? (data?.restaurant as any).qrSettings.disabledLocations
+    : [];
+
+  const activeLocation = displayTableNumber || tableNumber || savedTable;
+
+  const isLocationDisabled = useMemo(() => {
+    if (isQrDisabledGlobally) return true;
+    if (!activeLocation) return false;
+    const cleanLoc = String(activeLocation).trim().toLowerCase();
+    return disabledLocations.some(d => String(d).trim().toLowerCase() === cleanLoc);
+  }, [isQrDisabledGlobally, activeLocation, disabledLocations]);
 
   useEffect(() => {
     if (data?.restaurant) {
@@ -827,6 +843,14 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
           }
         `}</style>
       )}
+      {isLocationDisabled && (
+        <div className="bg-red-600 text-white px-4 py-2.5 text-center text-xs sm:text-sm font-bold shadow-lg flex items-center justify-center gap-2 relative z-40 border-b border-red-700">
+          <Ban className="w-4 h-4 shrink-0" />
+          <span>
+            QR Ordering for {activeLocation ? activeLocation : 'this restaurant'} is currently disabled by management. Please speak with staff or call room service directly.
+          </span>
+        </div>
+      )}
       {/* Floating Navigation Header */}
       <div className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-3 sm:px-4 py-3 bg-gradient-to-b from-black/80 via-black/40 to-transparent gap-2 min-w-0 max-w-full">
         <div className="flex items-center gap-1.5 text-white drop-shadow-md shrink-0 select-none">
@@ -837,18 +861,20 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2.5 overflow-x-auto no-scrollbar py-0.5 shrink min-w-0">
           {/* Loyalty Points Header Badge */}
-          <button
-            onClick={() => setShowLoyaltyModal(true)}
-            className="text-[10px] sm:text-xs bg-amber-500/25 hover:bg-amber-500/40 border border-amber-400/50 text-amber-200 px-2 sm:px-2.5 py-1.5 rounded-lg backdrop-blur-md font-bold flex items-center gap-1 shadow-sm transition-all active:scale-95 whitespace-nowrap shrink-0"
-            title="Click to view Loyalty Points details"
-          >
-            <Gift className="w-3.5 h-3.5 text-amber-300 animate-pulse shrink-0" />
-            {activeUser ? (
-              <span>⭐ {currentPoints} Pts</span>
-            ) : (
-              <span>⭐ Points</span>
-            )}
-          </button>
+          {loyaltyEnabled && (
+            <button
+              onClick={() => setShowLoyaltyModal(true)}
+              className="text-[10px] sm:text-xs bg-amber-500/25 hover:bg-amber-500/40 border border-amber-400/50 text-amber-200 px-2 sm:px-2.5 py-1.5 rounded-lg backdrop-blur-md font-bold flex items-center gap-1 shadow-sm transition-all active:scale-95 whitespace-nowrap shrink-0"
+              title="Click to view Loyalty Points details"
+            >
+              <Gift className="w-3.5 h-3.5 text-amber-300 animate-pulse shrink-0" />
+              {activeUser ? (
+                <span>⭐ {currentPoints} Pts</span>
+              ) : (
+                <span>⭐ Points</span>
+              )}
+            </button>
+          )}
 
           {/* Notifications Bell Button */}
           {activeUser && (
@@ -1046,20 +1072,6 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                 <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold mt-1" style={{ color: themeColor }}>
                   <MapPin className="w-3.5 h-3.5 shrink-0" />
                   Table {displayTableNumber}
-                </div>
-              )}
-              {restaurant.customFields && Array.isArray(restaurant.customFields) && restaurant.customFields.length > 0 && (
-                <div className="flex items-center gap-2 mt-2.5 overflow-x-auto no-scrollbar py-1 flex-wrap">
-                  {restaurant.customFields.map((field: { id: string; key: string; value: string; icon: string }) => (
-                    <div
-                      key={field.id}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card/80 border border-border text-xs font-medium shadow-xs text-foreground shrink-0 backdrop-blur-sm"
-                    >
-                      <span className="text-base">{field.icon}</span>
-                      <span className="font-semibold">{field.key}:</span>
-                      <span className="text-muted-foreground">{field.value}</span>
-                    </div>
-                  ))}
                 </div>
               )}
             </div>
@@ -1588,7 +1600,13 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
             className="fixed bottom-3 left-3 right-3 sm:bottom-4 sm:left-6 sm:right-6 z-40"
           >
             <button
-              onClick={() => setCartOpen(true)}
+              onClick={() => {
+                if (isLocationDisabled) {
+                  toast.error(`QR ordering for ${activeLocation || 'this restaurant'} is currently disabled by management.`);
+                  return;
+                }
+                setCartOpen(true);
+              }}
               className="w-full flex items-center justify-between px-5 py-3.5 sm:px-6 sm:py-4 rounded-2xl text-white shadow-[0_10px_30px_rgba(0,0,0,0.4)] hover:brightness-105 active:scale-[0.99] transition-all cursor-pointer border-2 border-white/30 backdrop-blur-md"
               style={{ backgroundColor: themeColor }}
             >

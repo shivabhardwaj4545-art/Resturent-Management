@@ -733,3 +733,104 @@ export async function sendKitchenStaffWelcomeEmail(
   await sendEmail(to, `Kitchen Staff Credentials - ${restaurantName}`, html);
 }
 
+export async function sendCredentialsUpdatedEmail(
+  to: string,
+  ownerName: string,
+  restaurantName: string,
+  updatedFields: {
+    emailUpdated: boolean;
+    newEmail?: string;
+    passwordUpdated: boolean;
+    newPassword?: string;
+  }
+): Promise<void> {
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:3001';
+  const loginUrl = `${clientUrl}/login`;
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px; color: #1e293b; }
+        .container { max-width: 580px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
+        .header { background: linear-gradient(135deg, #E85D04 0%, #F48C06 100%); padding: 36px 30px; text-align: center; color: #ffffff; }
+        .header h1 { margin: 0; font-size: 24px; font-weight: 800; }
+        .body { padding: 36px 30px; font-size: 15px; line-height: 1.6; color: #334155; }
+        .info-box { background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 20px; margin: 20px 0; }
+        .section-title { font-size: 12px; font-weight: 800; color: #166534; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+        .info-item { display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px dashed #cbd5e1; padding-bottom: 8px; font-size: 14px; }
+        .info-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .info-label { font-weight: 600; color: #64748b; }
+        .info-value { font-weight: 700; color: #0f172a; text-align: right; }
+        .btn { display: inline-block; background: linear-gradient(135deg, #E85D04 0%, #F48C06 100%); color: #ffffff !important; padding: 14px 34px; border-radius: 10px; text-decoration: none; font-weight: 700; font-size: 15px; box-shadow: 0 4px 14px rgba(232, 93, 4, 0.3); margin-top: 10px; }
+        .footer { background-color: #f8fafc; border-top: 1px solid #f1f5f9; padding: 24px 30px; text-align: center; color: #94a3b8; font-size: 12px; }
+        .pass-badge { background-color: #fef3c7; color: #92400e; padding: 4px 12px; border-radius: 8px; font-family: monospace; font-size: 15px; font-weight: 700; border: 1px solid #fde68a; display: inline-block; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>🔑 Account Credentials Updated</h1>
+        </div>
+        <div class="body">
+          <h2 style="margin-top:0; color: #0f172a; font-size: 20px;">Hello ${ownerName},</h2>
+          <p>Your login credentials for <strong>${restaurantName}</strong> on the EZ- Restaurant platform have been updated by the Super Admin.</p>
+          
+          <div class="info-box">
+            <div class="section-title">🔒 Updated Account Information</div>
+            ${
+              updatedFields.emailUpdated
+                ? `
+            <div class="info-item">
+              <span class="info-label">New Login Email:</span>
+              <span class="info-value">${updatedFields.newEmail}</span>
+            </div>
+            `
+                : `
+            <div class="info-item">
+              <span class="info-label">Login Email:</span>
+              <span class="info-value">${to}</span>
+            </div>
+            `
+            }
+            ${
+              updatedFields.passwordUpdated && updatedFields.newPassword
+                ? `
+            <div class="info-item">
+              <span class="info-label">New Password:</span>
+              <span class="info-value"><span class="pass-badge">${updatedFields.newPassword}</span></span>
+            </div>
+            `
+                : `
+            <div class="info-item">
+              <span class="info-label">Password:</span>
+              <span class="info-value" style="color: #64748b; font-style: italic;">Unchanged</span>
+            </div>
+            `
+            }
+          </div>
+
+          <p style="color: #dc2626; font-size: 13px; font-weight: 600; margin-top: 20px;">
+            ⚠️ If you did NOT request or authorize this change, please contact platform support or the Super Admin immediately.
+          </p>
+
+          <p style="text-align: center; margin: 32px 0;">
+            <a href="${loginUrl}" class="btn">Login to Dashboard</a>
+          </p>
+        </div>
+        <div class="footer">
+          <p>© 2026 EZ- Restaurant Platform. Account Security Notification.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const targetEmail = updatedFields.newEmail || to;
+  await sendEmail(targetEmail, `Account Credentials Updated - ${restaurantName}`, html);
+}
+
+

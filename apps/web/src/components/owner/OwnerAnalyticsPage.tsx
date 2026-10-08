@@ -1,14 +1,15 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   BarChart3, LayoutDashboard, UtensilsCrossed, ShoppingBag, Tag, Settings, LogOut,
   Menu, TrendingUp, DollarSign, Users, Calendar, Star, Palette
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
-import api from '@/lib/api';
+import api, { getSocketUrl } from '@/lib/api';
+import { io, Socket } from 'socket.io-client';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
@@ -34,8 +35,35 @@ export function OwnerAnalyticsPage() {
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
   const router = useRouter();
+  const qc = useQueryClient();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [period, setPeriod] = useState<'7d' | '30d'>('7d');
+
+  const restId = (user as any)?.restaurantId;
+
+  useEffect(() => {
+    if (!restId) return;
+    const socket: Socket = io(getSocketUrl(), {
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 10,
+    });
+    const joinRest = () => socket.emit('join:restaurant', restId);
+    if (socket.connected) joinRest();
+    socket.on('connect', joinRest);
+
+    const handleRefresh = () => {
+      qc.invalidateQueries({ queryKey: ['owner-analytics'] });
+    };
+
+    socket.on('order:new', handleRefresh);
+    socket.on('new_order', handleRefresh);
+    socket.on('order:status_updated', handleRefresh);
+    socket.on('order_status_changed', handleRefresh);
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [restId, qc]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['owner-analytics', period],
@@ -98,28 +126,38 @@ export function OwnerAnalyticsPage() {
 
         <div className="flex-1 overflow-y-auto p-5 space-y-6">
           {/* KPI */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {[
-              { label: "Today's Earnings", value: `₹${(data?.summaryStats?.todayRevenue ?? 0).toLocaleString('en-IN')}`, icon: DollarSign, color: 'text-green-600 dark:text-green-400', bg: 'from-green-500/20 to-emerald-500/20', border: 'border-green-500/20' },
-              { label: "Monthly Earnings", value: `₹${(data?.summaryStats?.monthlyRevenue ?? 0).toLocaleString('en-IN')}`, icon: TrendingUp, color: 'text-blue-600 dark:text-blue-400', bg: 'from-blue-500/20 to-cyan-500/20', border: 'border-blue-500/20' },
-              { label: "Today Hourly Avg", value: `₹${(data?.summaryStats?.todayHourlyAverage ?? 0).toFixed(0)}/hr`, icon: Calendar, color: 'text-purple-600 dark:text-purple-400', bg: 'from-purple-500/20 to-indigo-500/20', border: 'border-purple-500/20' },
-              { label: 'Period Revenue', value: `₹${totalRevenue.toLocaleString('en-IN')}`, icon: DollarSign, color: 'text-emerald-600 dark:text-emerald-400', bg: 'from-emerald-500/20 to-teal-500/20', border: 'border-emerald-500/20' },
-              { label: 'Period Orders', value: totalOrders, icon: ShoppingBag, color: 'text-orange-600 dark:text-orange-400', bg: 'from-orange-500/20 to-amber-500/20', border: 'border-orange-500/20' },
-              { label: 'Avg Rating', value: `${(data?.reviewStats.avgRating ?? 0).toFixed(1)} ★`, icon: Star, color: 'text-yellow-600 dark:text-yellow-400', bg: 'from-yellow-500/20 to-amber-500/20', border: 'border-yellow-500/20' },
-            ].map((stat, i) => {
-              const Icon = stat.icon;
-              return (
-                <motion.div key={stat.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}
-                  className={`bg-gradient-to-br ${stat.bg} border ${stat.border} rounded-2xl p-4 flex flex-col justify-between`}>
-                  <Icon className={`w-5 h-5 ${stat.color} mb-2`} />
-                  <div>
-                    <p className="font-display text-xl font-bold">{isLoading ? '—' : stat.value}</p>
-                    <p className="text-muted-foreground text-xs mt-0.5">{stat.label}</p>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
+          {(() => {
+            const formatCurrency = (val: number | undefined | null) => {
+              const num = Number(val) || 0;
+              if (Number.isInteger(num)) return `₹${num.toLocaleString('en-IN')}`;
+              return `₹${num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            };
+
+            return (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                {[
+                  { label: "Today's Earnings", value: formatCurrency(data?.summaryStats?.todayRevenue), icon: DollarSign, color: 'text-green-600 dark:text-green-400', bg: 'from-green-500/20 to-emerald-500/20', border: 'border-green-500/20' },
+                  { label: "Monthly Earnings", value: formatCurrency(data?.summaryStats?.monthlyRevenue), icon: TrendingUp, color: 'text-blue-600 dark:text-blue-400', bg: 'from-blue-500/20 to-cyan-500/20', border: 'border-blue-500/20' },
+                  { label: "Today Hourly Avg", value: `${formatCurrency(data?.summaryStats?.todayHourlyAverage)}/hr`, icon: Calendar, color: 'text-purple-600 dark:text-purple-400', bg: 'from-purple-500/20 to-indigo-500/20', border: 'border-purple-500/20' },
+                  { label: 'Period Revenue', value: formatCurrency(totalRevenue), icon: DollarSign, color: 'text-emerald-600 dark:text-emerald-400', bg: 'from-emerald-500/20 to-teal-500/20', border: 'border-emerald-500/20' },
+                  { label: 'Period Orders', value: totalOrders, icon: ShoppingBag, color: 'text-orange-600 dark:text-orange-400', bg: 'from-orange-500/20 to-amber-500/20', border: 'border-orange-500/20' },
+                  { label: 'Avg Rating', value: `${(data?.reviewStats.avgRating ?? 0).toFixed(1)} ★`, icon: Star, color: 'text-yellow-600 dark:text-yellow-400', bg: 'from-yellow-500/20 to-amber-500/20', border: 'border-yellow-500/20' },
+                ].map((stat, i) => {
+                  const Icon = stat.icon;
+                  return (
+                    <motion.div key={stat.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}
+                      className={`bg-gradient-to-br ${stat.bg} border ${stat.border} rounded-2xl p-4 flex flex-col justify-between`}>
+                      <Icon className={`w-5 h-5 ${stat.color} mb-2`} />
+                      <div>
+                        <p className="font-display text-xl font-bold">{isLoading ? '—' : stat.value}</p>
+                        <p className="text-muted-foreground text-xs mt-0.5">{stat.label}</p>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {/* Today's Hourly Earnings Chart */}
           {data?.todayHourlyEarnings && data.todayHourlyEarnings.length > 0 && (

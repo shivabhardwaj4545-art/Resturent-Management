@@ -81,13 +81,23 @@ type Order = {
 const formatTime = (timeStr: string | null | undefined) => {
   if (!timeStr) return 'Pending';
   const date = new Date(timeStr);
-  const isToday = new Date().toDateString() === date.toDateString();
-  const timeOpt: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' };
-  if (isToday) {
-    return date.toLocaleTimeString('en-IN', timeOpt);
-  } else {
-    return `${date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} ${date.toLocaleTimeString('en-IN', timeOpt)}`;
-  }
+  if (isNaN(date.getTime())) return 'Pending';
+  return date.toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+};
+
+const formatAmount = (val: number | null | undefined) => {
+  const num = Number(val) || 0;
+  return num.toLocaleString('en-IN', {
+    minimumFractionDigits: num % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  });
 };
 
 export function OwnerOrdersPage() {
@@ -172,6 +182,7 @@ export function OwnerOrdersPage() {
       qc.invalidateQueries({ queryKey: ['owner-orders'] });
       qc.invalidateQueries({ queryKey: ['owner-dashboard'] });
       qc.invalidateQueries({ queryKey: ['owner-recent-orders'] });
+      qc.invalidateQueries({ queryKey: ['owner-analytics'] });
     },
     onError: () => toast.error('Failed to update payment status'),
   });
@@ -185,6 +196,7 @@ export function OwnerOrdersPage() {
       qc.invalidateQueries({ queryKey: ['owner-orders'] });
       qc.invalidateQueries({ queryKey: ['owner-dashboard'] });
       qc.invalidateQueries({ queryKey: ['owner-recent-orders'] });
+      qc.invalidateQueries({ queryKey: ['owner-analytics'] });
     },
     onError: () => toast.error('Failed to send payment notification'),
   });
@@ -308,13 +320,13 @@ export function OwnerOrdersPage() {
                         {order.items.length > 2 && ` +${order.items.length - 2} more`}
                       </p>
                     </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="font-bold">₹{order.total.toFixed(0)}</p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1 justify-end">
-                        <Clock className="w-3 h-3" />
-                        {new Date(order.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                    </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="font-bold">₹{formatAmount(order.total)}</p>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 justify-end">
+                          <Clock className="w-3 h-3" />
+                          {formatTime(order.createdAt)}
+                        </p>
+                      </div>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -347,7 +359,7 @@ export function OwnerOrdersPage() {
                                   <div className="flex-1">
                                     <span className="font-medium text-foreground">{item.menuItem.name}</span>
                                     <span className="text-xs text-muted-foreground ml-2">
-                                      ({item.quantity} × ₹{item.unitPrice || (item.subtotal / item.quantity).toFixed(0)})
+                                      ({item.quantity} × ₹{formatAmount(item.unitPrice || (item.subtotal / item.quantity))})
                                     </span>
                                     {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
                                       <div className="text-[11px] text-muted-foreground mt-0.5 ml-2">
@@ -355,7 +367,7 @@ export function OwnerOrdersPage() {
                                       </div>
                                     )}
                                   </div>
-                                  <span className="font-semibold text-foreground">₹{item.subtotal.toFixed(0)}</span>
+                                  <span className="font-semibold text-foreground">₹{formatAmount(item.subtotal)}</span>
                                 </div>
                               ))}
                             </div>
@@ -422,33 +434,33 @@ export function OwnerOrdersPage() {
                               <div className="space-y-2 text-xs text-muted-foreground">
                                 <div className="flex justify-between">
                                   <span>Subtotal</span>
-                                  <span className="text-foreground font-medium">₹{order.subtotal?.toFixed(2) ?? '0.00'}</span>
+                                  <span className="text-foreground font-medium">₹{formatAmount(order.subtotal)}</span>
                                 </div>
                                 <div className="flex justify-between">
                                   <span>GST ({process.env.NEXT_PUBLIC_GST_RATE ?? '18'}%)</span>
-                                  <span className="text-foreground font-medium">₹{order.gstAmount?.toFixed(2) ?? '0.00'}</span>
+                                  <span className="text-foreground font-medium">₹{formatAmount(order.gstAmount)}</span>
                                 </div>
                                 {order.deliveryFee > 0 && (
                                   <div className="flex justify-between">
                                     <span>Delivery Fee</span>
-                                    <span className="text-foreground font-medium">₹{order.deliveryFee.toFixed(2)}</span>
+                                    <span className="text-foreground font-medium">₹{formatAmount(order.deliveryFee)}</span>
                                   </div>
                                 )}
                                 {order.packagingFee > 0 && (
                                   <div className="flex justify-between">
                                     <span>Packaging Fee</span>
-                                    <span className="text-foreground font-medium">₹{order.packagingFee.toFixed(2)}</span>
+                                    <span className="text-foreground font-medium">₹{formatAmount(order.packagingFee)}</span>
                                   </div>
                                 )}
                                 {order.discount > 0 && (
                                   <div className="flex justify-between text-green-600 dark:text-green-400 font-medium">
                                     <span>Discount</span>
-                                    <span>-₹{order.discount.toFixed(2)}</span>
+                                    <span>-₹{formatAmount(order.discount)}</span>
                                   </div>
                                 )}
                                 <div className="flex justify-between text-foreground text-sm font-bold border-t border-border pt-2 mt-2">
                                   <span>Grand Total</span>
-                                  <span className="text-primary text-base font-extrabold">₹{order.total?.toFixed(2) ?? '0.00'}</span>
+                                  <span className="text-primary text-base font-extrabold">₹{formatAmount(order.total)}</span>
                                 </div>
                               </div>
                             </div>

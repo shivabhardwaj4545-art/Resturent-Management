@@ -370,7 +370,7 @@ export async function getDemandForecast(
     const topItemsRaw = await prisma.orderItem.groupBy({
       by: ['menuItemId'],
       where: {
-        order: { restaurantId, createdAt: { gte: thisMonth }, status: { not: 'CANCELLED' } },
+        order: { restaurantId, createdAt: { gte: thisMonth }, status: { not: 'CANCELLED' }, paymentStatus: 'PAID' },
       },
       _sum: { quantity: true, subtotal: true },
       orderBy: { _sum: { subtotal: 'desc' } },
@@ -390,7 +390,7 @@ export async function getDemandForecast(
     }));
 
     const currentMonthRevenue = await prisma.order.aggregate({
-      where: { restaurantId, createdAt: { gte: thisMonth }, status: { not: 'CANCELLED' } },
+      where: { restaurantId, createdAt: { gte: thisMonth }, status: { not: 'CANCELLED' }, paymentStatus: 'PAID' },
       _sum: { total: true },
     });
 

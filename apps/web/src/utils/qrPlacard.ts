@@ -1,6 +1,6 @@
 /**
- * Utility for generating printable/downloadable Table QR Placards
- * with Table Number and "Scan this QR to order food" text.
+ * Utility for generating printable/downloadable Table & Hotel Room QR Placards
+ * with Table/Room Number and "Scan this QR to order food / room service" text.
  */
 
 export interface PlacardConfig {
@@ -8,14 +8,28 @@ export interface PlacardConfig {
   tableNumber: string;
   qrCodeDataUrl: string;
   themeColor?: string;
+  locationType?: 'TABLE' | 'ROOM';
+}
+
+export function formatLocationBadgeText(tableNumber: string, locationType?: 'TABLE' | 'ROOM'): string {
+  const clean = tableNumber.trim();
+  if (!clean) return 'GENERAL MENU QR';
+
+  const isRoom = locationType === 'ROOM' || /^room\b/i.test(clean);
+  if (isRoom) {
+    const roomNum = clean.replace(/^room\s*/i, '').trim();
+    return roomNum ? `ROOM NO. ${roomNum.toUpperCase()}` : 'HOTEL ROOM QR';
+  }
+
+  return `TABLE NO. ${clean.toUpperCase()}`;
 }
 
 /**
- * Renders a high-resolution table placard canvas with restaurant name,
- * headline ("Scan this QR to order food"), QR code, and table number badge.
+ * Renders a high-resolution placard canvas with restaurant name,
+ * headline, QR code, and table/room number badge.
  */
 export function generatePlacardCanvas(config: PlacardConfig): Promise<HTMLCanvasElement> {
-  const { restaurantName, tableNumber, qrCodeDataUrl, themeColor = '#E85D04' } = config;
+  const { restaurantName, tableNumber, qrCodeDataUrl, themeColor = '#E85D04', locationType } = config;
 
   return new Promise((resolve, reject) => {
     const canvas = document.createElement('canvas');
@@ -77,10 +91,13 @@ export function generatePlacardCanvas(config: PlacardConfig): Promise<HTMLCanvas
       ctx.lineTo(canvas.width - 120, 190);
       ctx.stroke();
 
-      // 4. Headline Text: "SCAN THIS QR TO ORDER FOOD"
+      // 4. Headline Text
+      const isRoom = locationType === 'ROOM' || /^room\b/i.test(tableNumber.trim());
+      const headlineText = isRoom ? 'SCAN THIS QR FOR ROOM SERVICE' : 'SCAN THIS QR TO ORDER FOOD';
+
       ctx.fillStyle = '#ffffff';
-      ctx.font = '900 36px system-ui, -apple-system, sans-serif';
-      ctx.fillText('SCAN THIS QR TO ORDER FOOD', canvas.width / 2, 255);
+      ctx.font = '900 34px system-ui, -apple-system, sans-serif';
+      ctx.fillText(headlineText, canvas.width / 2, 255);
 
       ctx.fillStyle = '#a1a1aa';
       ctx.font = '500 20px system-ui, -apple-system, sans-serif';
@@ -91,7 +108,7 @@ export function generatePlacardCanvas(config: PlacardConfig): Promise<HTMLCanvas
       const qrBoxX = (canvas.width - qrBoxSize) / 2;
       const qrBoxY = 340;
 
-      // Box shadow / glow effect background
+      // Box background
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
       ctx.roundRect(qrBoxX, qrBoxY, qrBoxSize, qrBoxSize, 28);
@@ -107,12 +124,12 @@ export function generatePlacardCanvas(config: PlacardConfig): Promise<HTMLCanvas
         qrBoxSize - qrPadding * 2
       );
 
-      // 6. Table Number Badge / Text
-      const tableText = tableNumber.trim() ? `TABLE NO. ${tableNumber.trim().toUpperCase()}` : 'GENERAL MENU QR';
+      // 6. Location Badge / Text
+      const badgeText = formatLocationBadgeText(tableNumber, locationType);
       
       const badgeY = 850;
-      ctx.font = 'bold 36px system-ui, -apple-system, sans-serif';
-      const textWidth = ctx.measureText(tableText).width;
+      ctx.font = 'bold 34px system-ui, -apple-system, sans-serif';
+      const textWidth = ctx.measureText(badgeText).width;
       const badgePaddingX = 40;
       const badgeHeight = 70;
       const badgeWidth = textWidth + badgePaddingX * 2;
@@ -127,7 +144,7 @@ export function generatePlacardCanvas(config: PlacardConfig): Promise<HTMLCanvas
       // Badge text
       ctx.fillStyle = '#ffffff';
       ctx.textAlign = 'center';
-      ctx.fillText(tableText, canvas.width / 2, badgeY + 48);
+      ctx.fillText(badgeText, canvas.width / 2, badgeY + 48);
 
       // 7. Footer text
       ctx.fillStyle = '#71717a';
@@ -148,25 +165,30 @@ export function generatePlacardCanvas(config: PlacardConfig): Promise<HTMLCanvas
 export async function downloadPlacardImage(config: PlacardConfig): Promise<void> {
   const canvas = await generatePlacardCanvas(config);
   const dataUrl = canvas.toDataURL('image/png');
-  const tableSuffix = config.tableNumber.trim() ? `-table-${config.tableNumber.trim()}` : '-general';
+  const isRoom = config.locationType === 'ROOM' || /^room\b/i.test(config.tableNumber.trim());
+  const locTypeStr = isRoom ? 'room' : 'table';
+  const cleanLoc = config.tableNumber.trim().replace(/^room\s*/i, '');
+  const locSuffix = cleanLoc ? `-${locTypeStr}-${cleanLoc}` : '-general';
   
   const link = document.createElement('a');
   link.href = dataUrl;
-  link.download = `${config.restaurantName.toLowerCase().replace(/[^a-z0-9]/g, '-')}${tableSuffix}-qr-placard.png`;
+  link.download = `${config.restaurantName.toLowerCase().replace(/[^a-z0-9]/g, '-')}${locSuffix}-qr-placard.png`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
 }
 
 /**
- * Triggers clean printable HTML view of table placard with Table No & "Scan this QR to order food"
+ * Triggers clean printable HTML view of table or room placard
  */
 export function printPlacard(config: PlacardConfig): void {
-  const tableText = config.tableNumber.trim() ? `TABLE NO. ${config.tableNumber.trim().toUpperCase()}` : 'GENERAL MENU QR';
+  const badgeText = formatLocationBadgeText(config.tableNumber, config.locationType);
+  const isRoom = config.locationType === 'ROOM' || /^room\b/i.test(config.tableNumber.trim());
+  const headlineText = isRoom ? 'SCAN THIS QR FOR ROOM SERVICE' : 'SCAN THIS QR TO ORDER FOOD';
   
   const printWindow = window.open('', '_blank');
   if (!printWindow) {
-    alert('Please allow pop-ups to print table placard.');
+    alert('Please allow pop-ups to print placard.');
     return;
   }
 
@@ -174,7 +196,7 @@ export function printPlacard(config: PlacardConfig): void {
     <!DOCTYPE html>
     <html>
     <head>
-      <title>QR Placard - ${tableText}</title>
+      <title>QR Placard - ${badgeText}</title>
       <style>
         @page {
           size: A5 portrait;
@@ -229,7 +251,7 @@ export function printPlacard(config: PlacardConfig): void {
           text-transform: uppercase;
         }
         .scan-title {
-          font-size: 16pt;
+          font-size: 15pt;
           font-weight: 900;
           color: #ffffff;
           margin: 2mm 0;
@@ -256,7 +278,7 @@ export function printPlacard(config: PlacardConfig): void {
         .table-badge {
           background: ${config.themeColor || '#E85D04'};
           color: white;
-          font-size: 18pt;
+          font-size: 17pt;
           font-weight: 800;
           padding: 4mm 10mm;
           border-radius: 20mm;
@@ -276,7 +298,7 @@ export function printPlacard(config: PlacardConfig): void {
         <div>
           <div class="subhead">WELCOME TO</div>
           <div class="rest-name">${config.restaurantName}</div>
-          <div class="scan-title">SCAN THIS QR TO ORDER FOOD</div>
+          <div class="scan-title">${headlineText}</div>
           <div class="scan-desc">Point your smartphone camera to view menu & place order</div>
         </div>
 
@@ -285,7 +307,7 @@ export function printPlacard(config: PlacardConfig): void {
         </div>
 
         <div>
-          <div class="table-badge">${tableText}</div>
+          <div class="table-badge">${badgeText}</div>
           <div class="footer-note" style="margin-top: 6mm;">No app download needed • Instant digital menu & ordering</div>
         </div>
       </div>

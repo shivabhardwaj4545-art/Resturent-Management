@@ -8,6 +8,7 @@ import {
   sendBroadcastEmail,
   sendRestaurantWelcomeEmail,
   sendRestaurantApprovalEmail,
+  sendCredentialsUpdatedEmail,
 } from '../services/email.service';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { logger } from '../utils/logger';
@@ -123,9 +124,15 @@ export async function approveRestaurant(req: AuthenticatedRequest, res: Response
 export async function updateRestaurant(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const id = req.params.id as string;
-    const { name, slug, phone, email, address, city, isApproved, isSuspended, isOpen } = req.body;
+    const {
+      name, slug, phone, email, address, city, isApproved, isSuspended, isOpen,
+      ownerEmail, ownerPassword,
+    } = req.body;
 
-    const existing = await prisma.restaurant.findFirst({ where: { id, deletedAt: null } });
+    const existing = await prisma.restaurant.findFirst({
+      where: { id, deletedAt: null },
+      include: { owner: true },
+    });
     if (!existing) throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
 
     if (slug && slug !== existing.slug) {
@@ -146,11 +153,75 @@ export async function updateRestaurant(req: AuthenticatedRequest, res: Response,
         ...(typeof isSuspended === 'boolean' && { isSuspended }),
         ...(typeof isOpen === 'boolean' && { isOpen }),
       },
+      include: { owner: true },
     });
 
-    res.json({ success: true, data: { restaurant: updated }, message: 'Restaurant details updated successfully' });
+    // Handle Owner Account Credentials Update
+    if (existing.ownerId && existing.owner) {
+      let emailUpdated = false;
+      let passwordUpdated = false;
+      let normalizedOwnerEmail: string | undefined = undefined;
+
+      if (ownerEmail && typeof ownerEmail === 'string' && ownerEmail.trim().length > 0) {
+        const cleanEmail = ownerEmail.trim().toLowerCase();
+        const currentOwnerEmail = existing.owner.email.includes(':')
+          ? existing.owner.email.split(':')[1].trim().toLowerCase()
+          : existing.owner.email.trim().toLowerCase();
+
+        if (cleanEmail !== currentOwnerEmail) {
+          const emailConflict = await prisma.user.findFirst({
+            where: {
+              OR: [
+                { email: cleanEmail },
+                { email: { endsWith: `:${cleanEmail}` } },
+              ],
+              id: { not: existing.ownerId },
+            },
+          });
+          if (emailConflict) {
+            throw new AppError('The specified owner email is already in use by another user account.', 400, 'EMAIL_EXISTS');
+          }
+          normalizedOwnerEmail = cleanEmail;
+          emailUpdated = true;
+        }
+      }
+
+      let passwordHash: string | undefined = undefined;
+      if (ownerPassword && typeof ownerPassword === 'string' && ownerPassword.trim().length > 0) {
+        passwordHash = await bcrypt.hash(ownerPassword.trim(), 12);
+        passwordUpdated = true;
+      }
+
+      if (emailUpdated || passwordUpdated) {
+        await prisma.user.update({
+          where: { id: existing.ownerId },
+          data: {
+            ...(emailUpdated && normalizedOwnerEmail && { email: normalizedOwnerEmail }),
+            ...(passwordUpdated && passwordHash && { passwordHash }),
+          },
+        });
+
+        const targetEmail = normalizedOwnerEmail || existing.owner.email;
+        sendCredentialsUpdatedEmail(
+          targetEmail,
+          existing.owner.name,
+          updated.name,
+          {
+            emailUpdated,
+            newEmail: emailUpdated ? normalizedOwnerEmail : undefined,
+            passwordUpdated,
+            newPassword: passwordUpdated ? ownerPassword.trim() : undefined,
+          }
+        ).catch((err) => {
+          logger.error(`Failed to send credentials update email to ${targetEmail}:`, err);
+        });
+      }
+    }
+
+    res.json({ success: true, data: { restaurant: updated }, message: 'Restaurant details and owner credentials updated successfully' });
   } catch (error) { next(error); }
 }
+
 
 export async function suspendRestaurant(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -325,14 +396,14 @@ export async function getGlobalAnalytics(req: AuthenticatedRequest, res: Respons
     const [totalOrders, totalRevenue, totalUsers, totalRestaurants, topRestaurants, customerGrowth] = await Promise.all([
       prisma.order.count({ where: { createdAt: { gte: startDate }, status: { not: 'CANCELLED' } } }),
       prisma.order.aggregate({
-        where: { createdAt: { gte: startDate }, status: { not: 'CANCELLED' } },
+        where: { createdAt: { gte: startDate }, status: { not: 'CANCELLED' }, paymentStatus: 'PAID' },
         _sum: { total: true },
       }),
       prisma.user.count({ where: { role: 'CUSTOMER', deletedAt: null } }),
       prisma.restaurant.count({ where: { deletedAt: null } }),
       prisma.order.groupBy({
         by: ['restaurantId'],
-        where: { createdAt: { gte: startDate }, status: { not: 'CANCELLED' } },
+        where: { createdAt: { gte: startDate }, status: { not: 'CANCELLED' }, paymentStatus: 'PAID' },
         _sum: { total: true },
         _count: { id: true },
         orderBy: { _sum: { total: 'desc' } },
@@ -895,6 +966,7 @@ export async function getAdminReviews(
 // ── Loyalty Settings Management ──────────────────────────────
 
 export const DEFAULT_LOYALTY_SETTINGS = {
+  enabled: true,
   pointsPerSpendRupees: 10,
   pointsPerDiscountRupee: 50,
   minPointsToRedeem: 50,
@@ -923,6 +995,7 @@ export async function getLoyaltySettings(req: Request, res: Response, next: Next
 export async function updateLoyaltySettings(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const {
+      enabled,
       pointsPerSpendRupees,
       pointsPerDiscountRupee,
       minPointsToRedeem,
@@ -939,6 +1012,7 @@ export async function updateLoyaltySettings(req: AuthenticatedRequest, res: Resp
 
     const updatedValue = {
       ...currentVal,
+      ...(enabled !== undefined && { enabled: Boolean(enabled) }),
       ...(pointsPerSpendRupees !== undefined && { pointsPerSpendRupees: Number(pointsPerSpendRupees) || 10 }),
       ...(pointsPerDiscountRupee !== undefined && { pointsPerDiscountRupee: Number(pointsPerDiscountRupee) || 50 }),
       ...(minPointsToRedeem !== undefined && { minPointsToRedeem: Number(minPointsToRedeem) || 50 }),

@@ -372,13 +372,15 @@ export async function placeOrder(
       where: { key: 'loyalty_settings' },
     });
     const loyaltyVal = (loyaltySetting?.value as Record<string, any>) ?? {};
+    const loyaltyEnabled = loyaltyVal.enabled !== false;
     const pointsPerDiscountRupee = Number(loyaltyVal.pointsPerDiscountRupee) || 50;
+    const pointsPerSpendRupees = Number(loyaltyVal.pointsPerSpendRupees) || 10;
 
     let pointsDeduction = 0;
     let pointsValue = 0;
     let finalTotal = total;
 
-    if (usePoints && user && user.loyaltyPoints > 0) {
+    if (loyaltyEnabled && usePoints && user && user.loyaltyPoints > 0) {
       const maxPointsVal = user.loyaltyPoints / pointsPerDiscountRupee;
       const pointsVal = Math.min(maxPointsVal, total);
       pointsDeduction = Math.floor(pointsVal * pointsPerDiscountRupee);
@@ -443,7 +445,7 @@ export async function placeOrder(
       }
 
       // Deduct loyalty points redeemed
-      if (pointsDeduction > 0) {
+      if (loyaltyEnabled && pointsDeduction > 0) {
         await tx.user.update({
           where: { id: userId },
           data: { loyaltyPoints: { decrement: pointsDeduction } },
@@ -458,9 +460,9 @@ export async function placeOrder(
         });
       }
 
-      // Award loyalty points (1 point per ₹10 spent on final cash paid)
-      const pointsEarned = Math.floor(finalTotal / 10) * LOYALTY_POINTS_PER_RUPEE;
-      if (pointsEarned > 0 && paymentMethod !== 'COD' && paymentMethod !== 'PAY_TO_WAITER') {
+      // Award loyalty points (based on pointsPerSpendRupees)
+      const pointsEarned = loyaltyEnabled ? Math.floor(finalTotal / pointsPerSpendRupees) : 0;
+      if (loyaltyEnabled && pointsEarned > 0 && paymentMethod !== 'COD' && paymentMethod !== 'PAY_TO_WAITER') {
         await tx.user.update({
           where: { id: userId },
           data: { loyaltyPoints: { increment: pointsEarned } },

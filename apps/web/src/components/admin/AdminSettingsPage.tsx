@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Settings, Store, Users, BarChart3, LayoutDashboard, LogOut, Menu,
-  Shield, Save, Percent, DollarSign, Plus, Trash2, CreditCard, Ticket, HandCoins
+  Shield, Save, Percent, DollarSign, Plus, Trash2, CreditCard, Ticket, HandCoins, AlertTriangle
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { AdminSidebar } from '@/components/admin/AdminSidebar';
@@ -43,6 +43,7 @@ type SubscriptionPlan = {
 };
 
 type LoyaltySettings = {
+  enabled: boolean;
   pointsPerSpendRupees: number;
   pointsPerDiscountRupee: number;
   minPointsToRedeem: number;
@@ -62,6 +63,7 @@ export function AdminSettingsPage() {
   });
 
   const [loyalty, setLoyalty] = useState<LoyaltySettings>({
+    enabled: true,
     pointsPerSpendRupees: 10,
     pointsPerDiscountRupee: 50,
     minPointsToRedeem: 50,
@@ -92,6 +94,7 @@ export function AdminSettingsPage() {
       const res = await api.get('/admin/loyalty-settings');
       const s = res.data.data?.settings || {};
       const l: LoyaltySettings = {
+        enabled: s.enabled !== undefined ? Boolean(s.enabled) : true,
         pointsPerSpendRupees: Number(s.pointsPerSpendRupees) || 10,
         pointsPerDiscountRupee: Number(s.pointsPerDiscountRupee) || 50,
         minPointsToRedeem: Number(s.minPointsToRedeem) || 50,
@@ -186,19 +189,50 @@ export function AdminSettingsPage() {
 
           {/* Customer Loyalty Program Configuration */}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-card border border-border rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 pb-4 border-b border-border">
               <div>
                 <h2 className="font-display font-semibold text-lg flex items-center gap-2">
                   <span className="text-amber-500">⭐</span> Customer Loyalty Program Rules & Pricing
                 </h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Calculate and configure points conversion ratios, earning conditions, and customer modal rules.
+                  Calculate and configure points conversion ratios, earning conditions, and enable/disable customer rules globally.
                 </p>
               </div>
-              <div className="px-3 py-1.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20 text-xs font-semibold">
-                Live Pricing Rules
+              
+              {/* Enable / Disable Master Toggle */}
+              <div className="flex items-center gap-3 self-start sm:self-auto bg-muted/40 p-2 px-3.5 rounded-2xl border border-border">
+                <div className="text-right">
+                  <span className="text-xs font-bold block text-foreground">Enable Loyalty Program</span>
+                  <span className={`text-[10px] font-semibold ${loyalty.enabled ? 'text-emerald-500 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
+                    {loyalty.enabled ? 'Active Globally' : 'Disabled Globally'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLoyalty(l => ({ ...l, enabled: !l.enabled }))}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    loyalty.enabled ? 'bg-amber-500' : 'bg-muted-foreground/30'
+                  }`}
+                  title={loyalty.enabled ? 'Click to Disable Loyalty Program' : 'Click to Enable Loyalty Program'}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                      loyalty.enabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
               </div>
             </div>
+
+            {!loyalty.enabled && (
+              <div className="mb-5 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-3 text-amber-600 dark:text-amber-400 text-xs">
+                <AlertTriangle className="w-5 h-5 shrink-0 text-amber-500" />
+                <div>
+                  <span className="font-bold block text-sm">Loyalty Program is currently Disabled</span>
+                  Customers cannot earn or redeem loyalty points on checkout across the entire application while disabled.
+                </div>
+              </div>
+            )}
 
             <div className="space-y-5">
               {/* Numerical Pricing & Ratio Controls */}

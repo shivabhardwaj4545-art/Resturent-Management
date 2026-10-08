@@ -39,7 +39,7 @@ export default function AuthCallbackClient() {
         } else if (user.role === 'RESTAURANT_OWNER') {
           router.push('/owner/dashboard');
         } else {
-          router.push('/');
+          router.push('/scan-qr');
         }
       } catch (error) {
         console.error('Error fetching user profile:', error);

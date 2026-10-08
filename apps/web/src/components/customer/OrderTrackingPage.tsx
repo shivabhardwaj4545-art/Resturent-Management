@@ -411,8 +411,13 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
         <div className="max-w-lg mx-auto">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-muted-foreground text-sm mb-1">
-                Order #{order.id.slice(-8).toUpperCase()}
+              <p className="text-muted-foreground text-xs mb-1 flex items-center gap-1.5 flex-wrap">
+                <span>Order #{order.id.slice(-8).toUpperCase()}</span>
+                <span>•</span>
+                <span className="flex items-center gap-1 font-medium">
+                  <Clock className="w-3 h-3 text-orange-400" />
+                  {new Date(order.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}
+                </span>
               </p>
               <h1 className="font-display text-2xl font-bold">{order.restaurant.name}</h1>
             </div>

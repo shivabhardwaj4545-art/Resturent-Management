@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import {
   Settings, UtensilsCrossed, LayoutDashboard, ShoppingBag, Tag, BarChart3, LogOut,
   Menu, Save, Globe, Phone, MapPin, Clock, Palette, QrCode, Download, CreditCard, Banknote, Building2, Smartphone, Star, Printer,
-  Upload, Trash2, CheckCircle2, Sparkles, RefreshCw, FileImage, Info
+  Upload, Trash2, CheckCircle2, Sparkles, RefreshCw, FileImage, Info, Bed, Power, Ban, Plus, Check
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -18,7 +18,7 @@ import { OwnerSidebar } from '@/components/owner/OwnerSidebar';
 import { getImageUrl } from '@/lib/image';
 import { DAYS_OF_WEEK } from '@/utils/operatingHours';
 import QRCode from 'qrcode';
-import { downloadPlacardImage, printPlacard } from '@/utils/qrPlacard';
+import { downloadPlacardImage, printPlacard, formatLocationBadgeText } from '@/utils/qrPlacard';
 import { generateUniqueTableCode } from '@/utils/tableCode';
 
 const NAV_ITEMS = [
@@ -67,6 +67,7 @@ type Restaurant = {
   bankAccountNumber: string | null;
   bankIfsc: string | null;
   bankAccountHolder: string | null;
+  qrSettings?: { enabled?: boolean; disabledLocations?: string[]; customLocations?: string[] } | null;
 };
 
 export function OwnerSettingsPage() {
@@ -84,6 +85,65 @@ export function OwnerSettingsPage() {
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
   const [bannerPreviewUrl, setBannerPreviewUrl] = useState<string | null>(null);
   const [tableNumber, setTableNumber] = useState('');
+  const [qrMode, setQrMode] = useState<'TABLE' | 'ROOM'>('TABLE');
+  const [roomNumber, setRoomNumber] = useState('');
+  const [newCustomLocation, setNewCustomLocation] = useState('');
+  const [qrSettings, setQrSettings] = useState<{ enabled: boolean; disabledLocations: string[]; customLocations: string[] }>({
+    enabled: true,
+    disabledLocations: [],
+    customLocations: [],
+  });
+
+  const handleAddCustomLocation = () => {
+    const val = newCustomLocation.trim();
+    if (!val) {
+      toast.error('Please enter a location name (e.g. Room 305, Pool Bar)');
+      return;
+    }
+
+    const currentCustoms = qrSettings.customLocations || [];
+    const exists = currentCustoms.some(
+      (loc) => loc.trim().toLowerCase() === val.toLowerCase()
+    );
+
+    if (exists) {
+      toast.error(`Location "${val}" already exists!`);
+      return;
+    }
+
+    const updatedCustoms = [...currentCustoms, val];
+    setQrSettings((prev) => ({
+      ...prev,
+      customLocations: updatedCustoms,
+    }));
+
+    setNewCustomLocation('');
+    toast.success(`Custom location "${val}" added! Click "Save Settings" to save.`);
+
+    if (val.toLowerCase().startsWith('room') || val.toLowerCase().includes('suite') || val.toLowerCase().includes('bed')) {
+      setQrMode('ROOM');
+      setRoomNumber(val);
+    } else {
+      setQrMode('TABLE');
+      setTableNumber(val);
+    }
+  };
+
+  const handleRemoveCustomLocation = (locToRemove: string) => {
+    const updatedCustoms = (qrSettings.customLocations || []).filter(
+      (l) => l.trim().toLowerCase() !== locToRemove.trim().toLowerCase()
+    );
+    const updatedDisabled = (qrSettings.disabledLocations || []).filter(
+      (l) => l.trim().toLowerCase() !== locToRemove.trim().toLowerCase()
+    );
+    setQrSettings((prev) => ({
+      ...prev,
+      customLocations: updatedCustoms,
+      disabledLocations: updatedDisabled,
+    }));
+    toast.success(`Removed location "${locToRemove}"`);
+  };
+
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
   const [operatingHours, setOperatingHours] = useState<OperatingHours>({
     monday: { open: '11:00', close: '23:00', closed: false },
@@ -159,6 +219,13 @@ export function OwnerSettingsPage() {
       if (data.operatingHours) {
         setOperatingHours(data.operatingHours);
       }
+      if (data.qrSettings) {
+        setQrSettings({
+          enabled: data.qrSettings.enabled ?? true,
+          disabledLocations: Array.isArray(data.qrSettings.disabledLocations) ? data.qrSettings.disabledLocations : [],
+          customLocations: Array.isArray(data.qrSettings.customLocations) ? data.qrSettings.customLocations : [],
+        });
+      }
     }
   }, [data]);
 
@@ -187,6 +254,7 @@ export function OwnerSettingsPage() {
         bankAccountNumber: form.bankAccountNumber ?? null,
         bankIfsc: form.bankIfsc ?? null,
         bankAccountHolder: form.bankAccountHolder ?? null,
+        qrSettings: qrSettings,
       };
       const res = await api.put('/owner/restaurant', payload);
       return res.data.data.restaurant;
@@ -197,8 +265,16 @@ export function OwnerSettingsPage() {
         if (updatedRestaurant.operatingHours) {
           setOperatingHours(updatedRestaurant.operatingHours);
         }
+        if (updatedRestaurant.qrSettings) {
+          setQrSettings({
+            enabled: updatedRestaurant.qrSettings.enabled ?? true,
+            disabledLocations: Array.isArray(updatedRestaurant.qrSettings.disabledLocations) ? updatedRestaurant.qrSettings.disabledLocations : [],
+            customLocations: Array.isArray(updatedRestaurant.qrSettings.customLocations) ? updatedRestaurant.qrSettings.customLocations : [],
+          });
+        }
         formInitialized.current = true;
       }
+
       if (updatedRestaurant?.slug && updatedRestaurant.slug !== data?.slug) {
         toast.success(
           `✅ URL updated! New customer link: ${window.location.origin}/r/${updatedRestaurant.slug}`,
@@ -312,34 +388,16 @@ export function OwnerSettingsPage() {
     try { await api.post('/auth/logout'); } finally { logout(); router.push('/login'); }
   };
 
-  const [tableToken, setTableToken] = useState('');
+  const activeLocationStr = qrMode === 'ROOM'
+    ? (roomNumber.trim() ? (roomNumber.trim().toLowerCase().startsWith('room') ? roomNumber.trim() : `Room ${roomNumber.trim()}`) : '')
+    : tableNumber.trim();
 
-  useEffect(() => {
-    const tableNum = tableNumber.trim();
-    if (!tableNum) {
-      setTableToken('');
-      return;
-    }
-
-    const delayDebounce = setTimeout(async () => {
-      try {
-        const response = await api.get(`/owner/restaurant/sign-table?table=${encodeURIComponent(tableNum)}`);
-        setTableToken(response.data.data.signature);
-      } catch {
-        console.error('Failed to generate table token.');
-      }
-    }, 450);
-
-    return () => clearTimeout(delayDebounce);
-  }, [tableNumber]);
-
-  // Unique, non-predictable, restaurant-isolated, permanent table code
-  const uniqueTableCode = data?.slug && tableNumber.trim()
-    ? generateUniqueTableCode(data.slug, tableNumber.trim())
+  // Unique, non-predictable, restaurant-isolated, permanent table/room code
+  const uniqueTableCode = data?.slug && activeLocationStr
+    ? generateUniqueTableCode(data.slug, activeLocationStr)
     : '';
 
-  // Clean, obfuscated unique table QR code URL (e.g. /r/burger-hub?t=MTo3MWIyYzNkNA)
-  // Hides raw table numbers, prevents table number guessing, and stays 100% permanent per restaurant
+  // Clean, obfuscated unique location QR code URL
   const qrUrl = data
     ? `${typeof window !== 'undefined' ? window.location.origin : ''}/r/${data.slug}${uniqueTableCode ? `?t=${encodeURIComponent(uniqueTableCode)}` : ''}`
     : '';
@@ -819,80 +877,181 @@ export function OwnerSettingsPage() {
                 </div>
               </motion.div>
 
-              {/* QR Code Builder */}
+              {/* QR Code Builder & Room Service Generator */}
               {data && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.2 }}
-                  className="bg-card border border-border rounded-2xl p-6"
+                  className="bg-card border border-border rounded-2xl p-6 space-y-6"
                 >
-                  <div className="flex items-center justify-between mb-5">
-                    <h2 className="font-display font-semibold flex items-center gap-2">
-                      <QrCode className="w-5 h-5 text-primary" />
-                      QR Code Generator
-                    </h2>
-                    <span className="text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-lg">
-                      Local Generator
+                  <div className="flex items-center justify-between border-b border-border pb-4">
+                    <div>
+                      <h2 className="font-display font-semibold flex items-center gap-2 text-lg">
+                        <QrCode className="w-5 h-5 text-primary" />
+                        QR Code Generator (Tables & Hotel Rooms)
+                      </h2>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Generate location-specific QR codes for Dine-In Tables or Hotel Room Service.
+                      </p>
+                    </div>
+                    <span className="text-xs font-semibold text-emerald-500 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
+                      Live Generator
                     </span>
+                  </div>
+
+                  {/* Mode Switcher: Dine-In Table vs Hotel Room */}
+                  <div className="flex bg-muted/40 p-1 rounded-xl border border-border max-w-md">
+                    <button
+                      type="button"
+                      onClick={() => setQrMode('TABLE')}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
+                        qrMode === 'TABLE'
+                          ? 'bg-primary text-white shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <UtensilsCrossed className="w-3.5 h-3.5" />
+                      Dine-In Table QR
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQrMode('ROOM')}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
+                        qrMode === 'ROOM'
+                          ? 'bg-primary text-white shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Bed className="w-3.5 h-3.5" />
+                      Hotel Room QR
+                    </button>
                   </div>
 
                   <div className="grid md:grid-cols-5 gap-6 items-start">
                     {/* Customizer Panel */}
                     <div className="md:col-span-3 space-y-4">
-                      <p className="text-sm text-muted-foreground leading-relaxed">
-                        Generate table-specific QR codes to automatically pre-fill table numbers for your customers during checkout.
-                      </p>
+                      {qrMode === 'TABLE' ? (
+                        <>
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-semibold text-muted-foreground block">
+                              Table Number (Optional)
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g. 5, 12, A4 (leave empty for general menu)"
+                              value={tableNumber}
+                              onChange={(e) => setTableNumber(e.target.value)}
+                              className="w-full px-3.5 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground font-medium"
+                            />
+                          </div>
 
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-muted-foreground block">
-                          Table Number (Optional)
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. 5, 12, A4 (leave empty for general menu)"
-                          value={tableNumber}
-                          onChange={(e) => setTableNumber(e.target.value)}
-                          className="w-full px-3.5 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground font-medium"
-                        />
-                      </div>
+                          {/* Quick Table Presets */}
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-semibold text-muted-foreground block">
+                              Quick Table Presets
+                            </label>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                onClick={() => setTableNumber('')}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                                  tableNumber === ''
+                                    ? 'bg-primary border-primary text-white shadow-sm'
+                                    : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
+                                }`}
+                              >
+                                General Menu
+                              </button>
+                              {['1', '2', '3', '4', '5', '10'].map((num) => (
+                                <button
+                                  key={num}
+                                  onClick={() => setTableNumber(num)}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                                    tableNumber === num
+                                      ? 'bg-primary border-primary text-white shadow-sm'
+                                      : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
+                                  }`}
+                                >
+                                  Table {num}
+                                </button>
+                              ))}
+                              {(qrSettings.customLocations || [])
+                                .filter((loc) => !loc.toLowerCase().startsWith('room') && !loc.toLowerCase().includes('suite'))
+                                .map((loc) => (
+                                  <button
+                                    key={loc}
+                                    onClick={() => setTableNumber(loc)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                                      tableNumber === loc
+                                        ? 'bg-primary border-primary text-white shadow-sm'
+                                        : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
+                                    }`}
+                                  >
+                                    {loc}
+                                  </button>
+                                ))}
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-semibold text-muted-foreground block flex items-center gap-1.5">
+                              <Bed className="w-3.5 h-3.5 text-primary" /> Hotel Room Number / Suite
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g. 101, 102, 201, Executive Suite A"
+                              value={roomNumber}
+                              onChange={(e) => setRoomNumber(e.target.value)}
+                              className="w-full px-3.5 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground font-medium"
+                            />
+                          </div>
 
-                      {/* Quick Presets */}
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-muted-foreground block">
-                          Quick Table Presets
-                        </label>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            onClick={() => setTableNumber('')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                              tableNumber === ''
-                                ? 'bg-primary border-primary text-white shadow-sm'
-                                : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
-                            }`}
-                          >
-                            General
-                          </button>
-                          {['1', '2', '3', '4', '5', '10'].map((num) => (
-                            <button
-                              key={num}
-                              onClick={() => setTableNumber(num)}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                                tableNumber === num
-                                  ? 'bg-primary border-primary text-white shadow-sm'
-                                  : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
-                              }`}
-                            >
-                              Table {num}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                          {/* Quick Room Presets */}
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-semibold text-muted-foreground block">
+                              Quick Hotel Room Presets
+                            </label>
+                            <div className="flex flex-wrap gap-2">
+                              {['101', '102', '103', '104', '201', '202', '301'].map((rm) => (
+                                <button
+                                  key={rm}
+                                  onClick={() => setRoomNumber(rm)}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                                    roomNumber === rm || roomNumber === `Room ${rm}`
+                                      ? 'bg-primary border-primary text-white shadow-sm'
+                                      : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
+                                  }`}
+                                >
+                                  Room {rm}
+                                </button>
+                              ))}
+                              {(qrSettings.customLocations || [])
+                                .filter((loc) => loc.toLowerCase().startsWith('room') || loc.toLowerCase().includes('suite') || loc.toLowerCase().includes('bed'))
+                                .map((loc) => (
+                                  <button
+                                    key={loc}
+                                    onClick={() => setRoomNumber(loc)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                                      roomNumber === loc
+                                        ? 'bg-primary border-primary text-white shadow-sm'
+                                        : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
+                                    }`}
+                                  >
+                                    {loc}
+                                  </button>
+                                ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
+
 
                       {/* QR Target Link */}
                       <div className="space-y-1">
                         <label className="text-xs font-semibold text-muted-foreground block">
-                          Target Link
+                          Target QR Link URL
                         </label>
                         <p className="text-[11px] font-mono bg-muted/50 border border-border/80 rounded-xl px-3 py-2.5 break-all text-foreground select-all">
                           {qrUrl}
@@ -906,7 +1065,7 @@ export function OwnerSettingsPage() {
                           target="_blank"
                           className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-muted hover:bg-muted/70 rounded-xl text-sm font-semibold transition-colors text-foreground"
                         >
-                          <Globe className="w-4 h-4" /> Preview Menu
+                          <Globe className="w-4 h-4" /> Preview Menu Link
                         </Link>
 
                         {qrCodeDataUrl && (
@@ -916,15 +1075,16 @@ export function OwnerSettingsPage() {
                               onClick={() => {
                                 downloadPlacardImage({
                                   restaurantName: data.name,
-                                  tableNumber,
+                                  tableNumber: activeLocationStr,
                                   qrCodeDataUrl,
                                   themeColor: form.themeColor || '#E85D04',
+                                  locationType: qrMode,
                                 });
-                                toast.success('Table QR Placard downloaded successfully!');
+                                toast.success(`${qrMode === 'ROOM' ? 'Room' : 'Table'} QR Placard downloaded successfully!`);
                               }}
                               className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-white hover:bg-primary/95 rounded-xl text-sm font-semibold shadow-md transition-colors"
                             >
-                              <Download className="w-4 h-4" /> Download Table Placard (PNG)
+                              <Download className="w-4 h-4" /> Download Placard (PNG)
                             </button>
 
                             <button
@@ -932,9 +1092,10 @@ export function OwnerSettingsPage() {
                               onClick={() => {
                                 printPlacard({
                                   restaurantName: data.name,
-                                  tableNumber,
+                                  tableNumber: activeLocationStr,
                                   qrCodeDataUrl,
                                   themeColor: form.themeColor || '#E85D04',
+                                  locationType: qrMode,
                                 });
                               }}
                               className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-xl text-sm font-semibold border border-border transition-colors"
@@ -944,10 +1105,10 @@ export function OwnerSettingsPage() {
 
                             <a
                               href={qrCodeDataUrl}
-                              download={`${data.slug}${tableNumber.trim() ? `-table-${tableNumber.trim()}` : ''}-qr.png`}
+                              download={`${data.slug}${activeLocationStr ? `-${activeLocationStr.toLowerCase().replace(/[^a-z0-9]/g, '-')}` : ''}-qr.png`}
                               className="inline-flex items-center justify-center gap-2 px-3.5 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-xl font-medium transition-colors"
                             >
-                              <Download className="w-3.5 h-3.5" /> QR Code Only
+                              <Download className="w-3.5 h-3.5" /> QR Code Image Only
                             </a>
                           </>
                         )}
@@ -956,18 +1117,18 @@ export function OwnerSettingsPage() {
 
                     {/* Placard Preview Panel */}
                     <div className="md:col-span-2 flex flex-col items-center justify-center">
-                      <div className="flex flex-col items-center p-5 bg-zinc-950 dark:bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-[230px] shadow-2xl text-center text-white relative overflow-hidden">
+                      <div className="flex flex-col items-center p-5 bg-zinc-950 dark:bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-[240px] shadow-2xl text-center text-white relative overflow-hidden">
                         <div className="absolute inset-0 bg-gradient-to-b from-orange-500/10 via-transparent to-transparent pointer-events-none" />
                         
                         <span className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 mb-1">
                           Welcome To
                         </span>
-                        <h4 className="text-sm font-extrabold text-orange-500 truncate max-w-[190px] mb-2 uppercase">
+                        <h4 className="text-sm font-extrabold text-orange-500 truncate max-w-[200px] mb-2 uppercase">
                           {data.name}
                         </h4>
 
                         <div className="bg-orange-500/20 text-orange-400 text-[10px] font-black uppercase px-2.5 py-1 rounded-md mb-3 border border-orange-500/30 tracking-wide">
-                          Scan this QR to order food
+                          {qrMode === 'ROOM' ? 'SCAN THIS QR FOR ROOM SERVICE' : 'SCAN THIS QR TO ORDER FOOD'}
                         </div>
 
                         <div className="bg-white p-3 rounded-xl shadow-inner mb-4 flex items-center justify-center">
@@ -984,14 +1145,158 @@ export function OwnerSettingsPage() {
                           )}
                         </div>
 
-                        <span className="text-xs font-bold bg-orange-500 text-white px-4 py-1.5 rounded-full shadow-md">
-                          {tableNumber.trim() ? `TABLE NO. ${tableNumber.trim().toUpperCase()}` : 'GENERAL MENU QR'}
+                        <span className="text-xs font-bold bg-orange-500 text-white px-4 py-1.5 rounded-full shadow-md truncate max-w-[210px]">
+                          {formatLocationBadgeText(activeLocationStr, qrMode)}
                         </span>
                       </div>
                       <span className="text-[11px] text-muted-foreground mt-3 text-center">
-                        Printable table placard mockup
+                        Printable {qrMode === 'ROOM' ? 'Hotel Room' : 'Table'} placard mockup
                       </span>
                     </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* QR Code Disable & Enable Management */}
+              {data && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="bg-card border border-border rounded-2xl p-6 space-y-5"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+                    <div>
+                      <h2 className="font-display font-semibold flex items-center gap-2 text-lg">
+                        <Power className="w-5 h-5 text-primary" />
+                        QR Ordering & Location Status Manager
+                      </h2>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Enable or disable QR ordering globally, or toggle active/disabled status for specific tables and hotel rooms.
+                      </p>
+                    </div>
+
+                    {/* Global QR Switch */}
+                    <button
+                      type="button"
+                      onClick={() => setQrSettings(s => ({ ...s, enabled: !s.enabled }))}
+                      className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold text-xs border transition-all ${
+                        qrSettings.enabled
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                          : 'bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400'
+                      }`}
+                    >
+                      <Power className="w-4 h-4" />
+                      Global QR System: {qrSettings.enabled ? 'ENABLED' : 'DISABLED'}
+                    </button>
+                  </div>
+
+                  {/* Individual Table / Room Status Toggles */}
+                  <div className="space-y-3">
+                    <label className="text-xs font-semibold text-muted-foreground block">
+                      Toggle Active / Disabled Locations (Click any table or room to change status)
+                    </label>
+
+                    <div className="flex flex-wrap gap-2.5">
+                      {Array.from(
+                        new Set([
+                          'Table 1', 'Table 2', 'Table 3', 'Table 4', 'Table 5', 'Table 10',
+                          'Room 101', 'Room 102', 'Room 103', 'Room 104', 'Room 201', 'Room 202',
+                          ...(qrSettings.customLocations || []),
+                          ...(qrSettings.disabledLocations || [])
+                        ])
+                      ).map((loc) => {
+                        const isDisabled = (qrSettings.disabledLocations || []).some(
+                          (d) => d.trim().toLowerCase() === loc.trim().toLowerCase()
+                        );
+                        const isCustom = (qrSettings.customLocations || []).some(
+                          (c) => c.trim().toLowerCase() === loc.trim().toLowerCase()
+                        );
+                        return (
+                          <div
+                            key={loc}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                              isDisabled
+                                ? 'bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400'
+                                : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setQrSettings((s) => {
+                                  const currentDisabled = s.disabledLocations || [];
+                                  const exists = currentDisabled.some(
+                                    (d) => d.trim().toLowerCase() === loc.trim().toLowerCase()
+                                  );
+                                  return {
+                                    ...s,
+                                    disabledLocations: exists
+                                      ? currentDisabled.filter((d) => d.trim().toLowerCase() !== loc.trim().toLowerCase())
+                                      : [...currentDisabled, loc],
+                                  };
+                                });
+                              }}
+                              className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+                            >
+                              {isDisabled ? <Ban className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                              <span>{loc}</span>
+                              <span className="text-[10px] opacity-75 uppercase">
+                                ({isDisabled ? 'Disabled' : 'Active'})
+                              </span>
+                            </button>
+
+                            {isCustom && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveCustomLocation(loc)}
+                                className="ml-1 p-0.5 rounded hover:bg-red-500/20 text-red-500 transition-colors"
+                                title="Remove custom location"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Add Custom Location Input Form */}
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleAddCustomLocation();
+                    }}
+                    className="pt-2 flex items-center gap-3 max-w-md"
+                  >
+                    <input
+                      type="text"
+                      placeholder="Add custom location (e.g. Room 305, Pool Bar)"
+                      value={newCustomLocation}
+                      onChange={(e) => setNewCustomLocation(e.target.value)}
+                      className="flex-1 px-3 py-2 bg-muted/30 border border-border rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddCustomLocation}
+                      className="flex items-center gap-1.5 px-3.5 py-2 bg-primary text-white hover:bg-primary/95 rounded-xl text-xs font-bold transition-all shadow-xs"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add Location
+                    </button>
+                  </form>
+
+
+                  <div className="pt-2 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => saveMutation.mutate()}
+                      disabled={saveMutation.isPending}
+                      className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-bold shadow-md hover:bg-primary/95 disabled:opacity-60 transition-colors"
+                    >
+                      <Save className="w-4 h-4" />
+                      {saveMutation.isPending ? 'Saving Settings...' : 'Save QR & Location Settings'}
+                    </button>
                   </div>
                 </motion.div>
               )}

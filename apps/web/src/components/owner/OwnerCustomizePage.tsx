@@ -345,14 +345,6 @@ export function OwnerCustomizePage() {
           >
             <Layers className="w-4 h-4 shrink-0" /> Reorder Menu Sections
           </button>
-          <button
-            onClick={() => setActiveTab('CUSTOM_FIELDS')}
-            className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${
-              activeTab === 'CUSTOM_FIELDS' ? 'bg-primary text-white shadow-md' : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-            }`}
-          >
-            <Plus className="w-4 h-4 shrink-0" /> Custom Info Fields
-          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">
@@ -578,76 +570,6 @@ export function OwnerCustomizePage() {
                         ))}
                       </div>
                     )}
-                  </div>
-                </motion.div>
-              )}
-
-              {/* TAB 3: CUSTOM RESTAURANT FIELDS */}
-              {activeTab === 'CUSTOM_FIELDS' && (
-                <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-                  <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-                    <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <h2 className="font-display font-bold text-lg text-foreground">Custom Information & Badges</h2>
-                        <p className="text-xs text-muted-foreground">Add custom information cards like WiFi details, Parking notes, or Social handles.</p>
-                      </div>
-                    </div>
-
-                    {/* Existing Custom Fields */}
-                    <div className="space-y-3 mb-6">
-                      {customFields.map((field) => (
-                        <div key={field.id} className="flex items-center justify-between p-3.5 rounded-2xl border border-border bg-muted/20">
-                          <div className="flex items-center gap-3">
-                            <span className="text-xl">{field.icon}</span>
-                            <div>
-                              <p className="font-semibold text-xs text-foreground uppercase tracking-wider">{field.key}</p>
-                              <p className="text-sm font-medium text-muted-foreground">{field.value}</p>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => handleRemoveField(field.id)}
-                            className="p-2 rounded-xl text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                            title="Delete Field"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Add New Custom Field Form */}
-                    <div className="border-t border-border pt-4 space-y-3">
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">Add New Custom Field</h3>
-                      <div className="grid grid-cols-12 gap-2">
-                        <input
-                          type="text"
-                          placeholder="Icon (e.g. 📶, 🅿️)"
-                          value={newIcon}
-                          onChange={(e) => setNewIcon(e.target.value)}
-                          className="col-span-2 px-3 py-2 bg-muted/40 border border-border rounded-xl text-center text-sm"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Label (e.g. WiFi, Parking)"
-                          value={newKey}
-                          onChange={(e) => setNewKey(e.target.value)}
-                          className="col-span-4 px-3 py-2 bg-muted/40 border border-border rounded-xl text-sm"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Details / Value"
-                          value={newValue}
-                          onChange={(e) => setNewValue(e.target.value)}
-                          className="col-span-6 px-3 py-2 bg-muted/40 border border-border rounded-xl text-sm"
-                        />
-                      </div>
-                      <button
-                        onClick={handleAddField}
-                        className="w-full py-2.5 bg-primary/10 text-primary hover:bg-primary/20 font-semibold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5"
-                      >
-                        <Plus className="w-4 h-4" /> Add Field
-                      </button>
-                    </div>
                   </div>
                 </motion.div>
               )}

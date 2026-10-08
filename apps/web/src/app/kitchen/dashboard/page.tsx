@@ -513,7 +513,7 @@ export default function KitchenDashboardPage() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center justify-between gap-2">
                         {order.table?.tableNumber ? (
                           <span className="bg-orange-500 text-white font-extrabold text-[10px] sm:text-xs px-2 py-0.5 rounded-md truncate">
                             🍽️ Table {order.table.tableNumber}
@@ -523,6 +523,10 @@ export default function KitchenDashboardPage() {
                             🍽️ Dine-In Order
                           </span>
                         )}
+                        <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
+                          <Clock className="w-2.5 h-2.5" />
+                          {new Date(order.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}
+                        </span>
                       </div>
                     </div>
 

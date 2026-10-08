@@ -72,6 +72,7 @@ export const restaurantProfileSchema = z.object({
   bankAccountNumber: z.string().optional().nullable(),
   bankIfsc: z.string().optional().nullable(),
   bankAccountHolder: z.string().optional().nullable(),
+  qrSettings: z.any().optional().nullable(),
 });
 
 export const restaurantToggleSchema = z.object({
