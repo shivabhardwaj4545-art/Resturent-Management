@@ -20,6 +20,24 @@ export async function syncDatabaseSchema(): Promise<void> {
     'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "menuTemplate" TEXT DEFAULT \'modern\'',
     'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "customFields" JSONB',
     'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "commissionRate" DOUBLE PRECISION DEFAULT 5',
+    'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "featureFlags" JSONB',
+    'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "disabledTabs" JSONB',
+
+    // Subscription tables and columns
+    'CREATE TABLE IF NOT EXISTS "subscription_plans" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL UNIQUE, "price" DOUBLE PRECISION NOT NULL, "features" JSONB NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+    'CREATE TABLE IF NOT EXISTS "restaurant_subscriptions" ("id" TEXT NOT NULL PRIMARY KEY, "restaurantId" TEXT NOT NULL, "planId" TEXT NOT NULL, "startsAt" TIMESTAMP NOT NULL, "expiresAt" TIMESTAMP NOT NULL, "isActive" BOOLEAN NOT NULL DEFAULT true, "amount" DOUBLE PRECISION NOT NULL DEFAULT 0, "paymentStatus" TEXT NOT NULL DEFAULT \'PAID\', "paymentMethod" TEXT NOT NULL DEFAULT \'RAZORPAY\', "razorpayOrderId" TEXT, "razorpayPaymentId" TEXT, "razorpaySignature" TEXT, "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+    'ALTER TABLE "restaurant_subscriptions" ADD COLUMN IF NOT EXISTS "amount" DOUBLE PRECISION DEFAULT 0',
+    'ALTER TABLE "restaurant_subscriptions" ADD COLUMN IF NOT EXISTS "paymentStatus" TEXT DEFAULT \'PAID\'',
+    'ALTER TABLE "restaurant_subscriptions" ADD COLUMN IF NOT EXISTS "paymentMethod" TEXT DEFAULT \'RAZORPAY\'',
+    'ALTER TABLE "restaurant_subscriptions" ADD COLUMN IF NOT EXISTS "razorpayOrderId" TEXT',
+    'ALTER TABLE "restaurant_subscriptions" ADD COLUMN IF NOT EXISTS "razorpayPaymentId" TEXT',
+    'ALTER TABLE "restaurant_subscriptions" ADD COLUMN IF NOT EXISTS "razorpaySignature" TEXT',
+    'ALTER TABLE "subscription_plans" ADD COLUMN IF NOT EXISTS "features" JSONB',
+    'CREATE INDEX IF NOT EXISTS "restaurant_subscriptions_restaurantId_idx" ON "restaurant_subscriptions" ("restaurantId")',
+    'CREATE INDEX IF NOT EXISTS "restaurant_subscriptions_isActive_expiresAt_idx" ON "restaurant_subscriptions" ("isActive", "expiresAt")',
+    'UPDATE "restaurant_subscriptions" SET "amount" = 0 WHERE "amount" IS NULL',
+    'UPDATE "restaurant_subscriptions" SET "paymentStatus" = \'PAID\' WHERE "paymentStatus" IS NULL',
+    'UPDATE "restaurant_subscriptions" SET "paymentMethod" = \'RAZORPAY\' WHERE "paymentMethod" IS NULL',
 
     // User columns & Enum values
     'ALTER TYPE "UserRole" ADD VALUE IF NOT EXISTS \'KITCHEN\'',
@@ -62,6 +80,42 @@ export async function syncDatabaseSchema(): Promise<void> {
 export async function ensureDatabaseSeeded(): Promise<void> {
   try {
     await syncDatabaseSchema();
+
+    // Ensure Default Subscription Plans are present
+    const defaultPlans = [
+      {
+        name: 'Free Trial',
+        price: 0,
+        features: { qrCodes: 10, maxOrders: 300, maxMenuItems: 50, aiEnabled: true, analyticsEnabled: true, roomServiceEnabled: true },
+      },
+      {
+        name: 'Basic',
+        price: 999,
+        features: { qrCodes: 5, maxOrders: 500, maxMenuItems: 50, aiEnabled: false, analyticsEnabled: false },
+      },
+      {
+        name: 'Pro',
+        price: 2999,
+        features: { qrCodes: 20, maxOrders: 2000, maxMenuItems: 200, aiEnabled: true, analyticsEnabled: true },
+      },
+      {
+        name: 'Enterprise',
+        price: 7999,
+        features: { qrCodes: 100, maxOrders: -1, maxMenuItems: -1, aiEnabled: true, analyticsEnabled: true, customDomain: true, prioritySupport: true },
+      },
+    ];
+
+    for (const p of defaultPlans) {
+      const existingPlan = await prisma.subscriptionPlan.findFirst({
+        where: { OR: [{ name: p.name }, { price: p.price }] },
+      }).catch(() => null);
+
+      if (!existingPlan) {
+        await prisma.subscriptionPlan.create({
+          data: p,
+        }).catch(() => {});
+      }
+    }
 
     const adminEmail = process.env.SUPER_ADMIN_EMAIL ?? 'admin@qrrestaurant.com';
     const adminExists = await prisma.user.findFirst({

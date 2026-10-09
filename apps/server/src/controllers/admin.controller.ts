@@ -628,11 +628,6 @@ export async function getSubscriptionPlans(_req: AuthenticatedRequest, res: Resp
               },
             },
           },
-          OR: [
-            { amount: { gt: 0 } },
-            { paymentMethod: 'FREE_TRIAL' },
-            { paymentStatus: 'FREE_TRIAL' },
-          ],
         },
         orderBy: { createdAt: 'desc' },
         take: 100,

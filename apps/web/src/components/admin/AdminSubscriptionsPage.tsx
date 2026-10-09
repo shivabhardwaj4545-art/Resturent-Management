@@ -269,7 +269,7 @@ export function AdminSubscriptionsPage() {
       if (!sub.restaurant || sub.restaurant.deletedAt) return false;
       if (sub.restaurant.owner?.deletedAt || sub.restaurant.owner?.email?.startsWith('deleted_')) return false;
 
-      const isFreeTrial = sub.paymentStatus === 'FREE_TRIAL' || sub.paymentMethod === 'FREE_TRIAL' || sub.plan.price === 0;
+      const isFreeTrial = sub.paymentStatus === 'FREE_TRIAL' || sub.paymentMethod === 'FREE_TRIAL' || sub.plan?.price === 0;
 
       // Exclude zero amount only if it is NOT a free trial
       if (typeof sub.amount === 'number' && sub.amount <= 0 && !isFreeTrial) return false;
@@ -318,7 +318,7 @@ export function AdminSubscriptionsPage() {
   const freeTrialCount = useMemo(() => {
     return (adminSubData?.subscriptions || []).filter((s) => {
       if (!s.restaurant || s.restaurant.deletedAt || s.restaurant.owner?.deletedAt || s.restaurant.owner?.email?.startsWith('deleted_')) return false;
-      const isFree = s.paymentStatus === 'FREE_TRIAL' || s.paymentMethod === 'FREE_TRIAL' || s.plan.price === 0;
+      const isFree = s.paymentStatus === 'FREE_TRIAL' || s.paymentMethod === 'FREE_TRIAL' || s.plan?.price === 0;
       return isFree && s.isActive;
     }).length;
   }, [adminSubData?.subscriptions]);
@@ -326,7 +326,7 @@ export function AdminSubscriptionsPage() {
   const unpaidStats = useMemo(() => {
     const unpaidList = (adminSubData?.subscriptions || []).filter((s) => {
       if (!s.restaurant || s.restaurant.deletedAt || s.restaurant.owner?.deletedAt || s.restaurant.owner?.email?.startsWith('deleted_')) return false;
-      const isFree = s.paymentStatus === 'FREE_TRIAL' || s.paymentMethod === 'FREE_TRIAL' || s.plan.price === 0;
+      const isFree = s.paymentStatus === 'FREE_TRIAL' || s.paymentMethod === 'FREE_TRIAL' || s.plan?.price === 0;
       return !isFree && s.paymentStatus !== 'PAID' && (s.amount || 0) > 0;
     });
     const count = unpaidList.length;
