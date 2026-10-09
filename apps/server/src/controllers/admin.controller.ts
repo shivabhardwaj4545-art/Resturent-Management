@@ -22,7 +22,13 @@ export async function getAllRestaurants(req: AuthenticatedRequest, res: Response
     const pageNum = Math.max(1, parseInt(String(page), 10) || 1);
     const limitNum = Math.max(1, parseInt(String(limit), 10) || 20);
     const skip = (pageNum - 1) * limitNum;
-    const where: Record<string, unknown> = { deletedAt: null };
+    const where: Record<string, unknown> = {
+      deletedAt: null,
+      owner: {
+        deletedAt: null,
+        NOT: { email: { startsWith: 'deleted_' } },
+      },
+    };
 
     if (status === 'pending') { where.isApproved = false; where.isSuspended = false; }
     else if (status === 'approved') { where.isApproved = true; where.isSuspended = false; }
@@ -44,7 +50,13 @@ export async function getAllRestaurants(req: AuthenticatedRequest, res: Response
         take: limitNum,
         orderBy: { createdAt: 'desc' },
         include: {
-          owner: { select: { name: true, email: true, phone: true } },
+          owner: { select: { id: true, name: true, email: true, phone: true } },
+          subscription: {
+            where: { isActive: true },
+            include: { plan: true },
+            take: 1,
+            orderBy: { createdAt: 'desc' },
+          },
           _count: { select: { orders: true, menuItems: true } },
         },
       }),
@@ -53,6 +65,7 @@ export async function getAllRestaurants(req: AuthenticatedRequest, res: Response
 
     const formattedRestaurants = restaurants.map((r) => ({
       ...r,
+      subscription: r.subscription && r.subscription.length > 0 ? r.subscription[0] : null,
       owner: r.owner
         ? {
             ...r.owner,
@@ -126,7 +139,8 @@ export async function updateRestaurant(req: AuthenticatedRequest, res: Response,
     const id = req.params.id as string;
     const {
       name, slug, phone, email, address, city, isApproved, isSuspended, isOpen,
-      ownerEmail, ownerPassword,
+      ownerEmail, ownerPassword, commissionRate, featureFlags, disabledTabs,
+      paymentEnabled, upiEnabled, merchantName,
     } = req.body;
 
     const existing = await prisma.restaurant.findFirst({
@@ -152,9 +166,19 @@ export async function updateRestaurant(req: AuthenticatedRequest, res: Response,
         ...(typeof isApproved === 'boolean' && { isApproved }),
         ...(typeof isSuspended === 'boolean' && { isSuspended }),
         ...(typeof isOpen === 'boolean' && { isOpen }),
+        ...(commissionRate !== undefined && { commissionRate: parseFloat(commissionRate) }),
+        ...(featureFlags !== undefined && { featureFlags }),
+        ...(disabledTabs !== undefined && { disabledTabs }),
+        ...(typeof paymentEnabled === 'boolean' && { paymentEnabled }),
+        ...(typeof upiEnabled === 'boolean' && { upiEnabled }),
+        ...(merchantName !== undefined && { merchantName }),
       },
       include: { owner: true },
     });
+
+    if (slug !== existing.slug || featureFlags !== undefined) {
+      await cacheDelPattern(`menu:${existing.slug}*`);
+    }
 
     // Handle Owner Account Credentials Update
     if (existing.ownerId && existing.owner) {
@@ -480,18 +504,658 @@ export async function updateConfig(req: AuthenticatedRequest, res: Response, nex
   } catch (error) { next(error); }
 }
 
+// ── Free Trial Plan Constants & Helpers ─────────────────────────
+
+export const DEFAULT_FREE_TRIAL_SETTINGS = {
+  enabled: true,
+  trialDays: 14,
+  planName: 'Free Trial',
+  features: {
+    qrCodes: 10,
+    maxOrders: 300,
+    maxMenuItems: 50,
+    aiEnabled: true,
+    analyticsEnabled: true,
+    roomServiceEnabled: true,
+  },
+};
+
+export async function getOrCreateFreeTrialPlan() {
+  let plan = await prisma.subscriptionPlan.findFirst({
+    where: {
+      OR: [
+        { name: { contains: 'Free Trial', mode: 'insensitive' } },
+        { price: 0 },
+      ],
+    },
+  });
+
+  if (!plan) {
+    plan = await prisma.subscriptionPlan.create({
+      data: {
+        name: 'Free Trial',
+        price: 0,
+        features: DEFAULT_FREE_TRIAL_SETTINGS.features,
+      },
+    });
+  }
+  return plan;
+}
+
+export async function autoAssignFreeTrial(restaurantId: string, customDays?: number) {
+  try {
+    let settingVal = DEFAULT_FREE_TRIAL_SETTINGS;
+    try {
+      const setting = await prisma.systemSetting.findUnique({
+        where: { key: 'free_trial_settings' },
+      });
+      if (setting?.value) {
+        settingVal = { ...DEFAULT_FREE_TRIAL_SETTINGS, ...(setting.value as object) };
+      }
+    } catch (e) {}
+
+    if (settingVal.enabled === false) {
+      return null;
+    }
+
+    const freePlan = await getOrCreateFreeTrialPlan();
+    const days = customDays || settingVal.trialDays || 14;
+    const startsAt = new Date();
+    const expiresAt = new Date(startsAt.getTime() + days * 24 * 60 * 60 * 1000);
+
+    // Deactivate previous active subscriptions for this restaurant
+    await prisma.restaurantSubscription.updateMany({
+      where: { restaurantId, isActive: true },
+      data: { isActive: false },
+    });
+
+    const subscription = await prisma.restaurantSubscription.create({
+      data: {
+        restaurantId,
+        planId: freePlan.id,
+        startsAt,
+        expiresAt,
+        isActive: true,
+        amount: 0,
+        paymentStatus: 'FREE_TRIAL',
+        paymentMethod: 'FREE_TRIAL',
+      },
+      include: { plan: true },
+    });
+
+    // Make sure restaurant is activated and open
+    await prisma.restaurant.update({
+      where: { id: restaurantId },
+      data: { isSuspended: false, isOpen: true },
+    });
+
+    await prisma.notification.create({
+      data: {
+        restaurantId,
+        type: 'FREE_TRIAL_ACTIVATED',
+        title: `🎁 ${freePlan.name} Activated (${days} Days)`,
+        message: `Welcome to EZ-Restaurant! Your ${days}-day free trial is active until ${expiresAt.toLocaleDateString()}. Enjoy all platform features!`,
+      },
+    }).catch(() => {});
+
+    return subscription;
+  } catch (error) {
+    logger.error(`Failed to auto-assign free trial to restaurant ${restaurantId}:`, error);
+    return null;
+  }
+}
+
 export async function getSubscriptionPlans(_req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const plans = await prisma.subscriptionPlan.findMany({ orderBy: { price: 'asc' } });
-    res.json({ success: true, data: { plans } });
+    // Ensure the Free Trial plan exists
+    await getOrCreateFreeTrialPlan().catch(() => {});
+
+    const [plans, subscriptions, freeTrialSettingDb] = await Promise.all([
+      prisma.subscriptionPlan.findMany({
+        orderBy: { price: 'asc' },
+        include: {
+          _count: { select: { subscriptions: true } },
+        },
+      }),
+      prisma.restaurantSubscription.findMany({
+        where: {
+          restaurant: {
+            deletedAt: null,
+            owner: {
+              deletedAt: null,
+              NOT: {
+                email: { startsWith: 'deleted_' },
+              },
+            },
+          },
+          OR: [
+            { amount: { gt: 0 } },
+            { paymentMethod: 'FREE_TRIAL' },
+            { paymentStatus: 'FREE_TRIAL' },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+        include: {
+          plan: true,
+          restaurant: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              phone: true,
+              isSuspended: true,
+              deletedAt: true,
+              owner: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  phone: true,
+                  deletedAt: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      prisma.systemSetting.findUnique({
+        where: { key: 'free_trial_settings' },
+      }).catch(() => null),
+    ]);
+
+    const freeTrialSettings = freeTrialSettingDb?.value
+      ? { ...DEFAULT_FREE_TRIAL_SETTINGS, ...(freeTrialSettingDb.value as object) }
+      : DEFAULT_FREE_TRIAL_SETTINGS;
+
+    res.json({
+      success: true,
+      data: {
+        plans,
+        subscriptions,
+        freeTrialSettings,
+      },
+    });
   } catch (error) { next(error); }
 }
 
 export async function createSubscriptionPlan(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const { name, price, features } = req.body as { name: string; price: number; features: Record<string, unknown> };
-    const plan = await prisma.subscriptionPlan.create({ data: { name, price, features: features as any } });
+    const plan = await prisma.subscriptionPlan.create({ data: { name, price: parseFloat(String(price)), features: features as any } });
     res.status(201).json({ success: true, data: { plan }, message: 'Subscription plan created' });
+  } catch (error) { next(error); }
+}
+
+export async function updateSubscriptionPlan(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    const { name, price, features } = req.body;
+    const plan = await prisma.subscriptionPlan.update({
+      where: { id },
+      data: {
+        ...(name && { name }),
+        ...(price !== undefined && { price: parseFloat(price) }),
+        ...(features !== undefined && { features }),
+      },
+    });
+    res.json({ success: true, data: { plan }, message: 'Subscription plan updated successfully' });
+  } catch (error) { next(error); }
+}
+
+export async function deleteSubscriptionPlan(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    const activeSubCount = await prisma.restaurantSubscription.count({
+      where: { planId: id, isActive: true },
+    });
+    if (activeSubCount > 0) {
+      throw new AppError(`Cannot delete plan: ${activeSubCount} active restaurant subscriptions are currently using it.`, 400, 'PLAN_IN_USE');
+    }
+    await prisma.subscriptionPlan.delete({ where: { id } });
+    res.json({ success: true, message: 'Subscription plan deleted successfully' });
+  } catch (error) { next(error); }
+}
+
+export async function getRestaurantDetails(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    const restaurant = await prisma.restaurant.findFirst({
+      where: { id, deletedAt: null },
+      include: {
+        owner: {
+          select: { id: true, name: true, email: true, phone: true, role: true, createdAt: true },
+        },
+        subscription: {
+          include: { plan: true },
+          orderBy: { createdAt: 'desc' },
+        },
+        _count: {
+          select: {
+            orders: true,
+            menuItems: true,
+            categories: true,
+            kitchenStaff: true,
+            reviews: true,
+            coupons: true,
+          },
+        },
+      },
+    });
+
+    if (!restaurant) throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
+
+    const [revenueAgg, orderCounts, recentOrders] = await Promise.all([
+      prisma.order.aggregate({
+        where: { restaurantId: id, status: { not: 'CANCELLED' }, paymentStatus: 'PAID', deletedAt: null },
+        _sum: { total: true },
+      }),
+      prisma.order.groupBy({
+        by: ['status'],
+        where: { restaurantId: id, deletedAt: null },
+        _count: { id: true },
+      }),
+      prisma.order.findMany({
+        where: { restaurantId: id, deletedAt: null },
+        take: 8,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          tableNumber: true,
+          guestName: true,
+          total: true,
+          status: true,
+          paymentStatus: true,
+          paymentMethod: true,
+          createdAt: true,
+          _count: { select: { items: true } },
+        },
+      }),
+    ]);
+
+    const activeSubscription = restaurant.subscription.find((s) => s.isActive) || null;
+
+    const formattedOwner = restaurant.owner
+      ? {
+          ...restaurant.owner,
+          email: restaurant.owner.email && restaurant.owner.email.includes(':') ? restaurant.owner.email.split(':')[1] : (restaurant.owner.email ?? ''),
+        }
+      : null;
+
+    res.json({
+      success: true,
+      data: {
+        restaurant: {
+          ...restaurant,
+          owner: formattedOwner,
+          activeSubscription,
+        },
+        stats: {
+          totalRevenue: revenueAgg._sum.total ?? 0,
+          ordersByStatus: orderCounts.reduce((acc, curr) => ({ ...acc, [curr.status]: curr._count.id }), {}),
+        },
+        recentOrders,
+      },
+    });
+  } catch (error) { next(error); }
+}
+
+export async function updateRestaurantFeatures(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    const { featureFlags } = req.body;
+
+    const restaurant = await prisma.restaurant.findFirst({ where: { id, deletedAt: null } });
+    if (!restaurant) throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
+
+    const currentFlags = (restaurant.featureFlags as Record<string, boolean>) || {};
+    const updatedFlags = {
+      ...currentFlags,
+      ...featureFlags,
+    };
+
+    const updated = await prisma.restaurant.update({
+      where: { id },
+      data: { featureFlags: updatedFlags },
+    });
+
+    await cacheDelPattern(`menu:${restaurant.slug}*`);
+
+    await prisma.notification.create({
+      data: {
+        restaurantId: id,
+        type: 'FEATURE_SETTINGS_UPDATED',
+        title: 'Platform Features Updated',
+        message: 'Administration has updated feature toggles for your restaurant (e.g., room service, waiter call, ordering).',
+      },
+    }).catch(() => {});
+
+    res.json({
+      success: true,
+      data: { featureFlags: updated.featureFlags },
+      message: 'Restaurant features updated successfully',
+    });
+  } catch (error) { next(error); }
+}
+
+export async function updateRestaurantTabs(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    const { disabledTabs } = req.body;
+
+    if (!Array.isArray(disabledTabs)) {
+      throw new AppError('disabledTabs must be an array of tab identifiers.', 400, 'BAD_REQUEST');
+    }
+
+    const restaurant = await prisma.restaurant.findFirst({ where: { id, deletedAt: null } });
+    if (!restaurant) throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
+
+    const updated = await prisma.restaurant.update({
+      where: { id },
+      data: { disabledTabs },
+    });
+
+    await prisma.notification.create({
+      data: {
+        restaurantId: id,
+        type: 'TABS_PERMISSIONS_UPDATED',
+        title: 'Dashboard Tabs Access Updated',
+        message: 'Administration has updated accessible management tabs for your restaurant.',
+      },
+    }).catch(() => {});
+
+    res.json({
+      success: true,
+      data: { disabledTabs: updated.disabledTabs },
+      message: 'Restaurant tabs configuration updated successfully',
+    });
+  } catch (error) { next(error); }
+}
+
+export async function assignRestaurantSubscription(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    const {
+      planId,
+      durationInDays = 30,
+      startsAt = new Date(),
+      isActive = true,
+      paymentStatus = 'UNPAID', // Admin assignment is UNPAID unless payment is confirmed!
+    } = req.body;
+
+    const [restaurant, plan] = await Promise.all([
+      prisma.restaurant.findFirst({ where: { id, deletedAt: null } }),
+      prisma.subscriptionPlan.findUnique({ where: { id: planId } }),
+    ]);
+
+    if (!restaurant) throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
+    if (!plan) throw new AppError('Subscription plan not found.', 404, 'PLAN_NOT_FOUND');
+
+    const startDate = new Date(startsAt);
+    const expiresDate = new Date(startDate);
+    expiresDate.setDate(expiresDate.getDate() + (parseInt(String(durationInDays), 10) || 30));
+
+    const days = parseInt(String(durationInDays), 10) || 30;
+    const months = days >= 360 ? Math.round(days / 365) * 12 : Math.max(1, Math.round(days / 30));
+    const totalPrice = plan.price * months;
+
+    // Deactivate previous active subscriptions
+    await prisma.restaurantSubscription.updateMany({
+      where: { restaurantId: id, isActive: true },
+      data: { isActive: false },
+    });
+
+    const isFreeTrial = plan.price === 0 || String(paymentStatus).toUpperCase() === 'FREE_TRIAL';
+    const isConfirmedPaid = String(paymentStatus).toUpperCase() === 'PAID';
+
+    const newSub = await prisma.restaurantSubscription.create({
+      data: {
+        restaurantId: id,
+        planId,
+        startsAt: startDate,
+        expiresAt: expiresDate,
+        isActive: Boolean(isActive),
+        amount: isFreeTrial ? 0 : totalPrice,
+        paymentStatus: isFreeTrial ? 'FREE_TRIAL' : (isConfirmedPaid ? 'PAID' : 'UNPAID'),
+        paymentMethod: isFreeTrial ? 'FREE_TRIAL' : 'MANUAL_ADMIN',
+      },
+      include: { plan: true },
+    });
+
+    if (Boolean(isActive)) {
+      await prisma.restaurant.update({
+        where: { id },
+        data: { isSuspended: false, isOpen: true },
+      });
+    }
+
+    await prisma.notification.create({
+      data: {
+        restaurantId: id,
+        type: 'SUBSCRIPTION_ACTIVATED',
+        title: `Plan Assigned: ${plan.name} (${isFreeTrial ? 'Free Trial' : (isConfirmedPaid ? 'Paid' : 'Unpaid')})`,
+        message: `Your restaurant has been assigned the "${plan.name}" plan, valid until ${expiresDate.toLocaleDateString()}. Status: ${isFreeTrial ? 'FREE TRIAL' : (isConfirmedPaid ? 'PAID' : 'UNPAID')}.`,
+      },
+    }).catch(() => {});
+
+    res.json({
+      success: true,
+      data: { subscription: newSub },
+      message: `Subscription "${plan.name}" assigned successfully to ${restaurant.name} (${isFreeTrial ? 'FREE TRIAL' : (isConfirmedPaid ? 'PAID' : 'UNPAID')})!`,
+    });
+  } catch (error) { next(error); }
+}
+
+export async function cancelRestaurantSubscription(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const subscriptionId = req.params.subscriptionId as string;
+    const sub = await prisma.restaurantSubscription.findUnique({ where: { id: subscriptionId } });
+    if (!sub) throw new AppError('Subscription not found.', 404, 'NOT_FOUND');
+
+    const updated = await prisma.restaurantSubscription.update({
+      where: { id: subscriptionId },
+      data: { isActive: !sub.isActive },
+      include: { plan: true },
+    });
+
+    // If deactivated, check if any other active subscription exists; if none, suspend the restaurant!
+    if (!updated.isActive) {
+      const otherActive = await prisma.restaurantSubscription.findFirst({
+        where: { restaurantId: sub.restaurantId, isActive: true },
+      });
+      if (!otherActive) {
+        await prisma.restaurant.update({
+          where: { id: sub.restaurantId },
+          data: { isSuspended: true, isOpen: false },
+        });
+      }
+    } else {
+      // If reactivated, unsuspend the restaurant!
+      await prisma.restaurant.update({
+        where: { id: sub.restaurantId },
+        data: { isSuspended: false, isOpen: true },
+      });
+    }
+
+    res.json({
+      success: true,
+      data: { subscription: updated },
+      message: `Subscription ${updated.isActive ? 'reactivated' : 'deactivated'} successfully`,
+    });
+  } catch (error) { next(error); }
+}
+
+export async function updateSubscriptionPaymentStatus(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    const sub = await prisma.restaurantSubscription.findUnique({ where: { id } });
+    if (!sub) throw new AppError('Subscription not found.', 404, 'NOT_FOUND');
+
+    const targetStatus = req.body?.paymentStatus
+      ? String(req.body.paymentStatus).toUpperCase()
+      : sub.paymentStatus === 'PAID' ? 'UNPAID' : 'PAID';
+
+    const updated = await prisma.restaurantSubscription.update({
+      where: { id },
+      data: { paymentStatus: targetStatus },
+      include: { plan: true },
+    });
+
+    res.json({
+      success: true,
+      data: { subscription: updated },
+      message: `Payment status marked as ${targetStatus} successfully!`,
+    });
+  } catch (error) { next(error); }
+}
+
+export async function deleteSubscriptionRecord(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    await prisma.restaurantSubscription.delete({ where: { id } });
+    res.json({
+      success: true,
+      message: 'Subscription record deleted successfully',
+    });
+  } catch (error) { next(error); }
+}
+
+export async function assignPlanDirectly(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { restaurantId, planId, durationInDays = 30, startsAt = new Date(), isActive = true, paymentStatus = 'UNPAID' } = req.body;
+    if (!restaurantId || !planId) throw new AppError('Restaurant ID and Plan ID are required.', 400, 'BAD_REQUEST');
+    req.params.id = restaurantId;
+    return assignRestaurantSubscription(req, res, next);
+  } catch (error) { next(error); }
+}
+
+// ── Extend / Update Free Days for a Restaurant ──────────────────
+
+export async function extendFreeSubscription(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    const { additionalDays, newExpiresAt } = req.body as {
+      additionalDays?: number;
+      newExpiresAt?: string;
+    };
+
+    const sub = await prisma.restaurantSubscription.findUnique({
+      where: { id },
+      include: { restaurant: true, plan: true },
+    });
+    if (!sub) throw new AppError('Subscription not found.', 404, 'NOT_FOUND');
+
+    let updatedExpiresAt: Date;
+    const now = new Date();
+
+    if (newExpiresAt) {
+      updatedExpiresAt = new Date(newExpiresAt);
+    } else if (additionalDays !== undefined && !isNaN(Number(additionalDays))) {
+      // If currently active and unexpired, add to current expiresAt; otherwise add from now
+      const baseDate = sub.expiresAt > now ? new Date(sub.expiresAt) : now;
+      updatedExpiresAt = new Date(baseDate.getTime() + Number(additionalDays) * 24 * 60 * 60 * 1000);
+    } else {
+      throw new AppError('Please provide additionalDays (e.g. 7, 14, 30) or newExpiresAt.', 400, 'BAD_REQUEST');
+    }
+
+    const updated = await prisma.restaurantSubscription.update({
+      where: { id },
+      data: {
+        expiresAt: updatedExpiresAt,
+        isActive: true,
+      },
+      include: { plan: true, restaurant: true },
+    });
+
+    // Make sure restaurant is active and open
+    await prisma.restaurant.update({
+      where: { id: sub.restaurantId },
+      data: { isSuspended: false, isOpen: true },
+    });
+
+    const daysLeft = Math.max(0, Math.ceil((updatedExpiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+
+    await prisma.notification.create({
+      data: {
+        restaurantId: sub.restaurantId,
+        type: 'FREE_TRIAL_EXTENDED',
+        title: '🎉 Free Trial Days Updated!',
+        message: `Admin has updated your free trial period! Your free plan is now valid until ${updatedExpiresAt.toLocaleDateString()} (${daysLeft} days remaining).`,
+      },
+    }).catch(() => {});
+
+    res.json({
+      success: true,
+      data: { subscription: updated },
+      message: `Free trial updated successfully! Now valid until ${updatedExpiresAt.toLocaleDateString()} (${daysLeft} days remaining).`,
+    });
+  } catch (error) { next(error); }
+}
+
+// ── Free Trial Global Settings Controllers ──────────────────────
+
+export async function getFreeTrialSettings(_req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    let settings = DEFAULT_FREE_TRIAL_SETTINGS;
+    try {
+      const dbSetting = await prisma.systemSetting.findUnique({
+        where: { key: 'free_trial_settings' },
+      });
+      if (dbSetting?.value) {
+        settings = { ...DEFAULT_FREE_TRIAL_SETTINGS, ...(dbSetting.value as object) };
+      }
+    } catch (e) {}
+
+    const freePlan = await getOrCreateFreeTrialPlan();
+
+    res.json({
+      success: true,
+      data: {
+        settings,
+        freePlan,
+      },
+    });
+  } catch (error) { next(error); }
+}
+
+export async function updateFreeTrialSettings(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { enabled, trialDays, planName, features } = req.body;
+
+    const existing = await prisma.systemSetting.findUnique({
+      where: { key: 'free_trial_settings' },
+    });
+    const current = existing?.value ? (existing.value as Record<string, any>) : DEFAULT_FREE_TRIAL_SETTINGS;
+
+    const updated = {
+      ...current,
+      ...(enabled !== undefined && { enabled: Boolean(enabled) }),
+      ...(trialDays !== undefined && { trialDays: Math.max(1, parseInt(String(trialDays), 10) || 14) }),
+      ...(planName && { planName: String(planName) }),
+      ...(features && { features }),
+    };
+
+    await prisma.systemSetting.upsert({
+      where: { key: 'free_trial_settings' },
+      update: { value: updated },
+      create: { key: 'free_trial_settings', value: updated },
+    });
+
+    // Also update Free Trial SubscriptionPlan if planName or features changed
+    const freePlan = await getOrCreateFreeTrialPlan();
+    await prisma.subscriptionPlan.update({
+      where: { id: freePlan.id },
+      data: {
+        ...(planName && { name: String(planName) }),
+        ...(features && { features }),
+      },
+    });
+
+    res.json({
+      success: true,
+      data: { settings: updated },
+      message: `Free trial settings updated! Default trial period is now ${updated.trialDays} days.`,
+    });
   } catch (error) { next(error); }
 }
 
@@ -610,6 +1274,9 @@ export async function createRestaurant(req: AuthenticatedRequest, res: Response,
         isOpen: true,
       },
     });
+
+    // Auto-assign Free Trial plan to newly created restaurant
+    await autoAssignFreeTrial(restaurant.id);
 
     // 4. Send email notification to owner containing restaurant details, ID, login email & password
     sendRestaurantWelcomeEmail(

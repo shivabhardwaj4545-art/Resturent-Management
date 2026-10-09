@@ -11,6 +11,8 @@ export interface WaiterCall {
   paymentMethod?: string;
   itemsSummary?: string;
   orderId?: string;
+  purpose?: string;
+  customNote?: string;
 }
 
 export interface LiveOrderAlert {

@@ -14,22 +14,26 @@ import {
   Settings,
   LogOut,
   X,
+  Lock,
+  CreditCard,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
 
 export const OWNER_NAV_ITEMS = [
-  { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
-  { label: 'Menu', icon: UtensilsCrossed, href: '/owner/menu' },
-  { label: 'Orders', icon: ShoppingBag, href: '/owner/orders' },
-  { label: 'Kitchen Staff', icon: ChefHat, href: '/owner/kitchen-staff' },
-  { label: 'Coupons', icon: Tag, href: '/owner/coupons' },
-  { label: 'Reviews', icon: Star, href: '/owner/reviews' },
-  { label: 'Analytics', icon: BarChart3, href: '/owner/analytics' },
-  { label: 'Customize', icon: Palette, href: '/owner/customize' },
-  { label: 'Settings', icon: Settings, href: '/owner/settings' },
+  { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
+  { key: 'menu', label: 'Menu', icon: UtensilsCrossed, href: '/owner/menu' },
+  { key: 'orders', label: 'Orders', icon: ShoppingBag, href: '/owner/orders' },
+  { key: 'kitchen-staff', label: 'Kitchen Staff', icon: ChefHat, href: '/owner/kitchen-staff' },
+  { key: 'coupons', label: 'Coupons', icon: Tag, href: '/owner/coupons' },
+  { key: 'reviews', label: 'Reviews', icon: Star, href: '/owner/reviews' },
+  { key: 'analytics', label: 'Analytics', icon: BarChart3, href: '/owner/analytics' },
+  { key: 'subscription', label: 'Subscription', icon: CreditCard, href: '/owner/subscription' },
+  { key: 'customize', label: 'Customize', icon: Palette, href: '/owner/customize' },
+  { key: 'settings', label: 'Settings', icon: Settings, href: '/owner/settings' },
 ];
 
 interface OwnerSidebarProps {
@@ -41,6 +45,17 @@ export function OwnerSidebar({ mobileOpen = false, onMobileClose }: OwnerSidebar
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
   const router = useRouter();
+
+  const { data: restaurantData } = useQuery({
+    queryKey: ['owner-restaurant-sidebar'],
+    queryFn: async () => {
+      const res = await api.get('/owner/restaurant');
+      return res.data.data.restaurant as { id: string; disabledTabs?: string[] | null };
+    },
+    staleTime: 30 * 1000,
+  });
+
+  const disabledTabs: string[] = Array.isArray(restaurantData?.disabledTabs) ? restaurantData.disabledTabs : [];
 
   const handleLogout = async () => {
     try {
@@ -83,6 +98,27 @@ export function OwnerSidebar({ mobileOpen = false, onMobileClose }: OwnerSidebar
           {OWNER_NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
+            const isTabDisabled = disabledTabs.includes(item.key);
+
+            if (isTabDisabled) {
+              return (
+                <div
+                  key={item.href}
+                  onClick={() => {
+                    toast.error(`The "${item.label}" tab is currently disabled by platform administration.`);
+                  }}
+                  className="flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-semibold opacity-45 cursor-not-allowed bg-muted/20 border border-dashed border-border/80 text-muted-foreground hover:opacity-60 transition-all select-none"
+                  title="This tab is disabled by platform administration"
+                >
+                  <div className="flex items-center gap-3.5">
+                    <Icon className="w-5 h-5 shrink-0" />
+                    <span>{item.label}</span>
+                  </div>
+                  <Lock className="w-3.5 h-3.5 text-amber-500/80 shrink-0" />
+                </div>
+              );
+            }
+
             return (
               <Link
                 key={item.href}

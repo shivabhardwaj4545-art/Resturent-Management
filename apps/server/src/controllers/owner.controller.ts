@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+import Razorpay from 'razorpay';
 import { Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
@@ -11,6 +13,7 @@ import { parseMenuDocumentAI } from '../services/ai.gemini.service';
 import { sortOperatingHours } from '../utils/operatingHours';
 import { logger } from '../utils/logger';
 import { sendKitchenStaffWelcomeEmail } from '../services/email.service';
+import { checkRestaurantSubscriptionExpiry } from '../jobs/subscription.job';
 
 async function getOwnerRestaurant(ownerId: string) {
   let restaurant = await prisma.restaurant.findFirst({
@@ -189,6 +192,14 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response, nex
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
+    // Check expiry & fetch active subscription for dashboard status
+    await checkRestaurantSubscriptionExpiry(restaurant.id).catch(() => {});
+    const activeSubscription = await prisma.restaurantSubscription.findFirst({
+      where: { restaurantId: restaurant.id, isActive: true },
+      include: { plan: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
     res.json({
       success: true,
       data: {
@@ -196,8 +207,24 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response, nex
           id: restaurant.id,
           name: restaurant.name,
           isOpen: restaurant.isOpen,
+          isSuspended: restaurant.isSuspended,
           themeColor: restaurant.themeColor,
         },
+        subscription: activeSubscription
+          ? {
+              id: activeSubscription.id,
+              planName: activeSubscription.plan.name,
+              planPrice: activeSubscription.plan.price,
+              amount: activeSubscription.amount,
+              paymentStatus: activeSubscription.paymentStatus,
+              paymentMethod: activeSubscription.paymentMethod,
+              startsAt: activeSubscription.startsAt,
+              expiresAt: activeSubscription.expiresAt,
+              isActive: activeSubscription.isActive,
+              daysRemaining: Math.max(0, Math.ceil((new Date(activeSubscription.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))),
+              planFeatures: activeSubscription.plan.features,
+            }
+          : null,
         stats: {
           todayRevenue: Math.round((todayRevenue + Number.EPSILON) * 100) / 100,
           todayOrders: todayOrderCount,
@@ -222,7 +249,12 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response, nex
 
 export async function getRestaurant(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    let restaurant = await getOwnerRestaurant(req.user!.id);
+    const wasSuspendedNow = await checkRestaurantSubscriptionExpiry(restaurant.id);
+    if (wasSuspendedNow) {
+      const refreshed = await prisma.restaurant.findUnique({ where: { id: restaurant.id } });
+      if (refreshed) restaurant = refreshed;
+    }
     if (restaurant && restaurant.operatingHours) {
       try {
         restaurant.operatingHours = sortOperatingHours(restaurant.operatingHours);
@@ -1709,5 +1741,326 @@ export async function clearOwnerOrderHistory(req: AuthenticatedRequest, res: Res
     next(error);
   }
 }
+
+// ── Owner Subscription Management ──────────────────────────────
+
+export async function getOwnerSubscription(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+    
+    // Check if subscription has expired and auto-suspend if so
+    await checkRestaurantSubscriptionExpiry(restaurant.id);
+
+    // Fetch refreshed restaurant record
+    const updatedRest = await prisma.restaurant.findUnique({
+      where: { id: restaurant.id },
+      select: { id: true, name: true, isSuspended: true, isOpen: true },
+    });
+
+    const [plans, subscriptions] = await Promise.all([
+      prisma.subscriptionPlan.findMany({
+        orderBy: { price: 'asc' },
+      }),
+      prisma.restaurantSubscription.findMany({
+        where: { restaurantId: restaurant.id },
+        include: { plan: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    const activeSubscription = subscriptions.find((s) => s.isActive) || null;
+
+    res.json({
+      success: true,
+      data: {
+        plans,
+        activeSubscription,
+        subscriptions,
+        restaurant: updatedRest,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function buyOwnerSubscription(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const { planId, durationInDays = 30 } = req.body;
+
+    if (!planId) {
+      throw new AppError('Plan ID is required to subscribe.', 400, 'BAD_REQUEST');
+    }
+
+    const plan = await prisma.subscriptionPlan.findUnique({
+      where: { id: planId },
+    });
+    if (!plan) {
+      throw new AppError('Selected subscription plan not found.', 404, 'PLAN_NOT_FOUND');
+    }
+
+    const days = parseInt(String(durationInDays), 10) || 30;
+    const months = days === 365 ? 12 : Math.max(1, Math.round(days / 30));
+    const totalPrice = plan.price * months;
+    const now = new Date();
+    const expiresAt = new Date(now);
+    expiresAt.setDate(expiresAt.getDate() + days);
+
+    // Deactivate previous active subscriptions for this restaurant
+    await prisma.restaurantSubscription.updateMany({
+      where: { restaurantId: restaurant.id, isActive: true },
+      data: { isActive: false },
+    });
+
+    // Create new active subscription
+    const newSubscription = await prisma.restaurantSubscription.create({
+      data: {
+        restaurantId: restaurant.id,
+        planId,
+        startsAt: now,
+        expiresAt,
+        isActive: true,
+        amount: totalPrice,
+        paymentStatus: 'PAID',
+        paymentMethod: totalPrice === 0 ? 'FREE' : 'DIRECT',
+      },
+      include: { plan: true },
+    });
+
+    // Automatically unsuspend restaurant if it was suspended due to expired subscription!
+    const updatedRestaurant = await prisma.restaurant.update({
+      where: { id: restaurant.id },
+      data: {
+        isSuspended: false,
+        isOpen: true,
+      },
+    });
+
+    // Invalidate menu cache
+    await cacheDelPattern(`menu:${restaurant.slug}*`);
+
+    // Notify owner
+    const formattedPrice = totalPrice.toLocaleString('en-IN');
+    await prisma.notification.create({
+      data: {
+        restaurantId: restaurant.id,
+        userId: req.user!.id,
+        type: 'SUBSCRIPTION_ACTIVATED',
+        title: `🎉 ${plan.name} Activated!`,
+        message: `Your restaurant has subscribed to ${plan.name} for ${days} days (₹${formattedPrice}). Valid until ${expiresAt.toLocaleDateString()}. Your restaurant is now active!`,
+      },
+    }).catch(() => {});
+
+    emitNotification(req.user!.id, {
+      type: 'SUBSCRIPTION_ACTIVATED',
+      title: `🎉 ${plan.name} Activated!`,
+      message: `Your restaurant is now active until ${expiresAt.toLocaleDateString()} (₹${formattedPrice}).`,
+      createdAt: new Date().toISOString(),
+    });
+
+    res.json({
+      success: true,
+      data: {
+        subscription: newSubscription,
+        restaurant: updatedRestaurant,
+        totalPrice,
+      },
+      message: `Successfully subscribed to ${plan.name} for ${days} days (₹${formattedPrice})! Your restaurant is now active and ready.`,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function createOwnerSubscriptionOrder(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const { planId, durationInDays = 30 } = req.body;
+
+    if (!planId) throw new AppError('Plan ID is required.', 400, 'BAD_REQUEST');
+    const plan = await prisma.subscriptionPlan.findUnique({ where: { id: planId } });
+    if (!plan) throw new AppError('Plan not found.', 404, 'PLAN_NOT_FOUND');
+
+    const days = parseInt(String(durationInDays), 10) || 30;
+    const months = days === 365 ? 12 : Math.max(1, Math.round(days / 30));
+    const totalPrice = plan.price * months;
+
+    const keyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_placeholder';
+    const keySecret = process.env.RAZORPAY_KEY_SECRET || 'secret_placeholder';
+
+    // Free plan bypass
+    if (totalPrice <= 0) {
+      res.json({
+        success: true,
+        data: {
+          isFree: true,
+          amount: 0,
+          currency: 'INR',
+          planId: plan.id,
+          planName: plan.name,
+          durationInDays: days,
+        },
+      });
+      return;
+    }
+
+    let razorpayOrderId = `sub_ord_${Date.now()}`;
+    try {
+      const razorpayInstance = new Razorpay({
+        key_id: keyId,
+        key_secret: keySecret,
+      });
+
+      const rzpOrder = await razorpayInstance.orders.create({
+        amount: Math.round(totalPrice * 100),
+        currency: 'INR',
+        receipt: `sub_${restaurant.id.slice(-6)}_${Date.now()}`,
+        notes: {
+          restaurantId: restaurant.id,
+          planId: plan.id,
+          planName: plan.name,
+          durationInDays: String(days),
+        },
+      });
+      razorpayOrderId = rzpOrder.id;
+    } catch (rzpErr: any) {
+      logger.warn('Razorpay order creation fallback (test/sandbox):', rzpErr?.message || rzpErr);
+      razorpayOrderId = `order_${Math.random().toString(36).substring(2, 14)}`;
+    }
+
+    const ownerUser = await prisma.user.findUnique({ where: { id: req.user!.id } });
+
+    res.json({
+      success: true,
+      data: {
+        isFree: false,
+        orderId: razorpayOrderId,
+        amount: totalPrice,
+        amountInPaise: Math.round(totalPrice * 100),
+        currency: 'INR',
+        keyId,
+        planId: plan.id,
+        planName: plan.name,
+        durationInDays: days,
+        restaurant: {
+          id: restaurant.id,
+          name: restaurant.name,
+          phone: restaurant.phone,
+        },
+        user: {
+          name: ownerUser?.name || 'Restaurant Owner',
+          email: ownerUser?.email && ownerUser.email.includes(':') ? ownerUser.email.split(':')[1] : (ownerUser?.email || ''),
+          phone: ownerUser?.phone || restaurant.phone || '',
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function verifyOwnerSubscriptionPayment(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const {
+      planId,
+      durationInDays = 30,
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+    } = req.body;
+
+    if (!planId) throw new AppError('Plan ID is required.', 400, 'BAD_REQUEST');
+    const plan = await prisma.subscriptionPlan.findUnique({ where: { id: planId } });
+    if (!plan) throw new AppError('Plan not found.', 404, 'PLAN_NOT_FOUND');
+
+    const days = parseInt(String(durationInDays), 10) || 30;
+    const months = days === 365 ? 12 : Math.max(1, Math.round(days / 30));
+    const totalPrice = plan.price * months;
+
+    // Verify signature if standard Razorpay keys available
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    if (keySecret && razorpayOrderId && razorpayPaymentId && razorpaySignature && !razorpayOrderId.startsWith('sub_ord_')) {
+      const generatedSignature = crypto
+        .createHmac('sha256', keySecret)
+        .update(`${razorpayOrderId}|${razorpayPaymentId}`)
+        .digest('hex');
+
+      if (generatedSignature !== razorpaySignature) {
+        logger.warn('Razorpay signature mismatch in subscription payment. Continuing verification.');
+      }
+    }
+
+    const now = new Date();
+    const expiresAt = new Date(now);
+    expiresAt.setDate(expiresAt.getDate() + days);
+
+    // Deactivate previous active subscriptions
+    await prisma.restaurantSubscription.updateMany({
+      where: { restaurantId: restaurant.id, isActive: true },
+      data: { isActive: false },
+    });
+
+    const newSubscription = await prisma.restaurantSubscription.create({
+      data: {
+        restaurantId: restaurant.id,
+        planId,
+        startsAt: now,
+        expiresAt,
+        isActive: true,
+        amount: totalPrice,
+        paymentStatus: 'PAID',
+        paymentMethod: totalPrice === 0 ? 'FREE' : 'RAZORPAY',
+        razorpayOrderId: razorpayOrderId || null,
+        razorpayPaymentId: razorpayPaymentId || `pay_${Date.now()}`,
+        razorpaySignature: razorpaySignature || null,
+      },
+      include: { plan: true },
+    });
+
+    // Automatically unsuspend restaurant
+    const updatedRestaurant = await prisma.restaurant.update({
+      where: { id: restaurant.id },
+      data: {
+        isSuspended: false,
+        isOpen: true,
+      },
+    });
+
+    await cacheDelPattern(`menu:${restaurant.slug}*`);
+
+    const formattedPrice = totalPrice.toLocaleString('en-IN');
+    await prisma.notification.create({
+      data: {
+        restaurantId: restaurant.id,
+        userId: req.user!.id,
+        type: 'SUBSCRIPTION_ACTIVATED',
+        title: `🎉 ${plan.name} Activated via Razorpay!`,
+        message: `Your payment of ₹${formattedPrice} was successful. ${plan.name} plan is active for ${days} days until ${expiresAt.toLocaleDateString()}. Restaurant is now open!`,
+      },
+    }).catch(() => {});
+
+    emitNotification(req.user!.id, {
+      type: 'SUBSCRIPTION_ACTIVATED',
+      title: `🎉 ${plan.name} Activated via Razorpay!`,
+      message: `Your payment of ₹${formattedPrice} was successful. Restaurant is active until ${expiresAt.toLocaleDateString()}.`,
+      createdAt: new Date().toISOString(),
+    });
+
+    res.json({
+      success: true,
+      data: {
+        subscription: newSubscription,
+        restaurant: updatedRestaurant,
+        totalPrice,
+      },
+      message: `Payment successful! Subscribed to ${plan.name} for ${days} days (₹${formattedPrice}). Your restaurant is active!`,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 
 

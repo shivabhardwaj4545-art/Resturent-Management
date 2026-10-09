@@ -14,6 +14,7 @@ import {
 import { logger } from '../utils/logger';
 import { ensureDatabaseSeeded } from '../utils/autoSeed';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
+import { autoAssignFreeTrial } from './admin.controller';
 
 // ── Token Helpers ─────────────────────────────────────────────
 
@@ -131,6 +132,9 @@ export async function register(req: Request, res: Response, next: NextFunction):
           isApproved: false,
         },
       });
+
+      // Auto-assign Free Trial plan to newly registered restaurant
+      await autoAssignFreeTrial(restaurant.id);
 
       const userEmail = user.email.includes(':') ? user.email.split(':')[1] : user.email;
       sendRestaurantWelcomeEmail(

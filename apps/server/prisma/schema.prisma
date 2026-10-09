@@ -168,6 +168,10 @@ model Restaurant {
   // QR Ordering & Location Settings
   qrSettings        Json?
 
+  // Feature Toggles & Admin Controls
+  featureFlags      Json?
+  disabledTabs      Json?
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   deletedAt       DateTime?
@@ -348,6 +352,7 @@ model Order {
   deliveryFee       Float         @default(0)
   packagingFee      Float         @default(0)
   discount          Float         @default(0)
+  commissionAmount  Float         @default(0)
   total             Float
   couponId          String?
   razorpayOrderId   String?
@@ -597,14 +602,20 @@ model SubscriptionPlan {
 }
 
 model RestaurantSubscription {
-  id           String   @id @default(cuid())
-  restaurantId String
-  planId       String
-  startsAt     DateTime
-  expiresAt    DateTime
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                String   @id @default(cuid())
+  restaurantId      String
+  planId            String
+  startsAt          DateTime
+  expiresAt         DateTime
+  isActive          Boolean  @default(true)
+  amount            Float    @default(0)
+  paymentStatus     String   @default("PAID") // PAID, PENDING, FAILED
+  paymentMethod     String   @default("RAZORPAY") // RAZORPAY, MANUAL_ADMIN, FREE
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+  razorpaySignature String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   // Relations
   restaurant Restaurant       @relation(fields: [restaurantId], references: [id], onDelete: Cascade)

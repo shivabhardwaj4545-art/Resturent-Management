@@ -9,6 +9,7 @@ import { prisma } from './lib/prisma';
 
 import { ensureDatabaseSeeded } from './utils/autoSeed';
 import { startKeepAliveJob } from './jobs/keepAlive.job';
+import { startSubscriptionCheckerJob } from './jobs/subscription.job';
 
 // Gracefully handle background disconnections / uncaught exceptions in production without crashing the server process
 process.on('unhandledRejection', (reason: any) => {
@@ -103,6 +104,8 @@ async function initializeBackgroundServices() {
       logger.info('✅ Database connected');
       // Auto-ensure default live credentials & demo restaurant exist
       await ensureDatabaseSeeded();
+      // Start subscription expiry background check
+      startSubscriptionCheckerJob();
     } catch (err) {
       retries--;
       if (retries === 0) {

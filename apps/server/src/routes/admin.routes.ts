@@ -16,6 +16,19 @@ import {
   updateConfig,
   getSubscriptionPlans,
   createSubscriptionPlan,
+  updateSubscriptionPlan,
+  deleteSubscriptionPlan,
+  getRestaurantDetails,
+  updateRestaurantFeatures,
+  updateRestaurantTabs,
+  assignRestaurantSubscription,
+  cancelRestaurantSubscription,
+  assignPlanDirectly,
+  updateSubscriptionPaymentStatus,
+  deleteSubscriptionRecord,
+  getFreeTrialSettings,
+  updateFreeTrialSettings,
+  extendFreeSubscription,
   getAdminCoupons,
   createAdminCoupon,
   deleteAdminCoupon,
@@ -34,10 +47,14 @@ router.use(authenticate, requireAdmin);
 // Restaurant management
 router.get('/restaurants', getAllRestaurants);
 router.post('/restaurants', createRestaurant);
+router.get('/restaurants/:id', getRestaurantDetails);
 router.patch('/restaurants/:id', updateRestaurant);
 router.put('/restaurants/:id', updateRestaurant);
 router.patch('/restaurants/:id/approve', approveRestaurant);
 router.patch('/restaurants/:id/suspend', suspendRestaurant);
+router.patch('/restaurants/:id/features', updateRestaurantFeatures);
+router.patch('/restaurants/:id/tabs', updateRestaurantTabs);
+router.post('/restaurants/:id/subscription', assignRestaurantSubscription);
 router.delete('/restaurants/:id', deleteRestaurant);
 
 // User management
@@ -58,7 +75,16 @@ router.put('/loyalty-settings', updateLoyaltySettings as any);
 
 // Subscriptions
 router.get('/subscriptions', getSubscriptionPlans);
+router.get('/subscriptions/free-trial-settings', getFreeTrialSettings);
+router.put('/subscriptions/free-trial-settings', updateFreeTrialSettings);
+router.patch('/subscriptions/records/:id/extend-free', extendFreeSubscription);
 router.post('/subscriptions', createSubscriptionPlan);
+router.put('/subscriptions/:id', updateSubscriptionPlan);
+router.delete('/subscriptions/:id', deleteSubscriptionPlan);
+router.patch('/subscriptions/:subscriptionId/toggle', cancelRestaurantSubscription);
+router.post('/subscriptions/assign', assignPlanDirectly);
+router.patch('/subscriptions/records/:id/status', updateSubscriptionPaymentStatus);
+router.delete('/subscriptions/records/:id', deleteSubscriptionRecord);
 
 // Coupons
 router.get('/coupons', getAdminCoupons);

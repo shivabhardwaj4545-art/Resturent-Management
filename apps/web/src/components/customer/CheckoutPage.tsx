@@ -929,9 +929,9 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
               <div className="mt-4">
                 <label className="text-xs font-semibold text-muted-foreground mb-1 flex items-center justify-between">
                   <span>Table Number <span className="text-red-500">*</span></span>
-                  {hasTableToken ? (
+                  {hasTableToken || !!tableNumber ? (
                     <span className="text-[10px] text-green-600 bg-green-500/10 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
-                      <Lock className="w-3 h-3" /> Scanned Table QR (Locked)
+                      <Lock className="w-3 h-3" /> QR Verified (Locked)
                     </span>
                   ) : (
                     <span className="text-[10px] text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-full font-medium">
@@ -941,12 +941,12 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
                 </label>
                 <input
                   type="text"
-                  placeholder="Enter Table Number (e.g. 5, A2)"
+                  placeholder="Enter Table / Room Number (e.g. 5, Room 301)"
                   value={manualTableNumber}
-                  readOnly={hasTableToken}
-                  onChange={(e) => !hasTableToken && handleTableNumberChange(e.target.value)}
+                  readOnly={hasTableToken || !!tableNumber}
+                  onChange={(e) => !(hasTableToken || !!tableNumber) && handleTableNumberChange(e.target.value)}
                   className={`w-full px-3.5 py-2.5 rounded-xl text-sm border-0 focus:outline-none text-foreground transition-all ${
-                    hasTableToken
+                    hasTableToken || !!tableNumber
                       ? 'bg-muted/80 cursor-not-allowed font-semibold text-primary border border-primary/20 select-none'
                       : 'bg-muted focus:ring-2 focus:ring-primary/20'
                   }`}

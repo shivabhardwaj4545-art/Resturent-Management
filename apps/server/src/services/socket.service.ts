@@ -183,9 +183,27 @@ export function emitWaiterCall(
   type: 'default' | 'payment' | 'addons' = 'default',
   amount?: number,
   paymentMethod?: string,
-  itemsSummary?: string
+  itemsSummary?: string,
+  purpose?: string,
+  customNote?: string,
+  ownerId?: string
 ): void {
   if (!io) return;
+  const isRoom = tableNumber.toLowerCase().includes('room') || tableNumber.toLowerCase().includes('suite');
+  const label = isRoom ? (tableNumber.toLowerCase().startsWith('room') ? tableNumber : `Room ${tableNumber}`) : `Table ${tableNumber}`;
+  const displayTitle = isRoom
+    ? `🛎️ Room Service - ${label}${purpose ? ` (${purpose})` : ''}`
+    : `🔔 Waiter Call - ${label}${purpose ? ` (${purpose})` : ''}`;
+
+  let displayMessage = `${label} requested assistance.`;
+  if (purpose && customNote) {
+    displayMessage = `${purpose} requested for ${label}: "${customNote}"`;
+  } else if (purpose) {
+    displayMessage = `${purpose} requested for ${label}.`;
+  } else if (customNote) {
+    displayMessage = `Note for ${label}: "${customNote}"`;
+  }
+
   const payload = {
     tableNumber,
     restaurantId,
@@ -194,24 +212,39 @@ export function emitWaiterCall(
     amount,
     paymentMethod,
     itemsSummary,
+    purpose,
+    customNote,
   };
   io.to(`restaurant:${restaurantId}`).emit('waiter:called', payload);
   io.to(`restaurant:${restaurantId}`).emit('waiter_called', payload);
   io.to(`restaurant:${restaurantId}`).emit('notification:new', {
     type: 'WAITER_CALL',
-    title: `🔔 Waiter Call - Table ${tableNumber}`,
-    message: `Table ${tableNumber} requested assistance.`,
+    title: displayTitle,
+    message: displayMessage,
     data: payload,
   });
+
+  if (ownerId) {
+    io.to(`user:${ownerId}`).emit('waiter:called', payload);
+    io.to(`user:${ownerId}`).emit('waiter_called', payload);
+    io.to(`user:${ownerId}`).emit('notification:new', {
+      type: 'WAITER_CALL',
+      title: displayTitle,
+      message: displayMessage,
+      data: payload,
+    });
+  }
 }
 
 export function emitWaiterResponse(restaurantId: string, tableNumber: string): void {
   if (!io) return;
   const cleanTable = String(tableNumber).trim();
+  const isRoom = cleanTable.toLowerCase().includes('room') || cleanTable.toLowerCase().includes('suite');
+  const label = isRoom ? (cleanTable.toLowerCase().startsWith('room') ? cleanTable : `Room ${cleanTable}`) : `Table ${cleanTable}`;
   const payload = {
     tableNumber: cleanTable,
     restaurantId,
-    message: `Waiter is coming to Table ${cleanTable}`,
+    message: isRoom ? `Hotel staff is coming to ${label}` : `Waiter is coming to ${label}`,
     timestamp: new Date().toISOString(),
   };
   io.to(`table:${restaurantId}:${cleanTable}`).emit('waiter:responded', payload);
@@ -223,10 +256,12 @@ export function emitWaiterResponse(restaurantId: string, tableNumber: string): v
 export function emitWaiterDismiss(restaurantId: string, tableNumber: string): void {
   if (!io) return;
   const cleanTable = String(tableNumber).trim();
+  const isRoom = cleanTable.toLowerCase().includes('room') || cleanTable.toLowerCase().includes('suite');
+  const label = isRoom ? (cleanTable.toLowerCase().startsWith('room') ? cleanTable : `Room ${cleanTable}`) : `Table ${cleanTable}`;
   const payload = {
     tableNumber: cleanTable,
     restaurantId,
-    message: `Waiter is occupied right now. You can try again in 30 seconds.`,
+    message: isRoom ? `Staff is occupied right now. You can try again in 30 seconds.` : `Waiter is occupied right now. You can try again in 30 seconds.`,
     timestamp: new Date().toISOString(),
   };
   io.to(`table:${restaurantId}:${cleanTable}`).emit('waiter:dismissed', payload);

@@ -106,36 +106,47 @@ export function sendDesktopNotification(
 
 // Audio context singleton for web audio fallback
 let sharedAudioCtx: AudioContext | null = null;
-
-function getAudioContext(): AudioContext {
-  if (!sharedAudioCtx || sharedAudioCtx.state === 'closed') {
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-    sharedAudioCtx = new AudioCtx();
-  }
-  if (sharedAudioCtx.state === 'suspended') {
-    sharedAudioCtx.resume().catch(() => {});
-  }
-  return sharedAudioCtx;
-}
+let userHasInteracted = false;
 
 if (typeof window !== 'undefined') {
-  const unlockAudio = () => {
+  const handleUserGesture = () => {
+    userHasInteracted = true;
     try {
-      const ctx = getAudioContext();
-      if (ctx.state === 'suspended') {
-        ctx.resume().catch(() => {});
+      if (!sharedAudioCtx || sharedAudioCtx.state === 'closed') {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtx) sharedAudioCtx = new AudioCtx();
+      }
+      if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
+        sharedAudioCtx.resume().catch(() => {});
       }
       requestDesktopNotificationPermission();
     } catch {}
   };
   
-  // Auto unlock on any page interaction or visibility change
-  ['click', 'keydown', 'touchstart', 'mousemove', 'scroll', 'pointerdown', 'focus', 'mouseenter', 'visibilitychange', 'load'].forEach((evt) => {
-    window.addEventListener(evt, unlockAudio, { capture: true, passive: true });
+  // Unlock on real user gestures
+  ['click', 'keydown', 'touchstart', 'pointerdown'].forEach((evt) => {
+    window.addEventListener(evt, handleUserGesture, { capture: true, passive: true });
   });
+}
 
-  // Call once immediately
-  unlockAudio();
+function getAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  if (!userHasInteracted && !sharedAudioCtx) {
+    return null;
+  }
+  try {
+    if (!sharedAudioCtx || sharedAudioCtx.state === 'closed') {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return null;
+      sharedAudioCtx = new AudioCtx();
+    }
+    if (sharedAudioCtx && sharedAudioCtx.state === 'suspended' && userHasInteracted) {
+      sharedAudioCtx.resume().catch(() => {});
+    }
+    return sharedAudioCtx;
+  } catch {
+    return null;
+  }
 }
 
 // ── 1. OWNER AUDIO SYNTHS (Sharp cash-register & waiter call alarm) ───────────
@@ -144,6 +155,7 @@ if (typeof window !== 'undefined') {
 export function playOwnerOrderSynth() {
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
     // Ascending cash-register brass chord + metallic ping
     const notes = [
@@ -174,6 +186,7 @@ export function playOwnerOrderSynth() {
 export function playOwnerWaiterSynth() {
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
 
     // 4 rapid double-ring pulses (Ding-Ding! Ding-Ding!)
@@ -211,6 +224,7 @@ export function playOwnerWaiterSynth() {
 export function playKitchenOrderSynth() {
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
     const strokes = [
       { delay: 0, freq1: 587.33, freq2: 880 },
@@ -242,6 +256,7 @@ export function playKitchenOrderSynth() {
 export function playKitchenWaiterSynth() {
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
     [0, 0.25, 0.5].forEach((delay) => {
       const osc = ctx.createOscillator();
@@ -262,6 +277,7 @@ export function playKitchenWaiterSynth() {
 export function playCustomerStatusSynth() {
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
     const notes = [
       { freq: 440, time: 0, duration: 0.3 },
@@ -286,6 +302,7 @@ export function playCustomerStatusSynth() {
 export function playCustomerWaiterComingSynth() {
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -303,6 +320,7 @@ export function playCustomerWaiterComingSynth() {
 export function playOrderCancelledSynth() {
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
     const tones = [
       { freq: 300, start: 0, duration: 0.2 },
@@ -326,6 +344,7 @@ export function playOrderCancelledSynth() {
 export function playDriverAssignedSynth() {
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
     const tones = [
       { freq: 440, start: 0, duration: 0.12 },
@@ -359,10 +378,10 @@ const SOUND_FILES: Record<EventType, string> = {
 export function playRoleEventSound(event: EventType, role: UserRole = 'owner') {
   if (typeof window === 'undefined') return;
 
-  // 1. Resume audio context synchronously
+  // 1. Resume audio context safely if user has interacted
   try {
     const ctx = getAudioContext();
-    if (ctx.state === 'suspended') {
+    if (ctx && ctx.state === 'suspended' && userHasInteracted) {
       ctx.resume().catch(() => {});
     }
   } catch {}

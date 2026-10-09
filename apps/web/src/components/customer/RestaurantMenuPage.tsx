@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
-import { Search, Filter, ShoppingCart, Clock, MapPin, Star, Bot, X, ChevronUp, QrCode, ChevronRight, BellRing, Gift, Ban } from 'lucide-react';
+import { Search, Filter, ShoppingCart, Clock, MapPin, Star, Bot, X, ChevronUp, QrCode, ChevronRight, BellRing, Gift, Ban, Bed, Sparkles, Utensils, Shirt, Bath, Luggage, Wrench, MessageSquare, CheckCircle2, ChevronDown, Lock } from 'lucide-react';
 import api, { getSocketUrl } from '@/lib/api';
 import { useCartStore } from '@/store/cart.store';
 import { useAuthStore } from '@/store/auth.store';
@@ -23,6 +24,25 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { io } from 'socket.io-client';
 
 const WAITER_COOLDOWN_SECONDS = 30;
+
+export const HOTEL_ROOM_PURPOSES = [
+  { id: 'Room Cleaning', label: '🧹 Room Cleaning', desc: 'Housekeeping, room tidy & trash pickup' },
+  { id: 'Food & Water', label: '🍽️ Food, Cutlery & Water', desc: 'Extra plates, spoons, glasses & drinking water' },
+  { id: 'Iron & Laundry', label: '👔 Iron / Ironing Board & Laundry', desc: 'Iron box, ironing board & clothes pressing' },
+  { id: 'Towels & Toiletries', label: '🛏️ Fresh Towels & Toiletries', desc: 'Fresh towels, soap, shampoo & bath kit' },
+  { id: 'Luggage & Bellboy', label: '🧳 Luggage / Bellboy Assistance', desc: 'Luggage assistance & check-out bags' },
+  { id: 'Room Maintenance', label: '🔧 Room Maintenance', desc: 'AC cooling, TV remote, electrical or plumbing' },
+  { id: 'General Assistance', label: '🔔 General Room Service', desc: 'Staff visit to the room for assistance' },
+  { id: 'Custom Request', label: '✍️ Custom Request / Other', desc: 'Specify any special requirement or custom service' },
+];
+
+export const DINE_IN_PURPOSES = [
+  { id: 'Food & Cutlery', label: '🍽️ Extra Cutlery, Water & Napkins', desc: 'Drinking water, extra spoons, plates & tissues' },
+  { id: 'Table Cleaning', label: '🧹 Clean Table', desc: 'Wipe table, clear used plates' },
+  { id: 'Bill & Payment', label: '💳 Bill & Payment Request', desc: 'Request bill copy, payment machine or cash collection' },
+  { id: 'Call Waiter', label: '🙋 Call Waiter to Table', desc: 'Assistance with menu, recommendations & order' },
+  { id: 'Custom Request', label: '✍️ Custom Request / Other', desc: 'Specify custom request' },
+];
 
 function formatTimer(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -49,6 +69,12 @@ interface RestaurantMenuPageProps {
 
 export function RestaurantMenuPage({ slug, tableNumber, searchParams }: RestaurantMenuPageProps) {
   const queryClient = useQueryClient();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'VEG' | 'NON_VEG' | 'VEGAN'>('ALL');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -65,6 +91,10 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
   const [waiterCooldown, setWaiterCooldown] = useState(0);
   const [waiterLoading, setWaiterLoading] = useState(false);
   const [showTableInput, setShowTableInput] = useState(false);
+  const [showServiceModal, setShowServiceModal] = useState(false);
+  const [selectedPurpose, setSelectedPurpose] = useState<string>('Room Cleaning');
+  const [customServiceNote, setCustomServiceNote] = useState<string>('');
+  const [isEditingLocation, setIsEditingLocation] = useState(false);
   const [manualTableNumber, setManualTableNumber] = useState('');
   const [waiterComingTimer, setWaiterComingTimer] = useState(0);
   const [waiterPendingTimer, setWaiterPendingTimer] = useState(0);
@@ -261,7 +291,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
   const [showHours, setShowHours] = useState(false);
   const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
 
-  const isAnyModalOpen = showLoyaltyModal || showTableInput || showHours || showNotifModal;
+  const isAnyModalOpen = showLoyaltyModal || showTableInput || showHours || showNotifModal || showServiceModal;
 
   useEffect(() => {
     if (isAnyModalOpen) {
@@ -324,6 +354,25 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
 
   const displayTableNumber = tableNumber || savedTable || manualTableNumber || undefined;
   const displayTableToken = searchParams?.token || savedToken || undefined;
+
+  const isHotelRoom = Boolean(
+    (displayTableNumber &&
+      (displayTableNumber.toLowerCase().includes('room') ||
+       displayTableNumber.toLowerCase().includes('suite') ||
+       displayTableNumber.toLowerCase().startsWith('rm') ||
+       displayTableNumber.toLowerCase().includes('hotel'))) ||
+    (manualTableNumber &&
+      (manualTableNumber.toLowerCase().includes('room') ||
+       manualTableNumber.toLowerCase().includes('suite')))
+  );
+
+  useEffect(() => {
+    if (isHotelRoom) {
+      setSelectedPurpose((prev) => (prev === 'Food & Cutlery' ? 'Room Cleaning' : prev));
+    } else {
+      setSelectedPurpose((prev) => (prev === 'Room Cleaning' ? 'Food & Cutlery' : prev));
+    }
+  }, [isHotelRoom]);
 
   
   useEffect(() => {
@@ -481,6 +530,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
           themeColor: string | null;
           menuTemplate?: string | null;
           customFields?: Array<{ id: string; key: string; value: string; icon: string }> | null;
+          featureFlags?: Record<string, boolean> | null;
         };
         categories: Array<{
           id: string;
@@ -548,24 +598,30 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
     };
   }, [clearWaiterTimers]);
 
-  const handleCallWaiter = useCallback(async (tableNum?: string) => {
+  const handleCallWaiter = useCallback(async (
+    tableNum?: string,
+    purpose?: string,
+    customNote?: string
+  ) => {
     const storedTable = typeof window !== 'undefined' ? localStorage.getItem(`table_num_${slug}`) : null;
     const effectiveTable = tableNum || tableNumber || manualTableNumber || storedTable;
 
     if (!effectiveTable || !String(effectiveTable).trim()) {
-      setShowTableInput(true);
+      setShowServiceModal(true);
       return;
     }
 
-    if (waiterStatus !== 'IDLE') {
-      const cleanT = String(effectiveTable).trim();
-      if (waiterStatus === 'PENDING') {
-        toast.info(`Waiter call is already pending for Table ${cleanT}. Please wait a moment.`);
-      } else if (waiterStatus === 'COMING') {
-        toast.info(`Wait for 1 min, waiter is coming to Table ${cleanT}!`);
-      } else if (waiterStatus === 'OCCUPIED') {
-        toast.info(`Waiter is busy right now. You can try again after 30 seconds.`);
-      }
+    const cleanTable = String(effectiveTable).trim();
+    const isRoom = cleanTable.toLowerCase().includes('room') || cleanTable.toLowerCase().includes('suite');
+    const label = isRoom ? (cleanTable.toLowerCase().startsWith('room') ? cleanTable : `Room ${cleanTable}`) : `Table ${cleanTable}`;
+
+    const flags = (data?.restaurant as any)?.featureFlags || {};
+    if (isRoom && flags.roomServiceEnabled === false) {
+      toast.error('Hotel room service is currently disabled for this restaurant by administration.');
+      return;
+    }
+    if (!isRoom && flags.callWaiterEnabled === false) {
+      toast.error('Waiter call service is currently disabled for this restaurant by administration.');
       return;
     }
 
@@ -573,24 +629,39 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
 
     setWaiterLoading(true);
     try {
-      const cleanTable = String(effectiveTable).trim();
       const token = searchParams?.token || localStorage.getItem(`table_token_${slug}`) || '';
-      await api.post(`/menu/${slug}/call-waiter`, { tableNumber: cleanTable, tableToken: token });
+      const chosenPurpose = purpose || (isRoom ? 'Room Cleaning' : 'General Assistance');
+      await api.post(`/menu/${slug}/call-waiter`, {
+        tableNumber: cleanTable,
+        tableToken: token,
+        purpose: chosenPurpose,
+        customNote: customNote?.trim() || undefined,
+      });
 
       if (typeof window !== 'undefined') {
         localStorage.setItem(`table_num_${slug}`, cleanTable);
       }
       setManualTableNumber(cleanTable);
 
-      toast.success(`🙋 Waiter has been called for Table ${cleanTable}!`, {
-        description: 'Please wait, someone will be with you shortly.',
-        duration: 5000,
-      });
+      toast.success(
+        isRoom
+          ? `🛎️ Room service requested for ${label}!`
+          : `🙋 Waiter called for ${label}!`,
+        {
+          description: customNote?.trim()
+            ? `${chosenPurpose} — "${customNote.trim()}"`
+            : `${chosenPurpose}. Staff will arrive shortly.`,
+          duration: 5000,
+        }
+      );
 
+      setShowServiceModal(false);
       setShowTableInput(false);
+      setCustomServiceNote('');
+      setIsEditingLocation(false);
       startPendingState(cleanTable, 30);
     } catch (err: any) {
-      const errMsg = err.response?.data?.error || err.response?.data?.message || 'Could not call waiter. Please try again.';
+      const errMsg = err.response?.data?.error || err.response?.data?.message || 'Could not send request. Please try again.';
       toast.error(errMsg);
     } finally {
       setWaiterLoading(false);
@@ -1070,64 +1141,87 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
               )}
               {displayTableNumber && (
                 <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold mt-1" style={{ color: themeColor }}>
-                  <MapPin className="w-3.5 h-3.5 shrink-0" />
-                  Table {displayTableNumber}
+                  {isHotelRoom ? (
+                    <>
+                      <Bed className="w-3.5 h-3.5 shrink-0" />
+                      {displayTableNumber.toLowerCase().startsWith('room') || displayTableNumber.toLowerCase().startsWith('suite')
+                        ? displayTableNumber
+                        : `Room ${displayTableNumber}`}
+                    </>
+                  ) : (
+                    <>
+                      <MapPin className="w-3.5 h-3.5 shrink-0" />
+                      Table {displayTableNumber}
+                    </>
+                  )}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Upper Section Responsive Call Waiter Button */}
-          <div className="shrink-0 w-full sm:w-auto">
-            <motion.button
-              whileHover={{ scale: waiterStatus !== 'IDLE' ? 1 : 1.03 }}
-              whileTap={{ scale: waiterStatus !== 'IDLE' ? 1 : 0.97 }}
-              onClick={() => {
-                const stored = typeof window !== 'undefined' ? localStorage.getItem(`table_num_${slug}`) : null;
-                const existingTable = tableNumber || manualTableNumber || stored;
-                if (existingTable && String(existingTable).trim()) {
-                  handleCallWaiter(String(existingTable).trim());
-                } else {
-                  setShowTableInput(true);
-                }
-              }}
-              disabled={waiterStatus !== 'IDLE' || waiterLoading}
-              style={{
-                backgroundColor:
-                  waiterStatus === 'COMING'
-                    ? '#059669'
-                    : waiterStatus === 'OCCUPIED'
-                    ? '#475569'
-                    : waiterStatus === 'PENDING'
-                    ? '#f59e0b'
-                    : themeColor,
-                borderColor:
-                  waiterStatus === 'COMING'
-                    ? '#047857'
-                    : waiterStatus === 'OCCUPIED'
-                    ? '#334155'
-                    : waiterStatus === 'PENDING'
-                    ? '#d97706'
-                    : 'transparent',
-              }}
-              className={`w-full sm:w-auto px-5 py-3 rounded-2xl sm:rounded-full text-white font-extrabold text-sm sm:text-base shadow-xl flex items-center justify-center gap-2 transition-all border whitespace-nowrap ${
-                waiterStatus !== 'IDLE' ? 'cursor-not-allowed opacity-95' : 'hover:opacity-95'
-              }`}
-            >
-              <BellRing className={`w-4 h-4 sm:w-5 sm:h-5 shrink-0 ${waiterStatus === 'COMING' || waiterStatus === 'PENDING' ? 'animate-pulse' : waiterStatus === 'OCCUPIED' ? '' : 'animate-bounce'}`} />
-              <span className="tracking-wide font-bold whitespace-nowrap">
-                {waiterLoading
-                  ? 'Sending Call...'
-                  : waiterStatus === 'PENDING'
-                  ? `Waiter Call Sent (${waiterPendingTimer}s)`
-                  : waiterStatus === 'COMING'
-                  ? `Waiter Coming (${waiterComingTimer}s)`
-                  : waiterStatus === 'OCCUPIED'
-                  ? `Waiter Busy (retry in ${waiterCooldown}s)`
-                  : 'Call Waiter'}
-              </span>
-            </motion.button>
-          </div>
+          {/* Upper Section Responsive Call Waiter / Room Service Button */}
+          {(() => {
+            const isServiceDisabled = (isHotelRoom && (restaurant as any)?.featureFlags?.roomServiceEnabled === false) || (!isHotelRoom && (restaurant as any)?.featureFlags?.callWaiterEnabled === false);
+            return (
+              <div className="shrink-0 w-full sm:w-auto">
+                <motion.button
+                  type="button"
+                  whileHover={{ scale: isServiceDisabled ? 1 : 1.03 }}
+                  whileTap={{ scale: isServiceDisabled ? 1 : 0.97 }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (isServiceDisabled) {
+                      toast.error(isHotelRoom ? 'Hotel room service is currently disabled by restaurant administration.' : 'Waiter calling is currently disabled by restaurant administration.');
+                      return;
+                    }
+                    setShowServiceModal(true);
+                  }}
+                  disabled={waiterLoading || isServiceDisabled}
+                  style={{
+                    backgroundColor:
+                      isServiceDisabled
+                        ? '#64748b'
+                        : waiterStatus === 'COMING'
+                        ? '#059669'
+                        : waiterStatus === 'OCCUPIED'
+                        ? '#475569'
+                        : waiterStatus === 'PENDING'
+                        ? '#f59e0b'
+                        : themeColor,
+                    borderColor:
+                      isServiceDisabled
+                        ? '#475569'
+                        : waiterStatus === 'COMING'
+                        ? '#047857'
+                        : waiterStatus === 'OCCUPIED'
+                        ? '#334155'
+                        : waiterStatus === 'PENDING'
+                        ? '#d97706'
+                        : 'transparent',
+                    opacity: isServiceDisabled ? 0.65 : 1,
+                  }}
+                  className={`w-full sm:w-auto px-5 py-3 rounded-2xl sm:rounded-full text-white font-extrabold text-sm sm:text-base shadow-xl flex items-center justify-center gap-2 transition-all border whitespace-nowrap hover:opacity-95 ${isServiceDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                >
+                  <BellRing className={`w-4 h-4 sm:w-5 sm:h-5 shrink-0 ${!isServiceDisabled && (waiterStatus === 'COMING' || waiterStatus === 'PENDING') ? 'animate-pulse' : waiterStatus === 'OCCUPIED' || isServiceDisabled ? '' : 'animate-bounce'}`} />
+                  <span className="tracking-wide font-bold whitespace-nowrap">
+                    {waiterLoading
+                      ? 'Sending Request...'
+                      : isServiceDisabled
+                      ? (isHotelRoom ? 'Room Service Disabled' : 'Waiter Call Disabled')
+                      : waiterStatus === 'PENDING'
+                      ? `${isHotelRoom ? 'Request Sent' : 'Waiter Call Sent'} (${waiterPendingTimer}s)`
+                      : waiterStatus === 'COMING'
+                      ? `${isHotelRoom ? 'Staff Coming' : 'Waiter Coming'} (${waiterComingTimer}s)`
+                      : waiterStatus === 'OCCUPIED'
+                      ? `Staff Busy (retry in ${waiterCooldown}s)`
+                      : isHotelRoom
+                      ? 'Call Room Service'
+                      : 'Call Waiter'}
+                  </span>
+                </motion.button>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Minimum order info */}
@@ -1646,89 +1740,224 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
         )}
       </AnimatePresence>
 
-      {/* Call Waiter — Table Input Modal */}
-      <AnimatePresence>
-        {showTableInput && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-card border border-border rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4 relative text-foreground"
-            >
-              <div className="flex items-center justify-between border-b border-border pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold" style={{ backgroundColor: themeColor }}>
-                    <BellRing className="w-5 h-5" />
+      {/* Call Waiter & Hotel Room Service Purpose Modal (Portalled directly to document.body) */}
+      {mounted && typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {(showServiceModal || showTableInput) && (
+            <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm pointer-events-auto">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                className="bg-card border border-border rounded-3xl p-5 sm:p-6 max-w-md w-full shadow-2xl space-y-4 relative text-foreground max-h-[90vh] overflow-y-auto"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-border pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className="w-10 h-10 rounded-2xl flex items-center justify-center text-white font-bold shadow-md shrink-0"
+                      style={{ backgroundColor: themeColor }}
+                    >
+                      {isHotelRoom ? <Bed className="w-5 h-5" /> : <BellRing className="w-5 h-5" />}
+                    </div>
+                    <div>
+                      <h3 className="font-display font-bold text-base text-foreground leading-tight">
+                        {isHotelRoom ? 'Hotel Room Service' : 'Call Waiter & Service'}
+                      </h3>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {isHotelRoom
+                          ? 'Select purpose: room cleaning, iron, food & amenities'
+                          : 'Select assistance purpose or request custom service'}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-display font-bold text-base text-foreground">Call Waiter</h3>
-                    <p className="text-[11px] text-muted-foreground">Request assistance for your table</p>
+                  <button
+                    onClick={() => {
+                      setShowServiceModal(false);
+                      setShowTableInput(false);
+                      setIsEditingLocation(false);
+                    }}
+                    className="p-2 rounded-full bg-muted hover:bg-muted-foreground/20 text-muted-foreground transition-colors cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Location Badge / Input (Strictly locked to scanned QR) */}
+                {displayTableNumber ? (
+                  <div className="flex items-center justify-between p-3.5 rounded-2xl bg-muted/60 border border-border">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                        {isHotelRoom ? <Bed className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider block">
+                          {isHotelRoom ? 'Delivering To' : 'Serving Table'}
+                        </span>
+                        <span className="text-sm font-black text-foreground truncate block">
+                          {isHotelRoom
+                            ? displayTableNumber.toLowerCase().startsWith('room') || displayTableNumber.toLowerCase().startsWith('suite')
+                              ? displayTableNumber
+                              : `Room ${displayTableNumber}`
+                            : `Table ${displayTableNumber}`}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-bold shrink-0">
+                      <Lock className="w-3 h-3" />
+                      <span>QR Locked</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-muted-foreground block flex items-center gap-1.5">
+                      {isHotelRoom ? <Bed className="w-3.5 h-3.5 text-primary" /> : <MapPin className="w-3.5 h-3.5 text-primary" />}
+                      {isHotelRoom ? 'Hotel Room Number / Suite' : 'Table / Room Number'}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder={isHotelRoom ? 'Enter Room Number (e.g. 301, Room 102)' : 'Enter Table Number (e.g. 5, Table 2)'}
+                      value={manualTableNumber}
+                      onChange={(e) => setManualTableNumber(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-muted border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground font-semibold"
+                      autoFocus
+                    />
+                  </div>
+                )}
+
+                {/* Calling Purpose Dropdown */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-foreground flex items-center justify-between">
+                    <span>Calling Purpose / Service Needed</span>
+                    <span className="text-[10px] text-muted-foreground">Select from list</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={selectedPurpose}
+                      onChange={(e) => setSelectedPurpose(e.target.value)}
+                      className="w-full pl-3.5 pr-10 py-2.5 bg-muted border border-border rounded-xl text-xs sm:text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 appearance-none cursor-pointer"
+                    >
+                      {(isHotelRoom ? HOTEL_ROOM_PURPOSES : DINE_IN_PURPOSES).map((purpose) => (
+                        <option key={purpose.id} value={purpose.id}>
+                          {purpose.label} — {purpose.desc}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-4 h-4 text-muted-foreground absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+
+                  {/* Quick Selection Chips */}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {(isHotelRoom ? HOTEL_ROOM_PURPOSES : DINE_IN_PURPOSES).map((purpose) => {
+                      const isSelected = selectedPurpose === purpose.id;
+                      return (
+                        <button
+                          key={purpose.id}
+                          type="button"
+                          onClick={() => setSelectedPurpose(purpose.id)}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-primary text-white border-primary shadow-xs'
+                              : 'bg-muted/40 border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }`}
+                        >
+                          {purpose.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-                <button
-                  onClick={() => setShowTableInput(false)}
-                  className="p-2 rounded-full bg-muted hover:bg-muted-foreground/20 text-muted-foreground transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground block">Table Number</label>
-                <input
-                  type="text"
-                  placeholder="Enter Table Number (e.g. 5, Table 2)"
-                  value={manualTableNumber}
-                  onChange={(e) => setManualTableNumber(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && manualTableNumber.trim()) {
-                      handleCallWaiter(manualTableNumber.trim());
+                {/* Custom Requirement Field */}
+                <div className="space-y-1.5 pt-1">
+                  <label className="text-xs font-bold text-foreground flex items-center justify-between">
+                    <span>Custom Request / Additional Details</span>
+                    <span className="text-[10px] text-muted-foreground font-normal">
+                      {selectedPurpose === 'Custom Request' ? 'Required' : 'Optional'}
+                    </span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder={
+                      isHotelRoom
+                        ? 'e.g. Please bring an iron box and board, extra drinking water, bath towels...'
+                        : 'e.g. Extra napkins, drinking water, spicy sauce...'
                     }
-                  }}
-                  className="w-full px-4 py-3 bg-muted border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground font-semibold"
-                  autoFocus
-                />
-              </div>
+                    value={customServiceNote}
+                    onChange={(e) => setCustomServiceNote(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-muted border border-border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground resize-none font-medium placeholder:text-muted-foreground/60"
+                  />
+                </div>
 
-              <button
-                onClick={() => {
-                  if (!manualTableNumber.trim()) {
-                    toast.error('Please enter your table number');
-                    return;
-                  }
-                  handleCallWaiter(manualTableNumber.trim());
-                }}
-                disabled={!manualTableNumber.trim() || waiterLoading}
-                style={{ backgroundColor: themeColor }}
-                className="w-full py-3.5 rounded-xl text-white font-bold text-sm hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg active:scale-95"
-              >
-                <BellRing className="w-4 h-4" />
-                {waiterLoading ? 'Sending Call...' : 'Confirm & Call Waiter'}
-              </button>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+                {/* Action Buttons */}
+                <div className="pt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowServiceModal(false);
+                      setShowTableInput(false);
+                      setIsEditingLocation(false);
+                    }}
+                    className="w-1/3 py-3 rounded-xl border border-border text-muted-foreground hover:text-foreground hover:bg-muted font-bold text-xs sm:text-sm transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const targetLocation = (displayTableNumber && !isEditingLocation) ? displayTableNumber : manualTableNumber;
+                      if (!targetLocation || !String(targetLocation).trim()) {
+                        toast.error(isHotelRoom ? 'Please enter your room number' : 'Please enter your table number');
+                        setIsEditingLocation(true);
+                        return;
+                      }
+                      if (selectedPurpose === 'Custom Request' && !customServiceNote.trim()) {
+                        toast.error('Please describe your custom request in the details field');
+                        return;
+                      }
+                      handleCallWaiter(String(targetLocation).trim(), selectedPurpose, customServiceNote);
+                    }}
+                    disabled={waiterLoading}
+                    style={{ backgroundColor: themeColor }}
+                    className="flex-1 py-3 rounded-xl text-white font-bold text-xs sm:text-sm hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg active:scale-95 cursor-pointer"
+                  >
+                    <BellRing className="w-4 h-4 shrink-0" />
+                    <span>
+                      {waiterLoading
+                        ? 'Sending Request...'
+                        : isHotelRoom
+                        ? 'Confirm & Request Service'
+                        : 'Confirm & Call Waiter'}
+                    </span>
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
 
       {/* Floating Action Buttons — right column */}
-      <div className={`fixed ${cartCount > 0 && !cartOpen ? 'bottom-20 sm:bottom-24' : 'bottom-4 sm:bottom-6'} right-3 sm:right-6 z-40 flex flex-col gap-2.5 items-center transition-all duration-300`}>
+      <div className={`fixed ${cartCount > 0 && !cartOpen ? 'bottom-20 sm:bottom-24' : 'bottom-4 sm:bottom-6'} right-3 sm:right-6 z-40 flex flex-col gap-2.5 items-end transition-all duration-300 pointer-events-auto`}>
         {showScrollTop && (
           <button
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-background/95 backdrop-blur-md border border-border/80 shadow-xl flex items-center justify-center hover:bg-muted transition-all active:scale-95 text-foreground"
+            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-background/95 backdrop-blur-md border border-border/80 shadow-xl flex items-center justify-center hover:bg-muted transition-all active:scale-95 text-foreground cursor-pointer"
           >
             <ChevronUp className="w-5 h-5" />
           </button>
         )}
+
+
         {!chatOpen && (
           <button
             onClick={() => setChatOpen(true)}
-            className="w-12 h-12 rounded-full text-white shadow-2xl flex items-center justify-center transition-transform hover:scale-110 active:scale-95 border-2 border-white/30 backdrop-blur-md"
+            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full text-white shadow-2xl flex items-center justify-center transition-transform hover:scale-110 active:scale-95 border-2 border-white/30 backdrop-blur-md cursor-pointer"
             style={{ backgroundColor: themeColor }}
             title="Ask AI Assistant"
           >
-            <Bot className="w-6 h-6" />
+            <Bot className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
         )}
       </div>

@@ -7,10 +7,12 @@ import {
   Store, Search, CheckCircle2, XCircle, Clock, Filter,
   LayoutDashboard, Users, BarChart3, Settings, LogOut,
   Menu, Shield, ChevronRight, Eye, AlertTriangle, RefreshCw,
-  Plus, X, Loader2, CreditCard, Ticket, HandCoins, Star, Trash2, Pencil
+  Plus, X, Loader2, CreditCard, Ticket, HandCoins, Star, Trash2, Pencil,
+  SlidersHorizontal
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { AdminSidebar } from '@/components/admin/AdminSidebar';
+import { AdminRestaurantDetailModal } from '@/components/admin/AdminRestaurantDetailModal';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
 import Link from 'next/link';
@@ -43,6 +45,7 @@ type Restaurant = {
   isOpen: boolean;
   createdAt: string;
   owner: { name: string; email: string };
+  subscription?: { id: string; isActive: boolean; plan?: { name: string; price: number } } | null;
   _count?: { orders: number };
 };
 
@@ -58,6 +61,7 @@ export function AdminRestaurantsPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState(searchParams.get('status') ?? 'all');
   const [page, setPage] = useState(1);
+  const [selectedManageRestaurantId, setSelectedManageRestaurantId] = useState<string | null>(null);
 
   // Create Restaurant State
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -320,6 +324,7 @@ export function AdminRestaurantsPage() {
                         <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Restaurant</th>
                         <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground hidden sm:table-cell">Owner</th>
                         <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground hidden md:table-cell">Location</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground hidden lg:table-cell">Plan</th>
                         <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Status</th>
                         <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Actions</th>
                       </tr>
@@ -334,13 +339,13 @@ export function AdminRestaurantsPage() {
                             animate={{ opacity: 1 }}
                             className="hover:bg-muted/30 transition-colors"
                           >
-                            <td className="px-4 py-3">
+                            <td className="px-4 py-3 cursor-pointer" onClick={() => setSelectedManageRestaurantId(r.id)}>
                               <div className="flex items-center gap-3">
                                 <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500/20 to-amber-500/20 border border-orange-500/20 flex items-center justify-center">
                                   <Store className="w-4 h-4 text-orange-500" />
                                 </div>
                                 <div>
-                                  <p className="font-semibold text-sm">{r.name}</p>
+                                  <p className="font-semibold text-sm hover:text-primary transition-colors">{r.name}</p>
                                   <p className="text-xs text-muted-foreground">/{r.slug}</p>
                                 </div>
                               </div>
@@ -358,6 +363,11 @@ export function AdminRestaurantsPage() {
                             <td className="px-4 py-3 hidden md:table-cell">
                               <p className="text-sm text-muted-foreground">{r.city ?? '—'}</p>
                             </td>
+                            <td className="px-4 py-3 hidden lg:table-cell">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                                {r.subscription?.plan?.name || 'Basic Plan'}
+                              </span>
+                            </td>
                             <td className="px-4 py-3">
                               <div className="flex flex-col gap-1 items-start">
                                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${badge.cls}`}>
@@ -369,7 +379,15 @@ export function AdminRestaurantsPage() {
                               </div>
                             </td>
                             <td className="px-4 py-3">
-                              <div className="flex items-center justify-end gap-2">
+                              <div className="flex items-center justify-end gap-1.5 sm:gap-2">
+                                <button
+                                  onClick={() => setSelectedManageRestaurantId(r.id)}
+                                  className="flex items-center gap-1 px-2.5 py-1.5 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground rounded-xl transition-all text-xs font-bold shadow-sm"
+                                  title="Full Restaurant Details, Feature Toggles & Subscription"
+                                >
+                                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                                  <span className="hidden sm:inline">Manage</span>
+                                </button>
                                 {!r.isApproved && !r.isSuspended && (
                                   <>
                                     <button
@@ -824,7 +842,15 @@ export function AdminRestaurantsPage() {
           </motion.div>
         </div>
       )}
-      </main>
+
+      {/* Full Details & Controls Modal */}
+      <AdminRestaurantDetailModal
+        restaurantId={selectedManageRestaurantId}
+        isOpen={!!selectedManageRestaurantId}
+        onClose={() => setSelectedManageRestaurantId(null)}
+        onUpdated={() => qc.invalidateQueries({ queryKey: ['admin-restaurants'] })}
+      />
+    </main>
     </div>
   );
 }

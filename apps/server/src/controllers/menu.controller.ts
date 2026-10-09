@@ -101,6 +101,7 @@ export async function getRestaurantMenu(
         paymentEnabled: true,
         upiEnabled: true,
         merchantName: true,
+        featureFlags: true,
       },
     });
 
@@ -144,6 +145,7 @@ export async function getRestaurantMenu(
           paymentEnabled: true,
           upiEnabled: true,
           merchantName: true,
+          featureFlags: true,
         },
       });
 
@@ -211,7 +213,25 @@ export async function callWaiter(
 ): Promise<void> {
   try {
     const restaurantSlug = req.params.restaurantSlug as string;
-    const { tableNumber, tableToken } = req.body as { tableNumber?: string; tableToken?: string };
+    const {
+      tableNumber,
+      tableToken,
+      type = 'default',
+      amount,
+      paymentMethod,
+      itemsSummary,
+      purpose,
+      customNote,
+    } = req.body as {
+      tableNumber?: string;
+      tableToken?: string;
+      type?: 'default' | 'payment' | 'addons';
+      amount?: number;
+      paymentMethod?: string;
+      itemsSummary?: string;
+      purpose?: string;
+      customNote?: string;
+    };
 
     if (!tableNumber || typeof tableNumber !== 'string' || tableNumber.trim() === '') {
       throw new AppError('tableNumber is required', 400, 'VALIDATION_ERROR');
@@ -224,11 +244,23 @@ export async function callWaiter(
         isApproved: true,
         isSuspended: false,
       },
-      select: { id: true, name: true, ownerId: true },
+      select: { id: true, name: true, ownerId: true, featureFlags: true },
     });
 
     if (!restaurant) {
       throw new AppError('Restaurant not found', 404, 'RESTAURANT_NOT_FOUND');
+    }
+
+    const flags = (restaurant.featureFlags as Record<string, boolean> | null) || {};
+
+    const cleanTable = tableNumber.trim();
+    const isRoom = cleanTable.toLowerCase().includes('room') || cleanTable.toLowerCase().includes('suite');
+
+    if (isRoom && flags.roomServiceEnabled === false) {
+      throw new AppError('Hotel room service is currently disabled for this restaurant by administration.', 403, 'ROOM_SERVICE_DISABLED');
+    }
+    if (!isRoom && flags.callWaiterEnabled === false) {
+      throw new AppError('Waiter call service is currently disabled for this restaurant by administration.', 403, 'CALL_WAITER_DISABLED');
     }
 
     // Verify cryptographic signature of the table number ONLY if ENFORCE_TABLE_SIGNATURE is set to true
@@ -237,9 +269,32 @@ export async function callWaiter(
         throw new AppError('Invalid table QR code signature. Please scan the QR code on your table.', 403, 'INVALID_TABLE_TOKEN');
       }
     }
+    const label = isRoom ? (cleanTable.toLowerCase().startsWith('room') ? cleanTable : `Room ${cleanTable}`) : `Table ${cleanTable}`;
+    const notifTitle = isRoom
+      ? `🛎️ Room Service - ${label}${purpose ? ` (${purpose})` : ''}`
+      : `🔔 Waiter Call - ${label}${purpose ? ` (${purpose})` : ''}`;
+
+    let notifMessage = `${label} requested assistance.`;
+    if (purpose && customNote) {
+      notifMessage = `${purpose} requested for ${label}: "${customNote}"`;
+    } else if (purpose) {
+      notifMessage = `${purpose} requested for ${label}.`;
+    } else if (customNote) {
+      notifMessage = `Customer at ${label} noted: "${customNote}"`;
+    }
 
     // Emit real-time waiter call to the restaurant owner's socket room
-    emitWaiterCall(restaurant.id, tableNumber.trim());
+    emitWaiterCall(
+      restaurant.id,
+      cleanTable,
+      type,
+      amount,
+      paymentMethod,
+      itemsSummary,
+      purpose,
+      customNote,
+      restaurant.ownerId
+    );
 
     // Create persistent notification in database so restaurant owner sees it in dashboard
     await prisma.notification.create({
@@ -247,14 +302,16 @@ export async function callWaiter(
         restaurantId: restaurant.id,
         userId: restaurant.ownerId,
         type: 'WAITER_CALL',
-        title: `🔔 Waiter Call - Table ${tableNumber.trim()}`,
-        message: `Customer at Table ${tableNumber.trim()} is requesting assistance.`,
+        title: notifTitle,
+        message: notifMessage,
       },
     }).catch((err) => logger.warn('Failed to create waiter call notification in DB:', err));
 
     res.json({
       success: true,
-      message: `Waiter has been called for Table ${tableNumber.trim()}`,
+      message: isRoom
+        ? `Room service requested for ${label}${purpose ? ` (${purpose})` : ''}`
+        : `Waiter called for ${label}${purpose ? ` (${purpose})` : ''}`,
     });
   } catch (error) {
     next(error);

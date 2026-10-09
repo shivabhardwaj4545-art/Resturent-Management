@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, UtensilsCrossed, ShoppingBag, Tag, BarChart3, Settings,
   LogOut, Menu, X, TrendingUp, Users, DollarSign, Clock, Bell, ChevronRight,
-  Power, Star, Palette, BellRing, ChefHat
+  Power, Star, Palette, BellRing, ChefHat, CreditCard, AlertTriangle, Calendar, ShieldCheck, Zap
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api, { getSocketUrl } from '@/lib/api';
@@ -49,7 +49,20 @@ export function OwnerDashboard() {
     queryFn: async () => {
       const response = await api.get('/owner/dashboard');
       return response.data.data as {
-        restaurant: { id: string; name: string; isOpen: boolean; themeColor: string | null };
+        restaurant: { id: string; name: string; isOpen: boolean; isSuspended?: boolean; themeColor: string | null };
+        subscription?: {
+          id: string;
+          planName: string;
+          planPrice: number;
+          amount: number;
+          paymentStatus: string;
+          paymentMethod: string;
+          startsAt: string;
+          expiresAt: string;
+          isActive: boolean;
+          daysRemaining: number;
+          planFeatures?: any;
+        } | null;
         stats: {
           todayRevenue: number;
           todayOrders: number;
@@ -197,6 +210,111 @@ export function OwnerDashboard() {
             </div>
           ) : (
             <>
+              {/* Subscription Status & Cycle Banner */}
+              {(() => {
+                const sub = data?.subscription;
+                const isSuspended = data?.restaurant?.isSuspended;
+
+                if (isSuspended) {
+                  return (
+                    <motion.div
+                      initial={{ opacity: 0, y: -8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="p-4 sm:p-5 rounded-3xl bg-red-500/10 border border-red-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm"
+                    >
+                      <div className="flex items-start sm:items-center gap-3.5">
+                        <div className="w-10 h-10 rounded-2xl bg-red-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-red-500/20">
+                          <AlertTriangle className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h3 className="font-extrabold text-sm sm:text-base text-red-600 dark:text-red-400">
+                            Restaurant Suspended — Subscription Expired
+                          </h3>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Customer digital ordering is currently offline. Please purchase or renew a subscription plan to immediately reactivate your restaurant.
+                          </p>
+                        </div>
+                      </div>
+                      <Link
+                        href="/owner/subscription"
+                        className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-md transition-all shrink-0 text-center flex items-center justify-center gap-2"
+                      >
+                        <Zap className="w-4 h-4" />
+                        <span>Renew / Buy Subscription</span>
+                      </Link>
+                    </motion.div>
+                  );
+                }
+
+                if (sub) {
+                  const days = Math.max(1, Math.round((new Date(sub.expiresAt).getTime() - new Date(sub.startsAt).getTime()) / (1000 * 60 * 60 * 24)));
+                  const cycleText = days >= 360 ? '1 Year Annual Cycle' : days >= 170 ? '6 Months Cycle' : days >= 80 ? '3 Months Quarterly Cycle' : '1 Month Monthly Cycle';
+                  const isExpiringSoon = sub.daysRemaining <= 5;
+
+                  return (
+                    <div className="p-4 sm:p-5 rounded-3xl bg-card border border-border shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative overflow-hidden">
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-primary to-amber-500 text-white flex items-center justify-center shadow-lg shadow-primary/20 shrink-0">
+                          <CreditCard className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">Active Plan</span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-500/10 text-green-600 border border-green-500/20">
+                              🟢 Active
+                            </span>
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
+                              {cycleText} ({days}d)
+                            </span>
+                          </div>
+                          <h2 className="text-base sm:text-lg font-black font-display text-foreground mt-0.5 truncate">
+                            {sub.planName} Tier
+                          </h2>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 sm:gap-4 text-xs">
+                        <div className="p-2.5 sm:p-3 rounded-2xl bg-muted/40 border border-border flex-1 sm:flex-initial">
+                          <span className="text-muted-foreground block text-[10px] font-semibold">Remaining Validity</span>
+                          <span className={`font-extrabold text-sm ${isExpiringSoon ? 'text-amber-500 font-black' : 'text-primary'}`}>
+                            {sub.daysRemaining} {sub.daysRemaining === 1 ? 'day' : 'days'}
+                            {isExpiringSoon && ' (Expiring Soon!)'}
+                          </span>
+                        </div>
+                        <div className="p-2.5 sm:p-3 rounded-2xl bg-muted/40 border border-border flex-1 sm:flex-initial">
+                          <span className="text-muted-foreground block text-[10px] font-semibold">Valid Till / Ends On</span>
+                          <span className="font-bold text-foreground text-sm">
+                            {new Date(sub.expiresAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <Link
+                          href="/owner/subscription"
+                          className="w-full sm:w-auto px-4 py-3 rounded-2xl bg-muted hover:bg-muted-foreground/10 text-foreground font-bold text-xs border border-border transition-all flex items-center justify-center gap-2 shrink-0 shadow-sm"
+                        >
+                          <span>Manage / Renew</span>
+                          <ChevronRight className="w-4 h-4 text-primary" />
+                        </Link>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-semibold">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>No active subscription tier found. You are currently on free starter mode.</span>
+                    </div>
+                    <Link
+                      href="/owner/subscription"
+                      className="px-4 py-2 rounded-xl bg-primary text-primary-foreground font-bold text-xs hover:bg-primary/95 transition-all shrink-0 text-center shadow-sm"
+                    >
+                      Subscribe to a Plan ➔
+                    </Link>
+                  </div>
+                );
+              })()}
+
               {/* Stats */}
               {(() => {
                 const formatCurrency = (val: number | undefined | null) => {

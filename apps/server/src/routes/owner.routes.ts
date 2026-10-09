@@ -51,6 +51,10 @@ import {
   deleteKitchenStaff,
   uploadAndParseMenu,
   batchImportMenu,
+  getOwnerSubscription,
+  buyOwnerSubscription,
+  createOwnerSubscriptionOrder,
+  verifyOwnerSubscriptionPayment,
 } from '../controllers/owner.controller';
 import { upload, uploadDocument } from '../services/cloudinary.service';
 
@@ -112,5 +116,11 @@ router.get('/reviews', getRestaurantReviews);
 
 // Analytics
 router.get('/analytics', getAnalytics);
+
+// Subscription
+router.get('/subscription', getOwnerSubscription);
+router.post('/subscription/buy', buyOwnerSubscription);
+router.post('/subscription/create-order', createOwnerSubscriptionOrder);
+router.post('/subscription/verify-payment', verifyOwnerSubscriptionPayment);
 
 export default router;

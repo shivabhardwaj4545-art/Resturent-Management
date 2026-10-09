@@ -122,16 +122,27 @@ export function WaiterBell() {
     if (!notifData?.notifications) return;
     const waiterNotifs = notifData.notifications.filter((n) => !n.isRead && n.type === 'WAITER_CALL');
     waiterNotifs.forEach((n) => {
-      const match = n.title.match(/Table\s+([A-Za-z0-9_-]+)/i) || n.message.match(/Table\s+([A-Za-z0-9_-]+)/i);
-      const tableNumber = match ? match[1] : 'Unknown';
+      const match = n.title.match(/(?:Table|Room)\s+([A-Za-z0-9_-]+)/i) || n.message.match(/(?:Table|Room)\s+([A-Za-z0-9_-]+)/i);
+      const isRoom = /Room/i.test(n.title) || /Room/i.test(n.message);
+      let tableNumber = match ? match[1] : 'Unknown';
+      if (isRoom && !tableNumber.toLowerCase().startsWith('room')) {
+        tableNumber = `Room ${tableNumber}`;
+      }
       const existing = waiterCalls.some((c) => c.tableNumber === tableNumber);
       const isHandled = useWaiterStore.getState().handledTables.includes(tableNumber);
+      const purposeMatch = n.title.match(/\(([^)]+)\)/);
+      const purpose = purposeMatch ? purposeMatch[1] : undefined;
+      const customNote = n.message.includes('"') ? n.message.split('"')[1] : undefined;
       if (!existing && !isHandled) {
+        const isCurrentAlertOpen = useWaiterStore.getState().activeWaiterAlert !== null;
         useWaiterStore.getState().addWaiterCall({
           tableNumber,
           calledAt: n.createdAt,
           type: 'default',
-        }, false);
+          purpose,
+          customNote,
+          restaurantId: (n as any).restaurantId,
+        }, !isCurrentAlertOpen);
       }
     });
   }, [notifData, waiterCalls]);
@@ -353,7 +364,16 @@ export function WaiterBell() {
                                 </div>
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="text-xs font-black text-foreground">Table {call.tableNumber}</span>
+                                    <span className="text-xs font-black text-foreground">
+                                      {call.tableNumber.toLowerCase().includes('room') || call.tableNumber.toLowerCase().includes('suite')
+                                        ? (call.tableNumber.toLowerCase().startsWith('room') ? call.tableNumber : `Room ${call.tableNumber}`)
+                                        : `Table ${call.tableNumber}`}
+                                    </span>
+                                    {call.purpose && (
+                                      <span className="text-[9px] bg-primary/15 text-primary dark:text-primary-foreground dark:bg-primary/25 px-1.5 py-0.5 rounded-full font-bold border border-primary/20">
+                                        {call.purpose}
+                                      </span>
+                                    )}
                                     {isPayment && (
                                       <span className="text-[9px] bg-amber-500/20 text-amber-600 dark:text-amber-300 px-1.5 py-0.5 rounded-full font-bold border border-amber-500/30">
                                         Payment
@@ -374,8 +394,16 @@ export function WaiterBell() {
                                       <span className="font-bold text-blue-600 dark:text-blue-400">
                                         {isPayOnCounter ? 'Add-on Counter Pay' : isPayToWaiter ? 'Add-on Waiter Pay' : 'Add-on Added'} {call.amount ? `(₹${call.amount.toFixed(0)})` : ''}
                                       </span>
+                                    ) : call.purpose ? (
+                                      <span className="font-medium text-foreground">
+                                        {call.purpose}{call.customNote ? `: "${call.customNote}"` : ''}
+                                      </span>
                                     ) : (
-                                      <span>Requested waiter assistance</span>
+                                      <span>
+                                        {call.tableNumber.toLowerCase().includes('room') || call.tableNumber.toLowerCase().includes('suite')
+                                          ? 'Requested room service'
+                                          : 'Requested waiter assistance'}
+                                      </span>
                                     )}
                                   </p>
                                   <span className="text-[10px] text-muted-foreground/80 block mt-0.5 font-medium">
