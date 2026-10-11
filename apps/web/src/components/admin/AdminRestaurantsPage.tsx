@@ -43,8 +43,10 @@ type Restaurant = {
   isApproved: boolean;
   isSuspended: boolean;
   isOpen: boolean;
+  platformType?: 'RESTAURANT' | 'HOTEL' | 'DUAL' | string;
+  maxLogins?: number;
   createdAt: string;
-  owner: { name: string; email: string };
+  owner: { name: string; email: string; maxLogins?: number };
   subscription?: { id: string; isActive: boolean; plan?: { name: string; price: number } } | null;
   _count?: { orders: number };
 };
@@ -71,6 +73,8 @@ export function AdminRestaurantsPage() {
   const [createCity, setCreateCity] = useState('');
   const [createPhone, setCreatePhone] = useState('');
   const [createAddress, setCreateAddress] = useState('');
+  const [createPlatformType, setCreatePlatformType] = useState<'RESTAURANT' | 'HOTEL' | 'DUAL'>('RESTAURANT');
+  const [createMaxLogins, setCreateMaxLogins] = useState('1');
   const [createOwnerName, setCreateOwnerName] = useState('');
   const [createOwnerEmail, setCreateOwnerEmail] = useState('');
   const [createOwnerPhone, setCreateOwnerPhone] = useState('');
@@ -86,6 +90,8 @@ export function AdminRestaurantsPage() {
   const [editPhone, setEditPhone] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editAddress, setEditAddress] = useState('');
+  const [editPlatformType, setEditPlatformType] = useState<'RESTAURANT' | 'HOTEL' | 'DUAL'>('RESTAURANT');
+  const [editMaxLogins, setEditMaxLogins] = useState('1');
   const [editOwnerEmail, setEditOwnerEmail] = useState('');
   const [editOwnerPassword, setEditOwnerPassword] = useState('');
   const [editIsApproved, setEditIsApproved] = useState(false);
@@ -102,6 +108,8 @@ export function AdminRestaurantsPage() {
     setEditPhone(r.phone || '');
     setEditEmail(r.email || '');
     setEditAddress(r.address || '');
+    setEditPlatformType(((r as any).platformType as any) || 'RESTAURANT');
+    setEditMaxLogins(String((r as any).maxLogins || r.owner?.maxLogins || 1));
     setEditOwnerEmail(r.owner?.email || '');
     setEditOwnerPassword('');
     setEditIsApproved(r.isApproved ?? false);
@@ -126,6 +134,8 @@ export function AdminRestaurantsPage() {
         phone: editPhone || undefined,
         email: editEmail || undefined,
         address: editAddress || undefined,
+        platformType: editPlatformType,
+        maxLogins: parseInt(editMaxLogins, 10) || 1,
         ownerEmail: editOwnerEmail || undefined,
         ownerPassword: editOwnerPassword || undefined,
         isApproved: editIsApproved,
@@ -159,6 +169,8 @@ export function AdminRestaurantsPage() {
         city: createCity || undefined,
         phone: createPhone || undefined,
         address: createAddress || undefined,
+        platformType: createPlatformType,
+        maxLogins: parseInt(createMaxLogins, 10) || 1,
         ownerName: createOwnerName,
         ownerEmail: createOwnerEmail,
         ownerPhone: createOwnerPhone || undefined,
@@ -173,6 +185,8 @@ export function AdminRestaurantsPage() {
       setCreateCity('');
       setCreatePhone('');
       setCreateAddress('');
+      setCreatePlatformType('RESTAURANT');
+      setCreateMaxLogins('1');
       setCreateOwnerName('');
       setCreateOwnerEmail('');
       setCreateOwnerPhone('');
@@ -364,9 +378,20 @@ export function AdminRestaurantsPage() {
                               <p className="text-sm text-muted-foreground">{r.city ?? '—'}</p>
                             </td>
                             <td className="px-4 py-3 hidden lg:table-cell">
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                                {r.subscription?.plan?.name || 'Basic Plan'}
-                              </span>
+                              <div className="flex flex-col gap-1 items-start">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                  (r as any).platformType === 'DUAL'
+                                    ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20'
+                                    : (r as any).platformType === 'HOTEL'
+                                    ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                                    : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
+                                }`}>
+                                  {(r as any).platformType === 'DUAL' ? '🌟 Dual (Rest + Hotel)' : (r as any).platformType === 'HOTEL' ? '🏨 Hotel Only' : '🍽️ Restaurant'}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground font-medium">
+                                  {r.subscription?.plan?.name || 'Basic Plan'}
+                                </span>
+                              </div>
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex flex-col gap-1 items-start">
@@ -577,10 +602,55 @@ export function AdminRestaurantsPage() {
                     />
                   </div>
                 </div>
+
+                {/* Platform Mode & Dual Plan Selection */}
+                <div className="pt-1">
+                  <label className="text-[11px] font-semibold text-muted-foreground mb-1.5 block">
+                    Select Platform Type & Capabilities *
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCreatePlatformType('RESTAURANT')}
+                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                        createPlatformType === 'RESTAURANT'
+                          ? 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/30'
+                          : 'border-border bg-muted/40 hover:bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      <div className="font-bold text-xs flex items-center gap-1.5">🍽️ Restaurant</div>
+                      <p className="text-[10px] mt-0.5 opacity-80">Tables, Waiter Bell, Dine-in Orders</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCreatePlatformType('HOTEL')}
+                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                        createPlatformType === 'HOTEL'
+                          ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 ring-1 ring-amber-500/30'
+                          : 'border-border bg-muted/40 hover:bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      <div className="font-bold text-xs flex items-center gap-1.5">🏨 Hotel Only</div>
+                      <p className="text-[10px] mt-0.5 opacity-80">Rooms, Room Service Calling, QR</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCreatePlatformType('DUAL')}
+                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                        createPlatformType === 'DUAL'
+                          ? 'border-purple-500 bg-purple-500/15 text-purple-600 dark:text-purple-300 ring-2 ring-purple-500/40'
+                          : 'border-border bg-muted/40 hover:bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      <div className="font-bold text-xs flex items-center gap-1.5">🌟 Dual Plan</div>
+                      <p className="text-[10px] mt-0.5 opacity-80">Both Restaurant + Hotel Access</p>
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-3 border-t border-border pt-4">
-                <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Owner Account Details</h4>
+                <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Owner Account & Credentials</h4>
                 <div className="grid sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Owner Full Name *</label>
@@ -605,9 +675,9 @@ export function AdminRestaurantsPage() {
                     />
                   </div>
                 </div>
-                <div className="grid sm:grid-cols-2 gap-3">
+                <div className="grid sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Owner Phone Number (Optional)</label>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Phone (Optional)</label>
                     <input
                       type="text"
                       placeholder="e.g. 9876543211"
@@ -617,7 +687,7 @@ export function AdminRestaurantsPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Owner Account Password (Optional)</label>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Password (Optional)</label>
                     <input
                       type="text"
                       placeholder="e.g. Owner@123456"
@@ -626,9 +696,23 @@ export function AdminRestaurantsPage() {
                       className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
                     />
                   </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Max Concurrent Logins *</label>
+                    <select
+                      value={createMaxLogins}
+                      onChange={(e) => setCreateMaxLogins(e.target.value)}
+                      className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                    >
+                      <option value="1">1 Active Device (Single Login)</option>
+                      <option value="2">2 Concurrent Logins</option>
+                      <option value="3">3 Concurrent Logins</option>
+                      <option value="5">5 Concurrent Logins</option>
+                      <option value="10">10 Concurrent Logins</option>
+                    </select>
+                  </div>
                 </div>
                 <div className="p-2.5 bg-primary/5 border border-primary/20 rounded-xl text-[11px] text-muted-foreground">
-                  📧 <strong>Email Notification:</strong> An official welcome email containing the <strong>Restaurant Details</strong> (ID, Name, Slug, Storefront URL) and <strong>Owner Login Credentials</strong> (Login Email & Password) will be sent automatically to the owner's email address upon creation.
+                  📧 <strong>Email Notification:</strong> An official welcome email containing the <strong>Restaurant Details</strong> (ID, Name, Slug, Platform Mode) and <strong>Owner Login Credentials</strong> (Login Email, Password, Max Devices: {createMaxLogins}) will be sent automatically to the owner's email address upon creation.
                 </div>
               </div>
 
@@ -756,11 +840,56 @@ export function AdminRestaurantsPage() {
                     className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground resize-none"
                   />
                 </div>
+
+                {/* Platform Mode & Dual Plan Selection */}
+                <div className="pt-1">
+                  <label className="text-[11px] font-semibold text-muted-foreground mb-1.5 block">
+                    Platform Type & Operational Mode *
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditPlatformType('RESTAURANT')}
+                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                        editPlatformType === 'RESTAURANT'
+                          ? 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/30'
+                          : 'border-border bg-muted/40 hover:bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      <div className="font-bold text-xs flex items-center gap-1.5">🍽️ Restaurant</div>
+                      <p className="text-[10px] mt-0.5 opacity-80">Tables, Waiter Bell</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditPlatformType('HOTEL')}
+                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                        editPlatformType === 'HOTEL'
+                          ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 ring-1 ring-amber-500/30'
+                          : 'border-border bg-muted/40 hover:bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      <div className="font-bold text-xs flex items-center gap-1.5">🏨 Hotel Only</div>
+                      <p className="text-[10px] mt-0.5 opacity-80">Rooms, Room Service</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditPlatformType('DUAL')}
+                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                        editPlatformType === 'DUAL'
+                          ? 'border-purple-500 bg-purple-500/15 text-purple-600 dark:text-purple-300 ring-2 ring-purple-500/40'
+                          : 'border-border bg-muted/40 hover:bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      <div className="font-bold text-xs flex items-center gap-1.5">🌟 Dual Plan</div>
+                      <p className="text-[10px] mt-0.5 opacity-80">Both Rest + Hotel</p>
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-3 border-t border-border pt-4">
                 <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Owner Account Credentials</h4>
-                <div className="grid sm:grid-cols-2 gap-3">
+                <div className="grid sm:grid-cols-3 gap-3">
                   <div>
                     <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Owner Login Email</label>
                     <input
@@ -772,18 +901,32 @@ export function AdminRestaurantsPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">New Password (Optional)</label>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">New Password</label>
                     <input
                       type="text"
                       value={editOwnerPassword}
                       onChange={(e) => setEditOwnerPassword(e.target.value)}
-                      placeholder="Leave blank to keep current"
+                      placeholder="Leave blank to keep"
                       className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
                     />
                   </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Max Concurrent Logins *</label>
+                    <select
+                      value={editMaxLogins}
+                      onChange={(e) => setEditMaxLogins(e.target.value)}
+                      className="w-full px-3 py-2 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                    >
+                      <option value="1">1 Active Device (Single Login)</option>
+                      <option value="2">2 Concurrent Logins</option>
+                      <option value="3">3 Concurrent Logins</option>
+                      <option value="5">5 Concurrent Logins</option>
+                      <option value="10">10 Concurrent Logins</option>
+                    </select>
+                  </div>
                 </div>
                 <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-600 dark:text-amber-400">
-                  📧 <strong>Credential Updates:</strong> Changing the owner&apos;s email or entering a new password will automatically dispatch an official notification email to the owner with their updated credentials.
+                  📧 <strong>Credential Updates:</strong> Changing the owner&apos;s email, password, or allowed login limit ({editMaxLogins} max devices) will automatically update authentication policies and dispatch an official notification email to the owner.
                 </div>
               </div>
 

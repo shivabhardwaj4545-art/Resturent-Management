@@ -140,7 +140,7 @@ export async function updateRestaurant(req: AuthenticatedRequest, res: Response,
     const {
       name, slug, phone, email, address, city, isApproved, isSuspended, isOpen,
       ownerEmail, ownerPassword, commissionRate, featureFlags, disabledTabs,
-      paymentEnabled, upiEnabled, merchantName,
+      paymentEnabled, upiEnabled, merchantName, platformType, maxLogins,
     } = req.body;
 
     const existing = await prisma.restaurant.findFirst({
@@ -153,6 +153,8 @@ export async function updateRestaurant(req: AuthenticatedRequest, res: Response,
       const slugConflict = await prisma.restaurant.findFirst({ where: { slug, id: { not: id } } });
       if (slugConflict) throw new AppError('Slug is already taken by another restaurant.', 400, 'SLUG_TAKEN');
     }
+
+    const parsedMaxLogins = maxLogins !== undefined ? Math.max(1, parseInt(String(maxLogins), 10) || 1) : undefined;
 
     const updated = await prisma.restaurant.update({
       where: { id },
@@ -167,7 +169,33 @@ export async function updateRestaurant(req: AuthenticatedRequest, res: Response,
         ...(typeof isSuspended === 'boolean' && { isSuspended }),
         ...(typeof isOpen === 'boolean' && { isOpen }),
         ...(commissionRate !== undefined && { commissionRate: parseFloat(commissionRate) }),
-        ...(featureFlags !== undefined && { featureFlags }),
+        ...(platformType !== undefined && { platformType: String(platformType) }),
+        ...(parsedMaxLogins !== undefined && { maxLogins: parsedMaxLogins }),
+        ...(() => {
+          if (featureFlags !== undefined) {
+            return {
+              featureFlags: {
+                ...((existing.featureFlags as Record<string, boolean>) || {}),
+                ...featureFlags,
+                tableQrEnabled: featureFlags.callWaiterEnabled !== undefined ? featureFlags.callWaiterEnabled : (featureFlags.tableQrEnabled !== undefined ? featureFlags.tableQrEnabled : true),
+                roomQrEnabled: featureFlags.roomServiceEnabled !== undefined ? featureFlags.roomServiceEnabled : (featureFlags.roomQrEnabled !== undefined ? featureFlags.roomQrEnabled : true),
+              },
+            };
+          } else if (platformType !== undefined) {
+            const isDual = platformType === 'DUAL';
+            const isHotel = platformType === 'HOTEL';
+            return {
+              featureFlags: {
+                ...((existing.featureFlags as Record<string, boolean>) || {}),
+                roomServiceEnabled: isDual || isHotel,
+                callWaiterEnabled: isDual || !isHotel,
+                tableQrEnabled: isDual || !isHotel,
+                roomQrEnabled: isDual || isHotel,
+              },
+            };
+          }
+          return {};
+        })(),
         ...(disabledTabs !== undefined && { disabledTabs }),
         ...(typeof paymentEnabled === 'boolean' && { paymentEnabled }),
         ...(typeof upiEnabled === 'boolean' && { upiEnabled }),
@@ -176,7 +204,7 @@ export async function updateRestaurant(req: AuthenticatedRequest, res: Response,
       include: { owner: true },
     });
 
-    if (slug !== existing.slug || featureFlags !== undefined) {
+    if (slug !== existing.slug || featureFlags !== undefined || platformType !== undefined) {
       await cacheDelPattern(`menu:${existing.slug}*`);
     }
 
@@ -239,6 +267,13 @@ export async function updateRestaurant(req: AuthenticatedRequest, res: Response,
         ).catch((err) => {
           logger.error(`Failed to send credentials update email to ${targetEmail}:`, err);
         });
+      }
+
+      if (parsedMaxLogins !== undefined) {
+        await prisma.user.update({
+          where: { id: existing.ownerId },
+          data: { maxLogins: parsedMaxLogins } as any,
+        }).catch(() => {});
       }
     }
 
@@ -676,8 +711,15 @@ export async function getSubscriptionPlans(_req: AuthenticatedRequest, res: Resp
 
 export async function createSubscriptionPlan(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { name, price, features } = req.body as { name: string; price: number; features: Record<string, unknown> };
-    const plan = await prisma.subscriptionPlan.create({ data: { name, price: parseFloat(String(price)), features: features as any } });
+    const { name, price, platformType = 'RESTAURANT', features } = req.body as { name: string; price: number; platformType?: string; features: Record<string, unknown> };
+    const plan = await prisma.subscriptionPlan.create({
+      data: {
+        name,
+        price: parseFloat(String(price)),
+        platformType: String(platformType || 'RESTAURANT'),
+        features: features as any,
+      } as any,
+    });
     res.status(201).json({ success: true, data: { plan }, message: 'Subscription plan created' });
   } catch (error) { next(error); }
 }
@@ -685,14 +727,15 @@ export async function createSubscriptionPlan(req: AuthenticatedRequest, res: Res
 export async function updateSubscriptionPlan(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const id = req.params.id as string;
-    const { name, price, features } = req.body;
+    const { name, price, platformType, features } = req.body;
     const plan = await prisma.subscriptionPlan.update({
       where: { id },
       data: {
         ...(name && { name }),
         ...(price !== undefined && { price: parseFloat(price) }),
+        ...(platformType !== undefined && { platformType: String(platformType) }),
         ...(features !== undefined && { features }),
-      },
+      } as any,
     });
     res.json({ success: true, data: { plan }, message: 'Subscription plan updated successfully' });
   } catch (error) { next(error); }
@@ -770,10 +813,20 @@ export async function getRestaurantDetails(req: AuthenticatedRequest, res: Respo
 
     const activeSubscription = restaurant.subscription.find((s) => s.isActive) || null;
 
+    let activeSessionsCount = 0;
+    try {
+      if (restaurant.ownerId) {
+        activeSessionsCount = await (prisma as any).activeSession.count({
+          where: { userId: restaurant.ownerId },
+        });
+      }
+    } catch (e) {}
+
     const formattedOwner = restaurant.owner
       ? {
           ...restaurant.owner,
           email: restaurant.owner.email && restaurant.owner.email.includes(':') ? restaurant.owner.email.split(':')[1] : (restaurant.owner.email ?? ''),
+          maxLogins: (restaurant.owner as any).maxLogins || (restaurant as any).maxLogins || 1,
         }
       : null;
 
@@ -784,6 +837,7 @@ export async function getRestaurantDetails(req: AuthenticatedRequest, res: Respo
           ...restaurant,
           owner: formattedOwner,
           activeSubscription,
+          activeSessionsCount,
         },
         stats: {
           totalRevenue: revenueAgg._sum.total ?? 0,
@@ -791,6 +845,25 @@ export async function getRestaurantDetails(req: AuthenticatedRequest, res: Respo
         },
         recentOrders,
       },
+    });
+  } catch (error) { next(error); }
+}
+
+export async function terminateRestaurantSessions(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const id = req.params.id as string;
+    const restaurant = await prisma.restaurant.findFirst({ where: { id, deletedAt: null } });
+    if (!restaurant) throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
+
+    if (restaurant.ownerId) {
+      await (prisma as any).activeSession.deleteMany({
+        where: { userId: restaurant.ownerId },
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'All active login sessions for this account have been successfully terminated.',
     });
   } catch (error) { next(error); }
 }
@@ -807,6 +880,8 @@ export async function updateRestaurantFeatures(req: AuthenticatedRequest, res: R
     const updatedFlags = {
       ...currentFlags,
       ...featureFlags,
+      tableQrEnabled: featureFlags.callWaiterEnabled !== undefined ? featureFlags.callWaiterEnabled : (featureFlags.tableQrEnabled !== undefined ? featureFlags.tableQrEnabled : (currentFlags.tableQrEnabled ?? true)),
+      roomQrEnabled: featureFlags.roomServiceEnabled !== undefined ? featureFlags.roomServiceEnabled : (featureFlags.roomQrEnabled !== undefined ? featureFlags.roomQrEnabled : (currentFlags.roomQrEnabled ?? true)),
     };
 
     const updated = await prisma.restaurant.update({
@@ -1168,6 +1243,8 @@ export async function createRestaurant(req: AuthenticatedRequest, res: Response,
       ownerEmail,
       ownerPhone,
       ownerPassword,
+      platformType = 'RESTAURANT',
+      maxLogins = 1,
     } = req.body as {
       name: string;
       slug?: string;
@@ -1180,6 +1257,8 @@ export async function createRestaurant(req: AuthenticatedRequest, res: Response,
       ownerEmail: string;
       ownerPhone?: string;
       ownerPassword?: string;
+      platformType?: string;
+      maxLogins?: number | string;
     };
 
     if (!name || !ownerName || !ownerEmail) {
@@ -1187,6 +1266,7 @@ export async function createRestaurant(req: AuthenticatedRequest, res: Response,
     }
 
     const normalizedOwnerEmail = ownerEmail.toLowerCase().trim();
+    const parsedMaxLogins = Math.max(1, parseInt(String(maxLogins), 10) || 1);
 
     // 1. Find existing user (active or soft-deleted)
     let owner = await prisma.user.findFirst({
@@ -1210,7 +1290,8 @@ export async function createRestaurant(req: AuthenticatedRequest, res: Response,
           role: 'RESTAURANT_OWNER',
           passwordHash,
           isVerified: true,
-        },
+          maxLogins: parsedMaxLogins,
+        } as any,
       });
     } else {
       // User exists (whether active or soft-deleted) -> Reactivate and assign RESTAURANT_OWNER role
@@ -1226,7 +1307,8 @@ export async function createRestaurant(req: AuthenticatedRequest, res: Response,
           passwordHash,
           isVerified: true,
           deletedAt: null, // Unsuspend & reactivate account!
-        },
+          maxLogins: parsedMaxLogins,
+        } as any,
       });
     }
 
@@ -1254,6 +1336,20 @@ export async function createRestaurant(req: AuthenticatedRequest, res: Response,
       throw new AppError('A restaurant with this slug/URL already exists. Please choose a different one.', 400, 'SLUG_EXISTS');
     }
 
+    // Configure initial feature flags matching chosen platform type
+    const isDual = platformType === 'DUAL';
+    const isHotel = platformType === 'HOTEL';
+    const initialFeatureFlags = {
+      roomServiceEnabled: isDual || isHotel,
+      callWaiterEnabled: isDual || !isHotel,
+      qrOrderingEnabled: true,
+      onlinePaymentEnabled: true,
+      aiAssistantEnabled: true,
+      loyaltyProgramEnabled: true,
+      kitchenDisplayEnabled: true,
+      tableReservationEnabled: true,
+    };
+
     // 3. Create restaurant (approved by default since admin creates it)
     const restaurant = await prisma.restaurant.create({
       data: {
@@ -1267,7 +1363,10 @@ export async function createRestaurant(req: AuthenticatedRequest, res: Response,
         ownerId: owner.id,
         isApproved: true,
         isOpen: true,
-      },
+        platformType: platformType || 'RESTAURANT',
+        maxLogins: parsedMaxLogins,
+        featureFlags: initialFeatureFlags,
+      } as any,
     });
 
     // Auto-assign Free Trial plan to newly created restaurant

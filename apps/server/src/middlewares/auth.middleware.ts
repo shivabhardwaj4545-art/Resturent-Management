@@ -61,6 +61,21 @@ export async function authenticate(
       throw new AppError('Account has been suspended or deleted. Please contact support.', 401, 'ACCOUNT_DELETED');
     }
 
+    // Check active session validity for concurrent login limit enforcement
+    if ((decoded as any).sessionId) {
+      const activeSession = await (prisma as any).activeSession.findUnique({
+        where: { sessionToken: (decoded as any).sessionId },
+      });
+      if (!activeSession) {
+        throw new AppError(
+          'Your login session was terminated because the maximum concurrent login limit for this account has been reached on another device.',
+          401,
+          'SESSION_LIMIT_EXCEEDED'
+        );
+      }
+    }
+
+    (user as any).sessionId = (decoded as any).sessionId;
     req.user = user;
     next();
   } catch (error) {

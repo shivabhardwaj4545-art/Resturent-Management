@@ -116,6 +116,8 @@ model User {
   sentDirectMessages     DirectMessage[] @relation("SentDirectMessages")
   receivedDirectMessages DirectMessage[] @relation("ReceivedDirectMessages")
   favoriteItems       FavoriteItem[]
+  activeSessions      ActiveSession[]
+  maxLogins           Int @default(1)
 
   @@index([email])
   @@index([role])
@@ -171,6 +173,8 @@ model Restaurant {
   // Feature Toggles & Admin Controls
   featureFlags      Json?
   disabledTabs      Json?
+  platformType      String   @default("RESTAURANT") // RESTAURANT, HOTEL, DUAL
+  maxLogins         Int      @default(1)
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -589,12 +593,13 @@ model WalletTransaction {
 }
 
 model SubscriptionPlan {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  price     Float
-  features  Json     // { maxMenuItems, maxOrders, aiEnabled, etc }
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(cuid())
+  name         String   @unique
+  price        Float
+  platformType String   @default("RESTAURANT") // RESTAURANT, HOTEL, DUAL
+  features     Json     // { maxMenuItems, maxOrders, aiEnabled, etc }
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   subscriptions RestaurantSubscription[]
 
@@ -652,3 +657,20 @@ model SystemSetting {
 
   @@map("system_settings")
 }
+
+model ActiveSession {
+  id           String   @id @default(cuid())
+  userId       String
+  sessionToken String   @unique
+  userAgent    String?
+  ipAddress    String?
+  deviceInfo   String?
+  lastActiveAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("active_sessions")
+}
+

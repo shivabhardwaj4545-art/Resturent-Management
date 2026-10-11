@@ -67,7 +67,7 @@ export function AdminRestaurantDetailModal({
     queryKey: ['admin-subscription-plans-list'],
     queryFn: async () => {
       const res = await api.get('/admin/subscriptions');
-      return (res.data.data?.plans || []) as Array<{ id: string; name: string; price: number; features: any }>;
+      return (res.data.data?.plans || []) as Array<{ id: string; name: string; price: number; platformType?: string; features: any }>;
     },
     enabled: isOpen,
   });
@@ -94,8 +94,9 @@ export function AdminRestaurantDetailModal({
   // Local subscription assignment state
   const [selectedPlanId, setSelectedPlanId] = useState('');
   const [subDurationDays, setSubDurationDays] = useState('30');
+  const [planPlatformFilter, setPlanPlatformFilter] = useState<'ALL' | 'RESTAURANT' | 'HOTEL' | 'DUAL'>('ALL');
 
-  // Local edit restaurant info state
+  // Local edit restaurant info & credentials state
   const [editName, setEditName] = useState('');
   const [editSlug, setEditSlug] = useState('');
   const [editCuisine, setEditCuisine] = useState('');
@@ -103,6 +104,8 @@ export function AdminRestaurantDetailModal({
   const [editPhone, setEditPhone] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editAddress, setEditAddress] = useState('');
+  const [editPlatformType, setEditPlatformType] = useState<'RESTAURANT' | 'HOTEL' | 'DUAL'>('RESTAURANT');
+  const [editMaxLogins, setEditMaxLogins] = useState('1');
   const [editOwnerEmail, setEditOwnerEmail] = useState('');
   const [editOwnerPassword, setEditOwnerPassword] = useState('');
   const [editCommissionRate, setEditCommissionRate] = useState('5');
@@ -134,6 +137,8 @@ export function AdminRestaurantDetailModal({
       setEditPhone(restaurant.phone || '');
       setEditEmail(restaurant.email || '');
       setEditAddress(restaurant.address || '');
+      setEditPlatformType(((restaurant.platformType as any) || 'RESTAURANT'));
+      setEditMaxLogins(String(restaurant.maxLogins || restaurant.owner?.maxLogins || 1));
       setEditOwnerEmail(restaurant.owner?.email || '');
       setEditOwnerPassword('');
       setEditCommissionRate(String(restaurant.commissionRate ?? 5));
@@ -147,11 +152,77 @@ export function AdminRestaurantDetailModal({
     }
   }, [restaurant, plansData]);
 
+  // Quick preset application for platform feature toggles
+  const applyPlatformPreset = (preset: 'RESTAURANT' | 'HOTEL' | 'DUAL') => {
+    if (preset === 'DUAL') {
+      setFeatureFlags((prev) => ({
+        ...prev,
+        roomServiceEnabled: true,
+        callWaiterEnabled: true,
+        qrOrderingEnabled: true,
+        onlinePaymentEnabled: true,
+        aiAssistantEnabled: true,
+        loyaltyProgramEnabled: true,
+        kitchenDisplayEnabled: true,
+        tableReservationEnabled: true,
+      }));
+      toast.info('Applied Dual Mode presets (Both Hotel Room Service & Table Waiter Calling active)');
+    } else if (preset === 'HOTEL') {
+      setFeatureFlags((prev) => ({
+        ...prev,
+        roomServiceEnabled: true,
+        callWaiterEnabled: false,
+        qrOrderingEnabled: true,
+        onlinePaymentEnabled: true,
+        aiAssistantEnabled: true,
+        loyaltyProgramEnabled: true,
+        kitchenDisplayEnabled: false,
+        tableReservationEnabled: true,
+      }));
+      toast.info('Applied Hotel Mode presets (Room Service enabled, Table Calling disabled)');
+    } else {
+      setFeatureFlags((prev) => ({
+        ...prev,
+        roomServiceEnabled: false,
+        callWaiterEnabled: true,
+        qrOrderingEnabled: true,
+        onlinePaymentEnabled: true,
+        aiAssistantEnabled: true,
+        loyaltyProgramEnabled: true,
+        kitchenDisplayEnabled: true,
+        tableReservationEnabled: true,
+      }));
+      toast.info('Applied Restaurant Mode presets (Table Calling enabled, Room Service disabled)');
+    }
+  };
+
+  // Mutation: Terminate Active Sessions
+  const terminateSessionsMutation = useMutation({
+    mutationFn: async () => {
+      if (!restaurantId) return;
+      await api.post(`/admin/restaurants/${restaurantId}/terminate-sessions`);
+    },
+    onSuccess: () => {
+      toast.success('All active login sessions for this account have been terminated successfully!');
+      qc.invalidateQueries({ queryKey: ['admin-restaurants'] });
+      refetch();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Failed to terminate sessions');
+    },
+  });
+
   // Mutation: Save Features
   const featuresMutation = useMutation({
     mutationFn: async () => {
       if (!restaurantId) return;
-      await api.patch(`/admin/restaurants/${restaurantId}/features`, { featureFlags });
+      await api.patch(`/admin/restaurants/${restaurantId}/features`, {
+        featureFlags: {
+          ...featureFlags,
+          tableQrEnabled: featureFlags.callWaiterEnabled,
+          roomQrEnabled: featureFlags.roomServiceEnabled,
+        },
+      });
     },
     onSuccess: () => {
       toast.success('Restaurant feature flags updated successfully!');
@@ -235,6 +306,8 @@ export function AdminRestaurantDetailModal({
         isOpen: editIsOpen,
         isApproved: editIsApproved,
         isSuspended: editIsSuspended,
+        platformType: editPlatformType,
+        maxLogins: parseInt(editMaxLogins, 10) || 1,
       });
     },
     onSuccess: () => {
@@ -273,15 +346,30 @@ export function AdminRestaurantDetailModal({
                   {restaurant?.name || 'Restaurant Details & Controls'}
                 </h2>
                 {restaurant && (
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                    restaurant.isSuspended
-                      ? 'bg-red-500/10 text-red-600 border border-red-500/20'
-                      : !restaurant.isApproved
-                      ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
-                      : 'bg-green-500/10 text-green-600 border border-green-500/20'
-                  }`}>
-                    {restaurant.isSuspended ? 'Suspended' : !restaurant.isApproved ? 'Pending' : 'Approved'}
-                  </span>
+                  <>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                      restaurant.isSuspended
+                        ? 'bg-red-500/10 text-red-600 border border-red-500/20'
+                        : !restaurant.isApproved
+                        ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
+                        : 'bg-green-500/10 text-green-600 border border-green-500/20'
+                    }`}>
+                      {restaurant.isSuspended ? 'Suspended' : !restaurant.isApproved ? 'Pending' : 'Approved'}
+                    </span>
+                    {restaurant.platformType === 'DUAL' ? (
+                      <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-amber-500/10 text-amber-500 border border-amber-500/30 flex items-center gap-1">
+                        🌟 Dual Mode (Rest + Hotel)
+                      </span>
+                    ) : restaurant.platformType === 'HOTEL' ? (
+                      <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-blue-500/10 text-blue-500 border border-blue-500/30 flex items-center gap-1">
+                        🏨 Hotel Only
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 flex items-center gap-1">
+                        🍽️ Restaurant
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
               <p className="text-xs text-muted-foreground flex items-center gap-2 truncate">
@@ -422,6 +510,36 @@ export function AdminRestaurantDetailModal({
                           {restaurant.owner?.id?.slice(0, 16)}... ({new Date(restaurant.createdAt).toLocaleDateString()})
                         </p>
                       </div>
+                      <div>
+                        <span className="text-muted-foreground font-medium">Platform Operating Mode:</span>
+                        <p className="font-bold text-foreground text-sm mt-0.5">
+                          {restaurant.platformType === 'DUAL'
+                            ? '🌟 Dual (Restaurant + Hotel)'
+                            : restaurant.platformType === 'HOTEL'
+                            ? '🏨 Hotel Only'
+                            : '🍽️ Restaurant'}
+                        </p>
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground font-medium">Credential Login Limits:</span>
+                          {(restaurant.activeSessionsCount ?? 0) > 0 && (
+                            <button
+                              onClick={() => terminateSessionsMutation.mutate()}
+                              disabled={terminateSessionsMutation.isPending}
+                              className="text-[10px] text-red-500 hover:underline font-bold"
+                            >
+                              Revoke All Sessions
+                            </button>
+                          )}
+                        </div>
+                        <p className="font-bold text-foreground text-sm mt-0.5 flex items-center gap-1.5">
+                          <span>{restaurant.activeSessionsCount ?? 0} active / {restaurant.maxLogins ?? 1} allowed device(s)</span>
+                          <span className={`inline-block w-2 h-2 rounded-full ${
+                            (restaurant.activeSessionsCount ?? 0) > 0 ? 'bg-green-500 animate-pulse' : 'bg-muted-foreground'
+                          }`} />
+                        </p>
+                      </div>
                     </div>
                   </div>
 
@@ -517,6 +635,37 @@ export function AdminRestaurantDetailModal({
                     </button>
                   </div>
 
+                  {/* Preset quick actions */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-card border border-border rounded-2xl shadow-sm">
+                    <div className="text-xs">
+                      <span className="font-bold text-foreground">Platform Presets:</span>
+                      <span className="text-muted-foreground ml-1.5">Apply standard toggle configurations in one click</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => applyPlatformPreset('RESTAURANT')}
+                        className="px-3 py-1 text-xs font-bold rounded-lg border border-border bg-muted/40 hover:bg-muted text-foreground transition-all cursor-pointer"
+                      >
+                        🍽️ Restaurant Preset
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => applyPlatformPreset('HOTEL')}
+                        className="px-3 py-1 text-xs font-bold rounded-lg border border-border bg-muted/40 hover:bg-muted text-foreground transition-all cursor-pointer"
+                      >
+                        🏨 Hotel Preset
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => applyPlatformPreset('DUAL')}
+                        className="px-3 py-1 text-xs font-bold rounded-lg border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 transition-all cursor-pointer"
+                      >
+                        🌟 Dual All-Access Preset
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="grid sm:grid-cols-2 gap-4">
                     {/* Hotel Room Service (Requested specifically by User) */}
                     <div className={`p-4 rounded-2xl border transition-all ${
@@ -532,8 +681,13 @@ export function AdminRestaurantDetailModal({
                             <Bed className="w-5 h-5" />
                           </div>
                           <div>
-                            <h4 className="font-bold text-sm">Hotel Room Service Calling</h4>
-                            <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${
+                            <div className="flex items-center gap-1.5">
+                              <h4 className="font-bold text-sm">🏨 Hotel Room QR & Room Service Calling</h4>
+                              <span className="text-[10px] bg-amber-500/15 text-amber-500 px-2 py-0.5 rounded-full font-bold">
+                                🏨 Hotel & Dual
+                              </span>
+                            </div>
+                            <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full mt-1 inline-block ${
                               featureFlags.roomServiceEnabled ? 'bg-green-500/10 text-green-600' : 'bg-red-500/10 text-red-600'
                             }`}>
                               {featureFlags.roomServiceEnabled ? 'Enabled' : 'Disabled'}
@@ -551,7 +705,7 @@ export function AdminRestaurantDetailModal({
                         </label>
                       </div>
                       <p className="text-xs text-muted-foreground mt-3 leading-relaxed">
-                        Allow hotel guests scanning Room QR codes to call room service (Room Cleaning, Food Delivery, Ironing, Laundry, Custom Requests).
+                        Control Hotel Room QR generation and guest room service calling everywhere. When disabled, the owner cannot generate Hotel Room placards, and guests visiting hotel room links are blocked.
                       </p>
                     </div>
 
@@ -569,8 +723,13 @@ export function AdminRestaurantDetailModal({
                             <BellRing className="w-5 h-5" />
                           </div>
                           <div>
-                            <h4 className="font-bold text-sm">Table Waiter Calling</h4>
-                            <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${
+                            <div className="flex items-center gap-1.5">
+                              <h4 className="font-bold text-sm">🍽️ Dine-In Table QR & Waiter Calling</h4>
+                              <span className="text-[10px] bg-blue-500/15 text-blue-500 px-2 py-0.5 rounded-full font-bold">
+                                🍽️ Restaurant & Dual
+                              </span>
+                            </div>
+                            <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full mt-1 inline-block ${
                               featureFlags.callWaiterEnabled ? 'bg-green-500/10 text-green-600' : 'bg-red-500/10 text-red-600'
                             }`}>
                               {featureFlags.callWaiterEnabled ? 'Enabled' : 'Disabled'}
@@ -588,7 +747,7 @@ export function AdminRestaurantDetailModal({
                         </label>
                       </div>
                       <p className="text-xs text-muted-foreground mt-3 leading-relaxed">
-                        Allow dining customers at tables to request waiter assistance, bill request, or water with one click.
+                        Control Dine-In Table QR generation and table waiter calling everywhere. When disabled, the owner cannot generate Table placards, and guests scanning table QRs are blocked.
                       </p>
                     </div>
 
@@ -988,6 +1147,31 @@ export function AdminRestaurantDetailModal({
                       Select a subscription package to assign to this restaurant. This sets their active plan and updates their renewal expiration date.
                     </p>
 
+                    {/* Filter by Platform Type */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs text-muted-foreground font-semibold mr-1">Filter Plans:</span>
+                      {(['ALL', 'RESTAURANT', 'HOTEL', 'DUAL'] as const).map((filter) => (
+                        <button
+                          key={filter}
+                          type="button"
+                          onClick={() => setPlanPlatformFilter(filter)}
+                          className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all ${
+                            planPlatformFilter === filter
+                              ? 'bg-primary text-primary-foreground shadow-sm'
+                              : 'bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          {filter === 'ALL'
+                            ? 'All Plans'
+                            : filter === 'RESTAURANT'
+                            ? '🍽️ Restaurant'
+                            : filter === 'HOTEL'
+                            ? '🏨 Hotel'
+                            : '🌟 Dual Plan'}
+                        </button>
+                      ))}
+                    </div>
+
                     <div className="grid sm:grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-semibold text-muted-foreground block mb-1.5">
@@ -998,11 +1182,13 @@ export function AdminRestaurantDetailModal({
                           onChange={(e) => setSelectedPlanId(e.target.value)}
                           className="w-full px-3.5 py-2.5 bg-card border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                         >
-                          {plansData?.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} — ₹{p.price}
-                            </option>
-                          ))}
+                          {plansData
+                            ?.filter((p) => planPlatformFilter === 'ALL' || (p.platformType || 'RESTAURANT') === planPlatformFilter)
+                            .map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} [{p.platformType === 'DUAL' ? '🌟 DUAL' : p.platformType === 'HOTEL' ? '🏨 HOTEL' : '🍽️ RESTAURANT'}] — ₹{p.price}/mo
+                              </option>
+                            ))}
                         </select>
                       </div>
 
@@ -1164,12 +1350,87 @@ export function AdminRestaurantDetailModal({
                     </div>
                   </div>
 
-                  {/* Owner Credentials */}
-                  <div className="p-4 rounded-2xl bg-muted/30 border border-border space-y-3">
-                    <h4 className="font-bold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                      <Key className="w-3.5 h-3.5 text-primary" /> Owner Login Credentials
-                    </h4>
-                    <div className="grid sm:grid-cols-2 gap-4">
+                  {/* Platform Operating Mode Selector */}
+                  <div className="p-4 rounded-2xl bg-card border border-border space-y-3">
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">
+                      Platform Operating Mode
+                    </label>
+                    <div className="grid sm:grid-cols-3 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setEditPlatformType('RESTAURANT')}
+                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                          editPlatformType === 'RESTAURANT'
+                            ? 'border-primary bg-primary/10 shadow-sm ring-1 ring-primary'
+                            : 'border-border bg-muted/20 hover:bg-muted/40'
+                        }`}
+                      >
+                        <p className="font-bold text-sm flex items-center gap-1.5 text-foreground">
+                          🍽️ Restaurant
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          Dining tables, table waiter calling, food menu ordering.
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setEditPlatformType('HOTEL')}
+                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                          editPlatformType === 'HOTEL'
+                            ? 'border-blue-500 bg-blue-500/10 shadow-sm ring-1 ring-blue-500'
+                            : 'border-border bg-muted/20 hover:bg-muted/40'
+                        }`}
+                      >
+                        <p className="font-bold text-sm flex items-center gap-1.5 text-foreground">
+                          🏨 Hotel Only
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          Rooms, hotel room service calling, guest housekeeping.
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setEditPlatformType('DUAL')}
+                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                          editPlatformType === 'DUAL'
+                            ? 'border-amber-500 bg-amber-500/10 shadow-sm ring-1 ring-amber-500'
+                            : 'border-border bg-muted/20 hover:bg-muted/40'
+                        }`}
+                      >
+                        <p className="font-bold text-sm flex items-center gap-1.5 text-amber-500">
+                          🌟 Dual Plan (Both)
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          Full access: dining tables + hotel room service + universal QR orders.
+                        </p>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Owner Credentials & Multi-Login Limit */}
+                  <div className="p-4 rounded-2xl bg-muted/30 border border-border space-y-4">
+                    <div className="flex items-center justify-between border-b border-border pb-2.5">
+                      <h4 className="font-bold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                        <Key className="w-3.5 h-3.5 text-primary" /> Owner Login Credentials & Session Limits
+                      </h4>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">
+                          Active Logins: <strong className="text-foreground">{restaurant.activeSessionsCount ?? 0}</strong> / {restaurant.maxLogins ?? 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => terminateSessionsMutation.mutate()}
+                          disabled={terminateSessionsMutation.isPending || (restaurant.activeSessionsCount ?? 0) === 0}
+                          className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-red-500/30 text-red-500 hover:bg-red-500/10 transition-colors disabled:opacity-40 cursor-pointer"
+                        >
+                          {terminateSessionsMutation.isPending ? 'Revoking...' : 'Force Kill All Logins'}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid sm:grid-cols-3 gap-4">
                       <div>
                         <label className="text-xs font-semibold text-muted-foreground block mb-1">Owner Email Address</label>
                         <input
@@ -1181,7 +1442,7 @@ export function AdminRestaurantDetailModal({
                       </div>
                       <div>
                         <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                          Reset Owner Password <span className="text-[10px] text-muted-foreground font-normal">(Leave blank to keep unchanged)</span>
+                          Reset Owner Password <span className="text-[10px] text-muted-foreground font-normal">(Leave blank to keep)</span>
                         </label>
                         <input
                           type="password"
@@ -1190,6 +1451,25 @@ export function AdminRestaurantDetailModal({
                           placeholder="New password..."
                           className="w-full px-3.5 py-2 bg-card border border-border rounded-xl text-sm"
                         />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-muted-foreground block mb-1">
+                          Allowed Concurrent Logins
+                        </label>
+                        <select
+                          value={editMaxLogins}
+                          onChange={(e) => setEditMaxLogins(e.target.value)}
+                          className="w-full px-3.5 py-2 bg-card border border-border rounded-xl text-sm"
+                        >
+                          <option value="1">1 Device (Strict Single Login)</option>
+                          <option value="2">2 Devices</option>
+                          <option value="3">3 Devices</option>
+                          <option value="5">5 Devices</option>
+                          <option value="10">10 Devices</option>
+                        </select>
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          Older logins are evicted automatically when limit is reached.
+                        </p>
                       </div>
                     </div>
                   </div>

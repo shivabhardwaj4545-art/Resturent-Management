@@ -153,6 +153,19 @@ export async function placeGuestOrder(
       throw new AppError('Restaurant is currently closed or outside operating hours.', 400, 'RESTAURANT_CLOSED');
     }
 
+    // Validate table/room permissions based on platformType and featureFlags
+    const flags = (restaurant.featureFlags as Record<string, boolean> | null) || {};
+    if (tableNumber) {
+      const cleanLoc = tableNumber.trim();
+      const isRoom = cleanLoc.toLowerCase().includes('room') || cleanLoc.toLowerCase().includes('suite');
+      if (isRoom && (restaurant.platformType === 'RESTAURANT' || flags.roomServiceEnabled === false || flags.roomQrEnabled === false)) {
+        throw new AppError('Hotel room service ordering is currently disabled for this restaurant by administration.', 403, 'ROOM_SERVICE_DISABLED');
+      }
+      if (!isRoom && (restaurant.platformType === 'HOTEL' || flags.callWaiterEnabled === false || flags.tableQrEnabled === false)) {
+        throw new AppError('Dine-In Table QR ordering is currently disabled for this restaurant by administration.', 403, 'TABLE_QR_DISABLED');
+      }
+    }
+
     // Verify table number signature ONLY if ENFORCE_TABLE_SIGNATURE is set to true.
     // For standard table QR codes or manual entry, signature check is permissive so orders never get blocked by stale tokens.
     if (tableToken && typeof tableToken === 'string' && tableToken.trim() !== '' && process.env.ENFORCE_TABLE_SIGNATURE === 'true') {
@@ -293,6 +306,19 @@ export async function placeOrder(
     if (!restaurant) throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
     if (!restaurant.isOpen || !isRestaurantOpen(restaurant.operatingHours, restaurant.isOpen)) {
       throw new AppError('Restaurant is currently closed or outside operating hours.', 400, 'RESTAURANT_CLOSED');
+    }
+
+    // Validate table/room permissions based on platformType and featureFlags
+    const flags = (restaurant.featureFlags as Record<string, boolean> | null) || {};
+    if (tableNumber) {
+      const cleanLoc = tableNumber.trim();
+      const isRoom = cleanLoc.toLowerCase().includes('room') || cleanLoc.toLowerCase().includes('suite');
+      if (isRoom && (restaurant.platformType === 'RESTAURANT' || flags.roomServiceEnabled === false || flags.roomQrEnabled === false)) {
+        throw new AppError('Hotel room service ordering is currently disabled for this restaurant by administration.', 403, 'ROOM_SERVICE_DISABLED');
+      }
+      if (!isRoom && (restaurant.platformType === 'HOTEL' || flags.callWaiterEnabled === false || flags.tableQrEnabled === false)) {
+        throw new AppError('Dine-In Table QR ordering is currently disabled for this restaurant by administration.', 403, 'TABLE_QR_DISABLED');
+      }
     }
 
     // Verify table number signature ONLY if ENFORCE_TABLE_SIGNATURE is set to true.

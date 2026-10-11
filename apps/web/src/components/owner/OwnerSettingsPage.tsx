@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import {
   Settings, UtensilsCrossed, LayoutDashboard, ShoppingBag, Tag, BarChart3, LogOut,
   Menu, Save, Globe, Phone, MapPin, Clock, Palette, QrCode, Download, CreditCard, Banknote, Building2, Smartphone, Star, Printer,
-  Upload, Trash2, CheckCircle2, Sparkles, RefreshCw, FileImage, Info, Bed, Power, Ban, Plus, Check
+  Upload, Trash2, CheckCircle2, Sparkles, RefreshCw, FileImage, Info, Bed, Power, Ban, Plus, Check, Lock
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/lib/api';
@@ -56,6 +56,14 @@ type Restaurant = {
   logo: string | null; banner: string | null; isOpen: boolean;
   hasDelivery: boolean;
   operatingHours: OperatingHours | null;
+  platformType?: string;
+  featureFlags?: {
+    roomServiceEnabled?: boolean;
+    callWaiterEnabled?: boolean;
+    tableQrEnabled?: boolean;
+    roomQrEnabled?: boolean;
+    [key: string]: any;
+  } | null;
   // Direct & UPI payment settings
   paymentEnabled?: boolean;
   upiEnabled?: boolean;
@@ -209,6 +217,28 @@ export function OwnerSettingsPage() {
       return res.data.data.restaurant as Restaurant;
     },
   });
+
+  // Permissions controlled globally or per-restaurant by Super Admin
+  const isTableQrAllowed =
+    data?.platformType !== 'HOTEL' &&
+    data?.featureFlags?.callWaiterEnabled !== false &&
+    data?.featureFlags?.tableQrEnabled !== false;
+
+  const isRoomQrAllowed =
+    data?.platformType !== 'RESTAURANT' &&
+    data?.featureFlags?.roomServiceEnabled !== false &&
+    data?.featureFlags?.roomQrEnabled !== false;
+
+  // Auto-switch QR mode if one mode has been disabled by Admin
+  useEffect(() => {
+    if (data) {
+      if (!isTableQrAllowed && isRoomQrAllowed) {
+        setQrMode('ROOM');
+      } else if (!isRoomQrAllowed && isTableQrAllowed) {
+        setQrMode('TABLE');
+      }
+    }
+  }, [data, isTableQrAllowed, isRoomQrAllowed]);
 
   useEffect(() => {
     // Only initialize the form ONCE from server data (on first load)
@@ -901,31 +931,89 @@ export function OwnerSettingsPage() {
                   </div>
 
                   {/* Mode Switcher: Dine-In Table vs Hotel Room */}
-                  <div className="flex bg-muted/40 p-1 rounded-xl border border-border max-w-md">
-                    <button
-                      type="button"
-                      onClick={() => setQrMode('TABLE')}
-                      className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
-                        qrMode === 'TABLE'
-                          ? 'bg-primary text-white shadow-sm'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      <UtensilsCrossed className="w-3.5 h-3.5" />
-                      Dine-In Table QR
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setQrMode('ROOM')}
-                      className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
-                        qrMode === 'ROOM'
-                          ? 'bg-primary text-white shadow-sm'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      <Bed className="w-3.5 h-3.5" />
-                      Hotel Room QR
-                    </button>
+                  <div className="space-y-2">
+                    <div className="flex bg-muted/40 p-1 rounded-xl border border-border max-w-lg">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!isTableQrAllowed) {
+                            toast.error('Dine-In Table QR option has been disabled by Admin.');
+                            return;
+                          }
+                          setQrMode('TABLE');
+                        }}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-bold rounded-lg transition-all ${
+                          !isTableQrAllowed
+                            ? 'opacity-40 cursor-not-allowed bg-muted/20 text-muted-foreground'
+                            : qrMode === 'TABLE'
+                            ? 'bg-primary text-white shadow-sm cursor-pointer'
+                            : 'text-muted-foreground hover:text-foreground cursor-pointer'
+                        }`}
+                        title={!isTableQrAllowed ? 'Dine-In Table QR is disabled by Admin' : 'Switch to Dine-In Table QR'}
+                      >
+                        {!isTableQrAllowed ? (
+                          <Lock className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                        ) : (
+                          <UtensilsCrossed className="w-3.5 h-3.5 shrink-0" />
+                        )}
+                        <span>Dine-In Table QR</span>
+                        {!isTableQrAllowed && (
+                          <span className="text-[9px] bg-red-500/15 text-red-500 px-1.5 py-0.5 rounded font-extrabold uppercase shrink-0">
+                            Disabled
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!isRoomQrAllowed) {
+                            toast.error('Hotel Room QR option has been disabled by Admin.');
+                            return;
+                          }
+                          setQrMode('ROOM');
+                        }}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-bold rounded-lg transition-all ${
+                          !isRoomQrAllowed
+                            ? 'opacity-40 cursor-not-allowed bg-muted/20 text-muted-foreground'
+                            : qrMode === 'ROOM'
+                            ? 'bg-primary text-white shadow-sm cursor-pointer'
+                            : 'text-muted-foreground hover:text-foreground cursor-pointer'
+                        }`}
+                        title={!isRoomQrAllowed ? 'Hotel Room QR is disabled by Admin' : 'Switch to Hotel Room QR'}
+                      >
+                        {!isRoomQrAllowed ? (
+                          <Lock className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                        ) : (
+                          <Bed className="w-3.5 h-3.5 shrink-0" />
+                        )}
+                        <span>Hotel Room QR</span>
+                        {!isRoomQrAllowed && (
+                          <span className="text-[9px] bg-red-500/15 text-red-500 px-1.5 py-0.5 rounded font-extrabold uppercase shrink-0">
+                            Disabled
+                          </span>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Both Disabled Alert */}
+                    {!isTableQrAllowed && !isRoomQrAllowed && (
+                      <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-500 font-medium flex items-center gap-2 max-w-lg">
+                        <Lock className="w-4 h-4 shrink-0" />
+                        <div>
+                          <strong className="font-bold">All QR Modes Disabled by Admin:</strong> Both Dine-In Table and Hotel Room QR generation have been locked by system administration.
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Single Mode Disabled Alert */}
+                    {((qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed)) && (
+                      <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center gap-2 max-w-lg">
+                        <Lock className="w-4 h-4 shrink-0" />
+                        <div>
+                          <strong className="font-bold">Notice:</strong> {qrMode === 'ROOM' ? 'Hotel Room QR' : 'Dine-In Table QR'} is disabled by administration. Placards and customer orders for this mode cannot be processed.
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid md:grid-cols-5 gap-6 items-start">
@@ -1073,6 +1161,10 @@ export function OwnerSettingsPage() {
                             <button
                               type="button"
                               onClick={() => {
+                                if ((qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed)) {
+                                  toast.error(`${qrMode === 'ROOM' ? 'Hotel Room QR' : 'Dine-In Table QR'} is disabled by Admin.`);
+                                  return;
+                                }
                                 downloadPlacardImage({
                                   restaurantName: data.name,
                                   tableNumber: activeLocationStr,
@@ -1082,7 +1174,12 @@ export function OwnerSettingsPage() {
                                 });
                                 toast.success(`${qrMode === 'ROOM' ? 'Room' : 'Table'} QR Placard downloaded successfully!`);
                               }}
-                              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-white hover:bg-primary/95 rounded-xl text-sm font-semibold shadow-md transition-colors"
+                              disabled={(qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed)}
+                              className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-colors ${
+                                (qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed)
+                                  ? 'bg-muted text-muted-foreground opacity-50 cursor-not-allowed'
+                                  : 'bg-primary text-white hover:bg-primary/95 cursor-pointer'
+                              }`}
                             >
                               <Download className="w-4 h-4" /> Download Placard (PNG)
                             </button>
@@ -1090,6 +1187,10 @@ export function OwnerSettingsPage() {
                             <button
                               type="button"
                               onClick={() => {
+                                if ((qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed)) {
+                                  toast.error(`${qrMode === 'ROOM' ? 'Hotel Room QR' : 'Dine-In Table QR'} is disabled by Admin.`);
+                                  return;
+                                }
                                 printPlacard({
                                   restaurantName: data.name,
                                   tableNumber: activeLocationStr,
@@ -1098,15 +1199,30 @@ export function OwnerSettingsPage() {
                                   locationType: qrMode,
                                 });
                               }}
-                              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-xl text-sm font-semibold border border-border transition-colors"
+                              disabled={(qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed)}
+                              className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
+                                (qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed)
+                                  ? 'bg-muted border-border text-muted-foreground opacity-50 cursor-not-allowed'
+                                  : 'bg-secondary text-secondary-foreground hover:bg-secondary/80 border-border cursor-pointer'
+                              }`}
                             >
                               <Printer className="w-4 h-4" /> Print Placard
                             </button>
 
                             <a
-                              href={qrCodeDataUrl}
+                              href={(qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed) ? undefined : qrCodeDataUrl}
+                              onClick={(e) => {
+                                if ((qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed)) {
+                                  e.preventDefault();
+                                  toast.error(`${qrMode === 'ROOM' ? 'Hotel Room QR' : 'Dine-In Table QR'} is disabled by Admin.`);
+                                }
+                              }}
                               download={`${data.slug}${activeLocationStr ? `-${activeLocationStr.toLowerCase().replace(/[^a-z0-9]/g, '-')}` : ''}-qr.png`}
-                              className="inline-flex items-center justify-center gap-2 px-3.5 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-xl font-medium transition-colors"
+                              className={`inline-flex items-center justify-center gap-2 px-3.5 py-2.5 text-xs rounded-xl font-medium transition-colors ${
+                                (qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed)
+                                  ? 'text-muted-foreground opacity-40 cursor-not-allowed'
+                                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 cursor-pointer'
+                              }`}
                             >
                               <Download className="w-3.5 h-3.5" /> QR Code Image Only
                             </a>
@@ -1206,7 +1322,9 @@ export function OwnerSettingsPage() {
                           ...(qrSettings.disabledLocations || [])
                         ])
                       ).map((loc) => {
-                        const isDisabled = (qrSettings.disabledLocations || []).some(
+                        const isRoomLoc = loc.toLowerCase().includes('room') || loc.toLowerCase().includes('suite');
+                        const isAdminLocked = isRoomLoc ? !isRoomQrAllowed : !isTableQrAllowed;
+                        const isDisabled = isAdminLocked || (qrSettings.disabledLocations || []).some(
                           (d) => d.trim().toLowerCase() === loc.trim().toLowerCase()
                         );
                         const isCustom = (qrSettings.customLocations || []).some(
@@ -1216,7 +1334,9 @@ export function OwnerSettingsPage() {
                           <div
                             key={loc}
                             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-                              isDisabled
+                              isAdminLocked
+                                ? 'bg-red-500/15 border-red-500/30 text-red-500 opacity-75'
+                                : isDisabled
                                 ? 'bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400'
                                 : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
                             }`}
@@ -1224,6 +1344,10 @@ export function OwnerSettingsPage() {
                             <button
                               type="button"
                               onClick={() => {
+                                if (isAdminLocked) {
+                                  toast.error(`${isRoomLoc ? 'Hotel Room' : 'Dine-In Table'} QR is locked/disabled by Admin.`);
+                                  return;
+                                }
                                 setQrSettings((s) => {
                                   const currentDisabled = s.disabledLocations || [];
                                   const exists = currentDisabled.some(
@@ -1237,12 +1361,18 @@ export function OwnerSettingsPage() {
                                   };
                                 });
                               }}
-                              className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+                              className={`flex items-center gap-1.5 transition-opacity ${isAdminLocked ? 'cursor-not-allowed' : 'hover:opacity-80'}`}
                             >
-                              {isDisabled ? <Ban className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                              {isAdminLocked ? (
+                                <Lock className="w-3.5 h-3.5 text-red-500" />
+                              ) : isDisabled ? (
+                                <Ban className="w-3.5 h-3.5" />
+                              ) : (
+                                <Check className="w-3.5 h-3.5" />
+                              )}
                               <span>{loc}</span>
                               <span className="text-[10px] opacity-75 uppercase">
-                                ({isDisabled ? 'Disabled' : 'Active'})
+                                ({isAdminLocked ? 'Locked by Admin' : isDisabled ? 'Disabled' : 'Active'})
                               </span>
                             </button>
 

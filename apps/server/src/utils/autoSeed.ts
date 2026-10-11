@@ -65,6 +65,14 @@ export async function syncDatabaseSchema(): Promise<void> {
     'ALTER TABLE "menu_categories" ADD COLUMN IF NOT EXISTS "parentId" TEXT',
     'CREATE TABLE IF NOT EXISTS "item_variants" ("id" TEXT NOT NULL PRIMARY KEY, "menuItemId" TEXT NOT NULL, "name" TEXT NOT NULL, "price" DOUBLE PRECISION NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)',
     'CREATE TABLE IF NOT EXISTS "item_add_ons" ("id" TEXT NOT NULL PRIMARY KEY, "menuItemId" TEXT NOT NULL, "name" TEXT NOT NULL, "price" DOUBLE PRECISION NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+
+    // Platform Types & Concurrent Login Sessions
+    'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "maxLogins" INT DEFAULT 1',
+    'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "platformType" TEXT DEFAULT \'RESTAURANT\'',
+    'ALTER TABLE "restaurants" ADD COLUMN IF NOT EXISTS "maxLogins" INT DEFAULT 1',
+    'ALTER TABLE "subscription_plans" ADD COLUMN IF NOT EXISTS "platformType" TEXT DEFAULT \'RESTAURANT\'',
+    'CREATE TABLE IF NOT EXISTS "active_sessions" ("id" TEXT NOT NULL PRIMARY KEY, "userId" TEXT NOT NULL, "sessionToken" TEXT NOT NULL UNIQUE, "userAgent" TEXT, "ipAddress" TEXT, "deviceInfo" TEXT, "lastActiveAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+    'CREATE INDEX IF NOT EXISTS "active_sessions_userId_idx" ON "active_sessions" ("userId")',
   ];
 
   for (const sql of statements) {
@@ -81,38 +89,60 @@ export async function ensureDatabaseSeeded(): Promise<void> {
   try {
     await syncDatabaseSchema();
 
-    // Ensure Default Subscription Plans are present
+    // Ensure Default Subscription Plans are present with Restaurant, Hotel, and Dual models
     const defaultPlans = [
       {
-        name: 'Free Trial',
+        name: 'Free Trial (Dual All-Access)',
         price: 0,
-        features: { qrCodes: 10, maxOrders: 300, maxMenuItems: 50, aiEnabled: true, analyticsEnabled: true, roomServiceEnabled: true },
+        platformType: 'DUAL',
+        features: { qrCodes: 20, maxOrders: 500, maxMenuItems: 100, aiEnabled: true, analyticsEnabled: true, roomServiceEnabled: true, callWaiterEnabled: true },
       },
       {
-        name: 'Basic',
+        name: 'Restaurant Starter',
         price: 999,
-        features: { qrCodes: 5, maxOrders: 500, maxMenuItems: 50, aiEnabled: false, analyticsEnabled: false },
+        platformType: 'RESTAURANT',
+        features: { qrCodes: 10, maxOrders: 500, maxMenuItems: 50, aiEnabled: false, analyticsEnabled: true, roomServiceEnabled: false, callWaiterEnabled: true },
       },
       {
-        name: 'Pro',
-        price: 2999,
-        features: { qrCodes: 20, maxOrders: 2000, maxMenuItems: 200, aiEnabled: true, analyticsEnabled: true },
+        name: 'Restaurant Pro',
+        price: 2499,
+        platformType: 'RESTAURANT',
+        features: { qrCodes: 30, maxOrders: 2500, maxMenuItems: 200, aiEnabled: true, analyticsEnabled: true, roomServiceEnabled: false, callWaiterEnabled: true },
       },
       {
-        name: 'Enterprise',
-        price: 7999,
-        features: { qrCodes: 100, maxOrders: -1, maxMenuItems: -1, aiEnabled: true, analyticsEnabled: true, customDomain: true, prioritySupport: true },
+        name: 'Hotel Essential',
+        price: 1499,
+        platformType: 'HOTEL',
+        features: { qrCodes: 25, maxOrders: 1000, maxMenuItems: 80, aiEnabled: true, analyticsEnabled: true, roomServiceEnabled: true, callWaiterEnabled: false },
+      },
+      {
+        name: 'Hotel Luxury Suite',
+        price: 3499,
+        platformType: 'HOTEL',
+        features: { qrCodes: 60, maxOrders: 5000, maxMenuItems: 300, aiEnabled: true, analyticsEnabled: true, roomServiceEnabled: true, callWaiterEnabled: false },
+      },
+      {
+        name: 'Dual Growth Plan (Restaurant + Hotel)',
+        price: 3999,
+        platformType: 'DUAL',
+        features: { qrCodes: 50, maxOrders: 4000, maxMenuItems: 250, aiEnabled: true, analyticsEnabled: true, roomServiceEnabled: true, callWaiterEnabled: true },
+      },
+      {
+        name: 'Dual Enterprise Omnichannel',
+        price: 6999,
+        platformType: 'DUAL',
+        features: { qrCodes: 150, maxOrders: -1, maxMenuItems: -1, aiEnabled: true, analyticsEnabled: true, roomServiceEnabled: true, callWaiterEnabled: true, prioritySupport: true },
       },
     ];
 
     for (const p of defaultPlans) {
       const existingPlan = await prisma.subscriptionPlan.findFirst({
-        where: { OR: [{ name: p.name }, { price: p.price }] },
+        where: { name: p.name },
       }).catch(() => null);
 
       if (!existingPlan) {
         await prisma.subscriptionPlan.create({
-          data: p,
+          data: p as any,
         }).catch(() => {});
       }
     }

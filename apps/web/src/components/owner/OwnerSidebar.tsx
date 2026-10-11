@@ -50,7 +50,13 @@ export function OwnerSidebar({ mobileOpen = false, onMobileClose }: OwnerSidebar
     queryKey: ['owner-restaurant-sidebar'],
     queryFn: async () => {
       const res = await api.get('/owner/restaurant');
-      return res.data.data.restaurant as { id: string; disabledTabs?: string[] | null };
+      return res.data.data.restaurant as {
+        id: string;
+        name?: string;
+        platformType?: string;
+        maxLogins?: number;
+        disabledTabs?: string[] | null;
+      };
     },
     staleTime: 30 * 1000,
   });
@@ -74,13 +80,32 @@ export function OwnerSidebar({ mobileOpen = false, onMobileClose }: OwnerSidebar
       {/* Top Header */}
       <div>
         <div className="p-6 border-b border-border flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center shadow-lg shadow-orange-500/20 shrink-0">
               <UtensilsCrossed className="w-5 h-5" />
             </div>
-            <div>
-              <p className="font-extrabold text-sm text-foreground tracking-tight">Restaurant</p>
-              <p className="text-xs text-muted-foreground font-medium">Owner Panel</p>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <p className="font-extrabold text-sm text-foreground tracking-tight truncate max-w-[110px]">
+                  {restaurantData?.name || 'Restaurant'}
+                </p>
+                {restaurantData?.platformType === 'DUAL' ? (
+                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-500 border border-amber-500/30 shrink-0">
+                    DUAL
+                  </span>
+                ) : restaurantData?.platformType === 'HOTEL' ? (
+                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-500 border border-blue-500/30 shrink-0">
+                    HOTEL
+                  </span>
+                ) : null}
+              </div>
+              <p className="text-[11px] text-muted-foreground font-medium truncate">
+                {restaurantData?.platformType === 'DUAL'
+                  ? 'Restaurant & Hotel'
+                  : restaurantData?.platformType === 'HOTEL'
+                  ? 'Hotel Owner'
+                  : 'Owner Panel'}
+              </p>
             </div>
           </div>
           {onMobileClose && (
@@ -100,23 +125,9 @@ export function OwnerSidebar({ mobileOpen = false, onMobileClose }: OwnerSidebar
             const isActive = pathname === item.href;
             const isTabDisabled = disabledTabs.includes(item.key);
 
+            // If disabled by administration, hide completely from the sidebar
             if (isTabDisabled) {
-              return (
-                <div
-                  key={item.href}
-                  onClick={() => {
-                    toast.error(`The "${item.label}" tab is currently disabled by platform administration.`);
-                  }}
-                  className="flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-semibold opacity-45 cursor-not-allowed bg-muted/20 border border-dashed border-border/80 text-muted-foreground hover:opacity-60 transition-all select-none"
-                  title="This tab is disabled by platform administration"
-                >
-                  <div className="flex items-center gap-3.5">
-                    <Icon className="w-5 h-5 shrink-0" />
-                    <span>{item.label}</span>
-                  </div>
-                  <Lock className="w-3.5 h-3.5 text-amber-500/80 shrink-0" />
-                </div>
-              );
+              return null;
             }
 
             return (

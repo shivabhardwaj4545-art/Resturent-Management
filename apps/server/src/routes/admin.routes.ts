@@ -19,6 +19,7 @@ import {
   updateSubscriptionPlan,
   deleteSubscriptionPlan,
   getRestaurantDetails,
+  terminateRestaurantSessions,
   updateRestaurantFeatures,
   updateRestaurantTabs,
   assignRestaurantSubscription,
@@ -55,6 +56,7 @@ router.patch('/restaurants/:id/suspend', suspendRestaurant);
 router.patch('/restaurants/:id/features', updateRestaurantFeatures);
 router.patch('/restaurants/:id/tabs', updateRestaurantTabs);
 router.post('/restaurants/:id/subscription', assignRestaurantSubscription);
+router.post('/restaurants/:id/terminate-sessions', terminateRestaurantSessions);
 router.delete('/restaurants/:id', deleteRestaurant);
 
 // User management

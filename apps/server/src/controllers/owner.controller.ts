@@ -209,6 +209,8 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response, nex
           isOpen: restaurant.isOpen,
           isSuspended: restaurant.isSuspended,
           themeColor: restaurant.themeColor,
+          platformType: (restaurant as any).platformType || 'RESTAURANT',
+          maxLogins: (restaurant as any).maxLogins || 1,
         },
         subscription: activeSubscription
           ? {
@@ -1754,7 +1756,7 @@ export async function getOwnerSubscription(req: AuthenticatedRequest, res: Respo
     // Fetch refreshed restaurant record
     const updatedRest = await prisma.restaurant.findUnique({
       where: { id: restaurant.id },
-      select: { id: true, name: true, isSuspended: true, isOpen: true },
+      select: { id: true, name: true, isSuspended: true, isOpen: true, platformType: true, maxLogins: true } as any,
     });
 
     const [plans, subscriptions] = await Promise.all([
@@ -1828,13 +1830,38 @@ export async function buyOwnerSubscription(req: AuthenticatedRequest, res: Respo
       include: { plan: true },
     });
 
+    const planPlatformType = (plan as any).platformType;
+    let featureFlagsUpdate: any = undefined;
+    if (planPlatformType === 'DUAL') {
+      const currentFlags = (restaurant.featureFlags as Record<string, boolean>) || {};
+      featureFlagsUpdate = {
+        ...currentFlags,
+        roomServiceEnabled: true,
+        callWaiterEnabled: true,
+      };
+    } else if (planPlatformType === 'HOTEL') {
+      const currentFlags = (restaurant.featureFlags as Record<string, boolean>) || {};
+      featureFlagsUpdate = {
+        ...currentFlags,
+        roomServiceEnabled: true,
+      };
+    } else if (planPlatformType === 'RESTAURANT') {
+      const currentFlags = (restaurant.featureFlags as Record<string, boolean>) || {};
+      featureFlagsUpdate = {
+        ...currentFlags,
+        callWaiterEnabled: true,
+      };
+    }
+
     // Automatically unsuspend restaurant if it was suspended due to expired subscription!
     const updatedRestaurant = await prisma.restaurant.update({
       where: { id: restaurant.id },
       data: {
         isSuspended: false,
         isOpen: true,
-      },
+        ...(planPlatformType && { platformType: planPlatformType }),
+        ...(featureFlagsUpdate && { featureFlags: featureFlagsUpdate }),
+      } as any,
     });
 
     // Invalidate menu cache

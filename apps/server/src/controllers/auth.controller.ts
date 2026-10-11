@@ -23,6 +23,7 @@ function generateAccessToken(payload: {
   email: string;
   role: string;
   name: string;
+  sessionId?: string;
 }): string {
   const secret = process.env.JWT_ACCESS_SECRET ?? '';
   return jwt.sign(payload, secret, {
@@ -237,11 +238,57 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
       throw new AppError('Invalid email or password.', 401, 'INVALID_CREDENTIALS');
     }
 
+    let restaurantObj = null;
     if (user.role === 'RESTAURANT_OWNER') {
+      restaurantObj = await prisma.restaurant.findFirst({
+        where: { ownerId: user.id, deletedAt: null },
+      });
       await prisma.restaurant.updateMany({
         where: { ownerId: user.id },
         data: { isSuspended: false, deletedAt: null, isApproved: true },
       });
+    }
+
+    // Determine allowed concurrent logins limit
+    const maxAllowed = Math.max(
+      1,
+      Number((user as any).maxLogins) || Number((restaurantObj as any)?.maxLogins) || 1
+    );
+
+    // Evict oldest session(s) if user has reached maxLogins limit
+    try {
+      const activeSessions = await (prisma as any).activeSession.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      if (activeSessions.length >= maxAllowed) {
+        const evictCount = activeSessions.length - maxAllowed + 1;
+        const toEvict = activeSessions.slice(0, evictCount);
+        await (prisma as any).activeSession.deleteMany({
+          where: { id: { in: toEvict.map((s: any) => s.id) } },
+        });
+      }
+    } catch (sessionErr) {
+      logger.warn('Failed to prune active sessions during login:', sessionErr);
+    }
+
+    // Create new active session record
+    const sessionId = crypto.randomUUID();
+    const userAgent = req.headers['user-agent'] || 'Web Browser';
+    const ipAddress = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+    try {
+      await (prisma as any).activeSession.create({
+        data: {
+          userId: user.id,
+          sessionToken: sessionId,
+          userAgent: String(userAgent).slice(0, 255),
+          ipAddress: String(ipAddress).slice(0, 100),
+          deviceInfo: String(userAgent).toLowerCase().includes('mobile') ? 'Mobile Device' : 'Desktop Browser',
+        },
+      });
+    } catch (sessionCreateErr) {
+      logger.warn('Failed to record active session during login:', sessionCreateErr);
     }
 
     const tokenPayload = {
@@ -249,6 +296,7 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
       email: user.email,
       role: user.role,
       name: user.name,
+      sessionId,
     };
 
     const accessToken = generateAccessToken(tokenPayload);
@@ -269,6 +317,8 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
           isVerified: user.isVerified,
           loyaltyPoints: user.loyaltyPoints,
           walletBalance: user.walletBalance,
+          platformType: (restaurantObj as any)?.platformType || 'RESTAURANT',
+          maxLogins: maxAllowed,
         },
       },
       message: 'Login successful',
@@ -475,6 +525,18 @@ export async function refreshToken(req: Request, res: Response, next: NextFuncti
 
 export async function logout(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (token) {
+      try {
+        const decoded = jwt.decode(token) as { sessionId?: string };
+        if (decoded?.sessionId) {
+          await (prisma as any).activeSession.deleteMany({
+            where: { sessionToken: decoded.sessionId },
+          });
+        }
+      } catch {}
+    }
     res.clearCookie('refreshToken', { path: '/' });
     res.clearCookie('refreshToken', { path: '/api/v1/auth' });
     res.json({ success: true, data: null, message: 'Logged out successfully' });

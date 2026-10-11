@@ -17,6 +17,7 @@ type Plan = {
   id: string;
   name: string;
   price: number;
+  platformType?: string;
   features: string[] | Record<string, any>;
 };
 
@@ -34,6 +35,7 @@ export function OwnerSubscriptionPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedDuration, setSelectedDuration] = useState<Record<string, number>>({});
   const [subscribingPlanId, setSubscribingPlanId] = useState<string | null>(null);
+  const [selectedPlatformFilter, setSelectedPlatformFilter] = useState<'ALL' | 'DUAL' | 'RESTAURANT' | 'HOTEL'>('ALL');
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['owner-subscription'],
@@ -43,7 +45,14 @@ export function OwnerSubscriptionPage() {
         plans: Plan[];
         activeSubscription: Subscription | null;
         subscriptions: Subscription[];
-        restaurant: { id: string; name: string; isSuspended: boolean; isOpen: boolean };
+        restaurant: {
+          id: string;
+          name: string;
+          isSuspended: boolean;
+          isOpen: boolean;
+          platformType?: string;
+          maxLogins?: number;
+        };
       };
     },
   });
@@ -285,6 +294,24 @@ export function OwnerSubscriptionPage() {
                     <h2 className="text-xl sm:text-2xl font-black font-display text-foreground mt-0.5">
                       {activeSub.plan.name} Tier
                     </h2>
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      {restaurant?.platformType === 'DUAL' ? (
+                        <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/30">
+                          🌟 Dual Plan Active (Restaurant + Hotel)
+                        </span>
+                      ) : restaurant?.platformType === 'HOTEL' ? (
+                        <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-500 border border-blue-500/30">
+                          🏨 Hotel Mode Active
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/30">
+                          🍽️ Restaurant Mode Active
+                        </span>
+                      )}
+                      <span className="text-[11px] text-muted-foreground font-medium">
+                        • Max {restaurant?.maxLogins ?? 1} concurrent device login(s)
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -310,18 +337,48 @@ export function OwnerSubscriptionPage() {
                 <AlertTriangle className="w-5 h-5 shrink-0" />
                 <span>You are currently on a <strong>Free Starter Trial</strong>. Upgrade to a paid plan below to unlock full restaurant capabilities!</span>
               </div>
+              {restaurant && (
+                <span className="text-xs font-bold text-muted-foreground hidden sm:block">
+                  Max logins: {restaurant.maxLogins ?? 1} device
+                </span>
+              )}
             </div>
           )}
 
           {/* Pricing Tiers Section */}
           <div className="space-y-4">
-            <div>
-              <h2 className="font-display font-extrabold text-lg sm:text-xl text-foreground">
-                Available Subscription Plans
-              </h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Select your preferred package. Subscribing automatically extends or reactivates your restaurant.
-              </p>
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+              <div>
+                <h2 className="font-display font-extrabold text-lg sm:text-xl text-foreground">
+                  Available Subscription Plans
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Select your preferred package. Dual plans unlock both dine-in tables and hotel room services.
+                </p>
+              </div>
+
+              {/* Platform category selector tabs */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[
+                  { id: 'ALL', label: 'All Plans' },
+                  { id: 'DUAL', label: '🌟 Dual Plan' },
+                  { id: 'RESTAURANT', label: '🍽️ Restaurant' },
+                  { id: 'HOTEL', label: '🏨 Hotel' },
+                ].map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setSelectedPlatformFilter(cat.id as any)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      selectedPlatformFilter === cat.id
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {isLoading ? (
@@ -332,9 +389,11 @@ export function OwnerSubscriptionPage() {
               </div>
             ) : (
               <div className="grid md:grid-cols-3 gap-6 items-stretch">
-                {data?.plans?.map((plan) => {
+                {data?.plans
+                  ?.filter((plan) => selectedPlatformFilter === 'ALL' || (plan.platformType || 'RESTAURANT') === selectedPlatformFilter)
+                  ?.map((plan) => {
                   const isCurrentPlan = activeSub?.planId === plan.id && activeSub.isActive;
-                  const isHighlighted = plan.name.toLowerCase().includes('pro') || plan.name.toLowerCase().includes('popular');
+                  const isHighlighted = plan.name.toLowerCase().includes('pro') || plan.name.toLowerCase().includes('popular') || plan.platformType === 'DUAL';
 
                   // Normalize features list
                   const features = Array.isArray(plan.features)
@@ -370,9 +429,28 @@ export function OwnerSubscriptionPage() {
 
                       <div>
                         <div className="mb-4">
+                          {plan.platformType === 'DUAL' ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-500 border border-amber-500/30 mb-2">
+                              🌟 Dual Plan (Restaurant + Hotel)
+                            </span>
+                          ) : plan.platformType === 'HOTEL' ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-500 border border-blue-500/30 mb-2">
+                              🏨 Hotel Only
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 mb-2">
+                              🍽️ Restaurant
+                            </span>
+                          )}
                           <h3 className="font-display font-extrabold text-xl text-foreground">{plan.name}</h3>
                           <p className="text-xs text-muted-foreground mt-1">
-                            {plan.price === 0 ? 'Essential features to get started' : 'Designed to accelerate growing restaurants'}
+                            {plan.platformType === 'DUAL'
+                              ? 'All-in-one suite: dine-in tables, table waiter calling + hotel room service.'
+                              : plan.platformType === 'HOTEL'
+                              ? 'Complete hotel suite: room QR ordering & room service calling.'
+                              : plan.price === 0
+                              ? 'Essential features to get started'
+                              : 'Designed to accelerate growing restaurants & cafes'}
                           </p>
                         </div>
 

@@ -102,6 +102,7 @@ export async function getRestaurantMenu(
         upiEnabled: true,
         merchantName: true,
         featureFlags: true,
+        platformType: true,
       },
     });
 
@@ -146,6 +147,7 @@ export async function getRestaurantMenu(
           upiEnabled: true,
           merchantName: true,
           featureFlags: true,
+          platformType: true,
         },
       });
 
@@ -244,7 +246,7 @@ export async function callWaiter(
         isApproved: true,
         isSuspended: false,
       },
-      select: { id: true, name: true, ownerId: true, featureFlags: true },
+      select: { id: true, name: true, ownerId: true, featureFlags: true, platformType: true },
     });
 
     if (!restaurant) {
@@ -256,10 +258,10 @@ export async function callWaiter(
     const cleanTable = tableNumber.trim();
     const isRoom = cleanTable.toLowerCase().includes('room') || cleanTable.toLowerCase().includes('suite');
 
-    if (isRoom && flags.roomServiceEnabled === false) {
+    if (isRoom && (restaurant.platformType === 'RESTAURANT' || flags.roomServiceEnabled === false || flags.roomQrEnabled === false)) {
       throw new AppError('Hotel room service is currently disabled for this restaurant by administration.', 403, 'ROOM_SERVICE_DISABLED');
     }
-    if (!isRoom && flags.callWaiterEnabled === false) {
+    if (!isRoom && (restaurant.platformType === 'HOTEL' || flags.callWaiterEnabled === false || flags.tableQrEnabled === false)) {
       throw new AppError('Waiter call service is currently disabled for this restaurant by administration.', 403, 'CALL_WAITER_DISABLED');
     }
 
