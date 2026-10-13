@@ -256,13 +256,17 @@ export async function callWaiter(
     const flags = (restaurant.featureFlags as Record<string, boolean> | null) || {};
 
     const cleanTable = tableNumber.trim();
-    const isRoom = cleanTable.toLowerCase().includes('room') || cleanTable.toLowerCase().includes('suite');
+    const isExplicitRoom = cleanTable.toLowerCase().includes('room') || cleanTable.toLowerCase().includes('suite');
+    const isRoom = restaurant.platformType === 'HOTEL' ? true : restaurant.platformType === 'RESTAURANT' ? false : isExplicitRoom;
 
-    if (isRoom && (restaurant.platformType === 'RESTAURANT' || flags.roomServiceEnabled === false || flags.roomQrEnabled === false)) {
-      throw new AppError('Hotel room service is currently disabled for this restaurant by administration.', 403, 'ROOM_SERVICE_DISABLED');
-    }
-    if (!isRoom && (restaurant.platformType === 'HOTEL' || flags.callWaiterEnabled === false || flags.tableQrEnabled === false)) {
-      throw new AppError('Waiter call service is currently disabled for this restaurant by administration.', 403, 'CALL_WAITER_DISABLED');
+    if (isRoom) {
+      if (restaurant.platformType === 'RESTAURANT' || flags.roomServiceEnabled === false || flags.roomQrEnabled === false) {
+        throw new AppError('Hotel room service is currently disabled for this restaurant by administration.', 403, 'ROOM_SERVICE_DISABLED');
+      }
+    } else {
+      if (restaurant.platformType === 'HOTEL' || flags.callWaiterEnabled === false || flags.tableQrEnabled === false) {
+        throw new AppError('Waiter call service is currently disabled for this restaurant by administration.', 403, 'CALL_WAITER_DISABLED');
+      }
     }
 
     // Verify cryptographic signature of the table number ONLY if ENFORCE_TABLE_SIGNATURE is set to true
@@ -271,7 +275,7 @@ export async function callWaiter(
         throw new AppError('Invalid table QR code signature. Please scan the QR code on your table.', 403, 'INVALID_TABLE_TOKEN');
       }
     }
-    const label = isRoom ? (cleanTable.toLowerCase().startsWith('room') ? cleanTable : `Room ${cleanTable}`) : `Table ${cleanTable}`;
+    const label = isRoom ? (cleanTable.toLowerCase().startsWith('room') ? cleanTable : `Room ${cleanTable}`) : (cleanTable.toLowerCase().startsWith('table') ? cleanTable : `Table ${cleanTable}`);
     const notifTitle = isRoom
       ? `🛎️ Room Service - ${label}${purpose ? ` (${purpose})` : ''}`
       : `🔔 Waiter Call - ${label}${purpose ? ` (${purpose})` : ''}`;

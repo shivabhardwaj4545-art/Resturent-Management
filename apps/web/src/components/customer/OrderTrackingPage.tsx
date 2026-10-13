@@ -13,6 +13,7 @@ import {
   RotateCcw,
   Utensils,
   MapPin,
+  Bed,
   CreditCard,
   Copy,
   Sparkles,
@@ -435,11 +436,20 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
             </button>
           </div>
 
-          {/* Dine-In: show table number */}
+          {/* Dine-In / Room: show table or room number */}
           {!isDeliveryOrder && order.tableNumber && (
             <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
-              <Utensils className="w-3.5 h-3.5" />
-              Table {order.tableNumber}
+              {order.tableNumber.toLowerCase().includes('room') || order.tableNumber.toLowerCase().includes('suite') ? (
+                <>
+                  <Bed className="w-3.5 h-3.5" />
+                  {order.tableNumber.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`}
+                </>
+              ) : (
+                <>
+                  <Utensils className="w-3.5 h-3.5" />
+                  {order.tableNumber.toLowerCase().startsWith('table') ? order.tableNumber : `Table ${order.tableNumber}`}
+                </>
+              )}
             </p>
           )}
 
@@ -793,14 +803,22 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
                           amount: order.total,
                           paymentMethod: order.paymentMethod,
                         });
-                        toast.success(`🙋 Call Waiter for Payment sent for Table ${order.tableNumber}!`);
+                        const isRoomOrder = Boolean(order.tableNumber && (order.tableNumber.toLowerCase().includes('room') || order.tableNumber.toLowerCase().includes('suite')));
+                        const locLabel = isRoomOrder
+                          ? (order.tableNumber?.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`)
+                          : (order.tableNumber?.toLowerCase().startsWith('table') ? order.tableNumber : `Table ${order.tableNumber}`);
+                        toast.success(`${isRoomOrder ? '🛎️ Room service call for payment sent for ' : '🙋 Call Waiter for Payment sent for '}${locLabel}!`);
                       } catch (err: any) {
-                        toast.error(err.response?.data?.error || 'Could not call waiter for payment.');
+                        toast.error(err.response?.data?.error || 'Could not call staff for payment.');
                       }
                     }}
                     className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center justify-center gap-1.5 shadow-sm"
                   >
-                    <span>🙋 Call Waiter for Payment (Table {order.tableNumber})</span>
+                    <span>
+                      {order.tableNumber && (order.tableNumber.toLowerCase().includes('room') || order.tableNumber.toLowerCase().includes('suite'))
+                        ? `🛎️ Call Room Service for Payment (${order.tableNumber.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`})`
+                        : `🙋 Call Waiter for Payment (${order.tableNumber?.toLowerCase().startsWith('table') ? order.tableNumber : `Table ${order.tableNumber}`})`}
+                    </span>
                   </button>
                 )}
                 <button

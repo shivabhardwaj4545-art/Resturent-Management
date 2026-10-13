@@ -69,6 +69,7 @@ interface RestaurantMenuPageProps {
 
 export function RestaurantMenuPage({ slug, tableNumber, searchParams }: RestaurantMenuPageProps) {
   const queryClient = useQueryClient();
+  const isPreview = searchParams?.preview === 'true';
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -326,7 +327,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
   const [savedToken, setSavedToken] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || isPreview) return;
     const tokenInQuery = searchParams?.token;
 
     if (tableNumber && tokenInQuery) {
@@ -350,29 +351,12 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       if (storedNum) setSavedTable(storedNum);
       if (storedTok) setSavedToken(storedTok);
     }
-  }, [tableNumber, searchParams, slug]);
+  }, [tableNumber, searchParams, slug, isPreview]);
 
-  const displayTableNumber = tableNumber || savedTable || manualTableNumber || undefined;
-  const displayTableToken = searchParams?.token || savedToken || undefined;
+  const displayTableNumber = isPreview ? (searchParams?.table || undefined) : (tableNumber || savedTable || manualTableNumber || undefined);
+  const displayTableToken = isPreview ? (searchParams?.token || undefined) : (searchParams?.token || savedToken || undefined);
 
-  const isHotelRoom = Boolean(
-    (displayTableNumber &&
-      (displayTableNumber.toLowerCase().includes('room') ||
-       displayTableNumber.toLowerCase().includes('suite') ||
-       displayTableNumber.toLowerCase().startsWith('rm') ||
-       displayTableNumber.toLowerCase().includes('hotel'))) ||
-    (manualTableNumber &&
-      (manualTableNumber.toLowerCase().includes('room') ||
-       manualTableNumber.toLowerCase().includes('suite')))
-  );
 
-  useEffect(() => {
-    if (isHotelRoom) {
-      setSelectedPurpose((prev) => (prev === 'Food & Cutlery' ? 'Room Cleaning' : prev));
-    } else {
-      setSelectedPurpose((prev) => (prev === 'Room Cleaning' ? 'Food & Cutlery' : prev));
-    }
-  }, [isHotelRoom]);
 
   
   useEffect(() => {
@@ -554,6 +538,32 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
     staleTime: 5 * 60 * 1000,
   });
 
+  const restaurantPlatformType = (data?.restaurant as any)?.platformType || 'RESTAURANT';
+  const isHotelPlatform = restaurantPlatformType === 'HOTEL';
+  const isRestaurantPlatform = restaurantPlatformType === 'RESTAURANT';
+
+  const isExplicitRoom = Boolean(
+    (displayTableNumber &&
+      (displayTableNumber.toLowerCase().includes('room') ||
+       displayTableNumber.toLowerCase().includes('suite') ||
+       displayTableNumber.toLowerCase().startsWith('rm') ||
+       displayTableNumber.toLowerCase().includes('hotel'))) ||
+    (manualTableNumber &&
+      (manualTableNumber.toLowerCase().includes('room') ||
+       manualTableNumber.toLowerCase().includes('suite'))) ||
+    searchParams?.table?.toLowerCase().includes('room')
+  );
+
+  const isHotelRoom = isHotelPlatform ? true : isRestaurantPlatform ? false : isExplicitRoom;
+
+  useEffect(() => {
+    if (isHotelRoom) {
+      setSelectedPurpose((prev) => (prev === 'Food & Cutlery' ? 'Room Cleaning' : prev));
+    } else {
+      setSelectedPurpose((prev) => (prev === 'Room Cleaning' ? 'Food & Cutlery' : prev));
+    }
+  }, [isHotelRoom]);
+
   const statusInfo = useMemo(() => {
     if (!data?.restaurant) return { status: 'CLOSED' as const, badgeText: 'Closed', detailText: 'Closed' };
     return getDetailedStatus(data.restaurant.operatingHours as any, data.restaurant.isOpen);
@@ -582,14 +592,22 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
     }
     if (activeLocation) {
       const cleanLoc = String(activeLocation).trim().toLowerCase();
-      if (isHotelRoom && isRoomQrDisabledByAdmin) {
-        return `Hotel Room QR Service (${activeLocation}) is disabled by administration.`;
-      }
-      if (!isHotelRoom && isTableQrDisabledByAdmin) {
-        return `Dine-In Table QR Ordering (${activeLocation.toLowerCase().startsWith('table') ? activeLocation : `Table ${activeLocation}`}) is disabled by administration.`;
+      if (isHotelRoom) {
+        if (isRoomQrDisabledByAdmin) {
+          const roomLabel = cleanLoc.startsWith('room') ? activeLocation : `Room ${activeLocation}`;
+          return `Hotel Room QR Service (${roomLabel}) is disabled by administration.`;
+        }
+      } else {
+        if (isTableQrDisabledByAdmin) {
+          const tableLabel = cleanLoc.startsWith('table') ? activeLocation : `Table ${activeLocation}`;
+          return `Dine-In Table QR Ordering (${tableLabel}) is disabled by administration.`;
+        }
       }
       if (disabledLocations.some((d) => String(d).trim().toLowerCase() === cleanLoc)) {
-        return `Ordering for ${activeLocation} is temporarily disabled by restaurant management.`;
+        const locLabel = isHotelRoom
+          ? (cleanLoc.startsWith('room') ? activeLocation : `Room ${activeLocation}`)
+          : (cleanLoc.startsWith('table') ? activeLocation : `Table ${activeLocation}`);
+        return `Ordering for ${locLabel} is temporarily disabled by restaurant management.`;
       }
     }
     return null;
@@ -604,10 +622,16 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
   }, [data, slug, setRestaurant]);
 
   useEffect(() => {
-    if (tableNumber) {
-      toast.info(`Ordering for Table ${tableNumber}`);
+    if (tableNumber && !isPreview) {
+      if (isHotelRoom) {
+        const roomLabel = tableNumber.toLowerCase().startsWith('room') ? tableNumber : `Room ${tableNumber}`;
+        toast.info(`Ordering for ${roomLabel}`);
+      } else {
+        const tableLabel = tableNumber.toLowerCase().startsWith('table') ? tableNumber : `Table ${tableNumber}`;
+        toast.info(`Ordering for ${tableLabel}`);
+      }
     }
-  }, [tableNumber]);
+  }, [tableNumber, isHotelRoom, isPreview]);
 
   useEffect(() => {
     const handleScroll = () => setShowScrollTop(window.scrollY > 500);
@@ -636,7 +660,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
     }
 
     const cleanTable = String(effectiveTable).trim();
-    const isRoom = cleanTable.toLowerCase().includes('room') || cleanTable.toLowerCase().includes('suite');
+    const isRoom = isHotelPlatform ? true : isRestaurantPlatform ? false : (cleanTable.toLowerCase().includes('room') || cleanTable.toLowerCase().includes('suite'));
     const label = isRoom ? (cleanTable.toLowerCase().startsWith('room') ? cleanTable : `Room ${cleanTable}`) : `Table ${cleanTable}`;
 
     const flags = (data?.restaurant as any)?.featureFlags || {};
@@ -922,7 +946,6 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
 
   const { restaurant, categories = [] } = data;
   
-  const isPreview = searchParams?.preview === 'true';
   const themeColor = isPreview && searchParams?.themeColor ? searchParams.themeColor : (restaurant.themeColor ?? '#E85D04');
   const restaurantName = isPreview && searchParams?.name !== undefined ? searchParams.name : restaurant.name;
   const restaurantDesc = isPreview && searchParams?.description !== undefined ? searchParams.description : restaurant.description;
@@ -938,11 +961,14 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
           }
         `}</style>
       )}
-      {isLocationDisabled && (
+      {isLocationDisabled && !isPreview && (
         <div className="bg-red-600 text-white px-4 py-2.5 text-center text-xs sm:text-sm font-bold shadow-lg flex items-center justify-center gap-2 relative z-40 border-b border-red-700">
           <Ban className="w-4 h-4 shrink-0" />
           <span>
-            QR Ordering for {activeLocation ? activeLocation : 'this restaurant'} is currently disabled by management. Please speak with staff or call room service directly.
+            {isHotelRoom
+              ? `Room Service Ordering for ${activeLocation ? (activeLocation.toLowerCase().startsWith('room') ? activeLocation : `Room ${activeLocation}`) : 'this room'} is currently disabled by management. Please contact reception.`
+              : `Table Ordering for ${activeLocation ? (activeLocation.toLowerCase().startsWith('table') ? activeLocation : `Table ${activeLocation}`) : 'this table'} is currently disabled by management. Please speak with staff.`
+            }
           </span>
         </div>
       )}
@@ -1057,7 +1083,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
           </button>
         </div>
       )}
-      {locationDisableReason && (
+      {locationDisableReason && !isPreview && (
         <div className="bg-red-600 text-white text-xs font-semibold px-4 py-3 flex items-center justify-between shadow-md border-b border-red-700">
           <div className="flex items-center gap-2">
             <Lock className="w-4 h-4 shrink-0" />
@@ -1405,7 +1431,11 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                             {order.tableNumber ? (
                               <>
                                 <span>•</span>
-                                <span className="font-semibold text-primary">Table {order.tableNumber}</span>
+                                <span className="font-semibold text-primary">
+                                  {isHotelRoom || order.tableNumber.toLowerCase().includes('room')
+                                    ? (order.tableNumber.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`)
+                                    : (order.tableNumber.toLowerCase().startsWith('table') ? order.tableNumber : `Table ${order.tableNumber}`)}
+                                </span>
                               </>
                             ) : (
                               <>
@@ -1489,7 +1519,11 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
                             {order.tableNumber ? (
                               <>
                                 <span>•</span>
-                                <span className="font-semibold text-primary">Table {order.tableNumber}</span>
+                                <span className="font-semibold text-primary">
+                                  {isHotelRoom || order.tableNumber.toLowerCase().includes('room')
+                                    ? (order.tableNumber.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`)
+                                    : (order.tableNumber.toLowerCase().startsWith('table') ? order.tableNumber : `Table ${order.tableNumber}`)}
+                                </span>
                               </>
                             ) : (
                               <>

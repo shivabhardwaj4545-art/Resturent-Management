@@ -67,7 +67,7 @@ export const useWaiterStore = create<WaiterState>((set) => ({
   socket: null,
   soundEnabled: true,
 
-  addWaiterCall: (payload, showAlert = true) => {
+  addWaiterCall: (payload, showAlert = false) => {
     const cleanTable = String(payload.tableNumber).trim();
     const newCall: WaiterCall = {
       ...payload,

@@ -302,7 +302,12 @@ export function OwnerOrdersPage() {
                         <span className="font-mono font-bold text-sm">#{order.id.slice(-8).toUpperCase()}</span>
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[order.status] ?? ''}`}>{order.status}</span>
                         {order.tableNumber && (
-                          <span className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" />Table {order.tableNumber}</span>
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <MapPin className="w-3 h-3" />
+                            {order.tableNumber.toLowerCase().includes('room') || order.tableNumber.toLowerCase().includes('suite')
+                              ? (order.tableNumber.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`)
+                              : (order.tableNumber.toLowerCase().startsWith('table') ? order.tableNumber : `Table ${order.tableNumber}`)}
+                          </span>
                         )}
                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${
                           order.paymentMethod === 'RAZORPAY' ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-400 dark:border-purple-900/30' :

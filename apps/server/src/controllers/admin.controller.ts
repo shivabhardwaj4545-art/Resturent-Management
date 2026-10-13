@@ -555,22 +555,40 @@ export const DEFAULT_FREE_TRIAL_SETTINGS = {
   },
 };
 
-export async function getOrCreateFreeTrialPlan() {
+export async function getOrCreateFreeTrialPlan(platformType: string = 'RESTAURANT') {
+  const normType = String(platformType || 'RESTAURANT').toUpperCase();
   let plan = await prisma.subscriptionPlan.findFirst({
     where: {
-      OR: [
-        { name: { contains: 'Free Trial', mode: 'insensitive' } },
-        { price: 0 },
-      ],
+      price: 0,
+      platformType: normType,
     },
   });
 
   if (!plan) {
+    // Fallback to any free plan
+    plan = await prisma.subscriptionPlan.findFirst({
+      where: { price: 0 },
+    });
+  }
+
+  if (!plan) {
+    const planName =
+      normType === 'HOTEL'
+        ? 'Free Trial (Hotel)'
+        : normType === 'DUAL'
+        ? 'Free Trial (Dual All-Access)'
+        : 'Free Trial (Restaurant)';
+
     plan = await prisma.subscriptionPlan.create({
       data: {
-        name: 'Free Trial',
+        name: planName,
         price: 0,
-        features: DEFAULT_FREE_TRIAL_SETTINGS.features,
+        platformType: normType,
+        features: {
+          ...DEFAULT_FREE_TRIAL_SETTINGS.features,
+          callWaiterEnabled: normType !== 'HOTEL',
+          roomServiceEnabled: normType !== 'RESTAURANT',
+        },
       },
     });
   }
@@ -593,7 +611,13 @@ export async function autoAssignFreeTrial(restaurantId: string, customDays?: num
       return null;
     }
 
-    const freePlan = await getOrCreateFreeTrialPlan();
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: { platformType: true, featureFlags: true },
+    }).catch(() => null);
+
+    const platformType = restaurant?.platformType || 'RESTAURANT';
+    const freePlan = await getOrCreateFreeTrialPlan(platformType);
     const days = customDays || settingVal.trialDays || 14;
     const startsAt = new Date();
     const expiresAt = new Date(startsAt.getTime() + days * 24 * 60 * 60 * 1000);
@@ -618,10 +642,35 @@ export async function autoAssignFreeTrial(restaurantId: string, customDays?: num
       include: { plan: true },
     });
 
-    // Make sure restaurant is activated and open
+    const planPlatformType = (freePlan as any).platformType || 'RESTAURANT';
+    const currentFlags = (restaurant?.featureFlags as Record<string, boolean>) || {};
+    const featureFlagsUpdate: any = { ...currentFlags };
+    if (planPlatformType === 'DUAL') {
+      featureFlagsUpdate.roomServiceEnabled = true;
+      featureFlagsUpdate.callWaiterEnabled = true;
+      featureFlagsUpdate.tableQrEnabled = true;
+      featureFlagsUpdate.roomQrEnabled = true;
+    } else if (planPlatformType === 'HOTEL') {
+      featureFlagsUpdate.roomServiceEnabled = true;
+      featureFlagsUpdate.callWaiterEnabled = false;
+      featureFlagsUpdate.tableQrEnabled = false;
+      featureFlagsUpdate.roomQrEnabled = true;
+    } else if (planPlatformType === 'RESTAURANT') {
+      featureFlagsUpdate.roomServiceEnabled = false;
+      featureFlagsUpdate.callWaiterEnabled = true;
+      featureFlagsUpdate.tableQrEnabled = true;
+      featureFlagsUpdate.roomQrEnabled = false;
+    }
+
+    // Make sure restaurant is activated and open with correct platformType & flags
     await prisma.restaurant.update({
       where: { id: restaurantId },
-      data: { isSuspended: false, isOpen: true },
+      data: {
+        isSuspended: false,
+        isOpen: true,
+        platformType: planPlatformType,
+        featureFlags: featureFlagsUpdate,
+      } as any,
     });
 
     await prisma.notification.create({
@@ -993,9 +1042,34 @@ export async function assignRestaurantSubscription(req: AuthenticatedRequest, re
     });
 
     if (Boolean(isActive)) {
+      const planPlatformType = (plan as any).platformType || 'RESTAURANT';
+      const currentFlags = (restaurant.featureFlags as Record<string, boolean>) || {};
+      const featureFlagsUpdate: any = { ...currentFlags };
+      if (planPlatformType === 'DUAL') {
+        featureFlagsUpdate.roomServiceEnabled = true;
+        featureFlagsUpdate.callWaiterEnabled = true;
+        featureFlagsUpdate.tableQrEnabled = true;
+        featureFlagsUpdate.roomQrEnabled = true;
+      } else if (planPlatformType === 'HOTEL') {
+        featureFlagsUpdate.roomServiceEnabled = true;
+        featureFlagsUpdate.callWaiterEnabled = false;
+        featureFlagsUpdate.tableQrEnabled = false;
+        featureFlagsUpdate.roomQrEnabled = true;
+      } else if (planPlatformType === 'RESTAURANT') {
+        featureFlagsUpdate.roomServiceEnabled = false;
+        featureFlagsUpdate.callWaiterEnabled = true;
+        featureFlagsUpdate.tableQrEnabled = true;
+        featureFlagsUpdate.roomQrEnabled = false;
+      }
+
       await prisma.restaurant.update({
         where: { id },
-        data: { isSuspended: false, isOpen: true },
+        data: {
+          isSuspended: false,
+          isOpen: true,
+          platformType: planPlatformType,
+          featureFlags: featureFlagsUpdate,
+        } as any,
       });
     }
 
@@ -1158,6 +1232,114 @@ export async function extendFreeSubscription(req: AuthenticatedRequest, res: Res
       success: true,
       data: { subscription: updated },
       message: `Free trial updated successfully! Now valid until ${updatedExpiresAt.toLocaleDateString()} (${daysLeft} days remaining).`,
+    });
+  } catch (error) { next(error); }
+}
+
+export async function approveFreeTrial(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const subscriptionId = req.params.subscriptionId as string;
+    const sub = await prisma.restaurantSubscription.findUnique({
+      where: { id: subscriptionId },
+      include: { restaurant: true, plan: true },
+    });
+    if (!sub) throw new AppError('Subscription request not found.', 404, 'NOT_FOUND');
+
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // Exactly 30 days (1 month)
+
+    // Deactivate previous active subscriptions
+    await prisma.restaurantSubscription.updateMany({
+      where: { restaurantId: sub.restaurantId, isActive: true },
+      data: { isActive: false },
+    });
+
+    // Activate the free trial
+    const updatedSub = await prisma.restaurantSubscription.update({
+      where: { id: subscriptionId },
+      data: {
+        startsAt: now,
+        expiresAt,
+        isActive: true,
+        paymentStatus: 'FREE_TRIAL',
+        paymentMethod: 'FREE_TRIAL',
+      },
+      include: { plan: true },
+    });
+
+    const planPlatformType = (sub.plan as any).platformType || 'RESTAURANT';
+    const currentFlags = (sub.restaurant.featureFlags as Record<string, boolean>) || {};
+    let featureFlagsUpdate: any = { ...currentFlags };
+
+    if (planPlatformType === 'DUAL') {
+      featureFlagsUpdate.roomServiceEnabled = true;
+      featureFlagsUpdate.callWaiterEnabled = true;
+      featureFlagsUpdate.tableQrEnabled = true;
+      featureFlagsUpdate.roomQrEnabled = true;
+    } else if (planPlatformType === 'HOTEL') {
+      featureFlagsUpdate.roomServiceEnabled = true;
+      featureFlagsUpdate.callWaiterEnabled = false;
+      featureFlagsUpdate.tableQrEnabled = false;
+      featureFlagsUpdate.roomQrEnabled = true;
+    } else if (planPlatformType === 'RESTAURANT') {
+      featureFlagsUpdate.roomServiceEnabled = false;
+      featureFlagsUpdate.callWaiterEnabled = true;
+      featureFlagsUpdate.tableQrEnabled = true;
+      featureFlagsUpdate.roomQrEnabled = false;
+    }
+
+    await prisma.restaurant.update({
+      where: { id: sub.restaurantId },
+      data: {
+        isSuspended: false,
+        isOpen: true,
+        platformType: planPlatformType,
+        featureFlags: featureFlagsUpdate,
+      } as any,
+    });
+
+    await prisma.notification.create({
+      data: {
+        restaurantId: sub.restaurantId,
+        userId: sub.restaurant.ownerId,
+        type: 'FREE_TRIAL_ACTIVATED',
+        title: '🎉 Free Trial Approved by Admin!',
+        message: `Admin has approved your 30-Day Free Trial (${sub.plan.name}). Your restaurant is now active until ${expiresAt.toLocaleDateString()}.`,
+      },
+    }).catch(() => {});
+
+    res.json({
+      success: true,
+      data: { subscription: updatedSub },
+      message: `30-Day Free Trial approved and activated for ${sub.restaurant.name}!`,
+    });
+  } catch (error) { next(error); }
+}
+
+export async function rejectFreeTrial(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const subscriptionId = req.params.subscriptionId as string;
+    const sub = await prisma.restaurantSubscription.findUnique({
+      where: { id: subscriptionId },
+      include: { restaurant: true },
+    });
+    if (!sub) throw new AppError('Subscription request not found.', 404, 'NOT_FOUND');
+
+    await prisma.restaurantSubscription.delete({ where: { id: subscriptionId } });
+
+    await prisma.notification.create({
+      data: {
+        restaurantId: sub.restaurantId,
+        userId: sub.restaurant.ownerId,
+        type: 'TRIAL_REJECTED',
+        title: 'Free Trial Request Declined',
+        message: 'Your Free Trial request was declined by the administrator. Please subscribe to a paid tier or contact support.',
+      },
+    }).catch(() => {});
+
+    res.json({
+      success: true,
+      message: `Trial request for ${sub.restaurant.name} declined.`,
     });
   } catch (error) { next(error); }
 }

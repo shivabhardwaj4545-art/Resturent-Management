@@ -89,49 +89,52 @@ export async function ensureDatabaseSeeded(): Promise<void> {
   try {
     await syncDatabaseSchema();
 
-    // Ensure Default Subscription Plans are present with Restaurant, Hotel, and Dual models
+    // Ensure Default Subscription Plans: 3 Free plans, 3 Paid plans (Dual = 2x price), and 1 Customizable Enterprise plan
     const defaultPlans = [
+      // 1. FREE TIER (3 Plans: Restaurant, Hotel, Dual)
+      {
+        name: 'Free Trial (Restaurant)',
+        price: 0,
+        platformType: 'RESTAURANT',
+        features: { qrCodes: 15, maxOrders: 500, maxMenuItems: 60, aiEnabled: true, analyticsEnabled: true, callWaiterEnabled: true, roomServiceEnabled: false, trialDays: 14 },
+      },
+      {
+        name: 'Free Trial (Hotel)',
+        price: 0,
+        platformType: 'HOTEL',
+        features: { qrCodes: 20, maxOrders: 500, maxMenuItems: 60, aiEnabled: true, analyticsEnabled: true, callWaiterEnabled: false, roomServiceEnabled: true, trialDays: 14 },
+      },
       {
         name: 'Free Trial (Dual All-Access)',
         price: 0,
         platformType: 'DUAL',
-        features: { qrCodes: 20, maxOrders: 500, maxMenuItems: 100, aiEnabled: true, analyticsEnabled: true, roomServiceEnabled: true, callWaiterEnabled: true },
+        features: { qrCodes: 35, maxOrders: 1000, maxMenuItems: 120, aiEnabled: true, analyticsEnabled: true, callWaiterEnabled: true, roomServiceEnabled: true, trialDays: 14 },
       },
-      {
-        name: 'Restaurant Starter',
-        price: 999,
-        platformType: 'RESTAURANT',
-        features: { qrCodes: 10, maxOrders: 500, maxMenuItems: 50, aiEnabled: false, analyticsEnabled: true, roomServiceEnabled: false, callWaiterEnabled: true },
-      },
+      // 2. PAID TIER (3 Plans: Restaurant, Hotel, Dual = double Restaurant + Hotel)
       {
         name: 'Restaurant Pro',
-        price: 2499,
-        platformType: 'RESTAURANT',
-        features: { qrCodes: 30, maxOrders: 2500, maxMenuItems: 200, aiEnabled: true, analyticsEnabled: true, roomServiceEnabled: false, callWaiterEnabled: true },
-      },
-      {
-        name: 'Hotel Essential',
         price: 1499,
-        platformType: 'HOTEL',
-        features: { qrCodes: 25, maxOrders: 1000, maxMenuItems: 80, aiEnabled: true, analyticsEnabled: true, roomServiceEnabled: true, callWaiterEnabled: false },
+        platformType: 'RESTAURANT',
+        features: { qrCodes: 30, maxOrders: 3000, maxMenuItems: 250, aiEnabled: true, analyticsEnabled: true, callWaiterEnabled: true, roomServiceEnabled: false, customBranding: true },
       },
       {
         name: 'Hotel Luxury Suite',
-        price: 3499,
+        price: 1499,
         platformType: 'HOTEL',
-        features: { qrCodes: 60, maxOrders: 5000, maxMenuItems: 300, aiEnabled: true, analyticsEnabled: true, roomServiceEnabled: true, callWaiterEnabled: false },
+        features: { qrCodes: 40, maxOrders: 3000, maxMenuItems: 250, aiEnabled: true, analyticsEnabled: true, callWaiterEnabled: false, roomServiceEnabled: true, customBranding: true },
       },
       {
-        name: 'Dual Growth Plan (Restaurant + Hotel)',
-        price: 3999,
+        name: 'Dual All-Access (Restaurant + Hotel)',
+        price: 2998, // Exactly 1499 + 1499 (double restaurant + hotel)
         platformType: 'DUAL',
-        features: { qrCodes: 50, maxOrders: 4000, maxMenuItems: 250, aiEnabled: true, analyticsEnabled: true, roomServiceEnabled: true, callWaiterEnabled: true },
+        features: { qrCodes: 80, maxOrders: 6000, maxMenuItems: 500, aiEnabled: true, analyticsEnabled: true, callWaiterEnabled: true, roomServiceEnabled: true, customBranding: true, prioritySupport: true },
       },
+      // 3. CUSTOMIZABLE ENTERPRISE PLAN
       {
-        name: 'Dual Enterprise Omnichannel',
-        price: 6999,
+        name: 'Enterprise (Customizable)',
+        price: 5999,
         platformType: 'DUAL',
-        features: { qrCodes: 150, maxOrders: -1, maxMenuItems: -1, aiEnabled: true, analyticsEnabled: true, roomServiceEnabled: true, callWaiterEnabled: true, prioritySupport: true },
+        features: { qrCodes: -1, maxOrders: -1, maxMenuItems: -1, aiEnabled: true, analyticsEnabled: true, callWaiterEnabled: true, roomServiceEnabled: true, customDomain: true, customBranding: true, multiBranch: true, dedicatedManager: true, prioritySupport: true, customIntegrations: true, isCustomizable: true },
       },
     ];
 
@@ -143,6 +146,15 @@ export async function ensureDatabaseSeeded(): Promise<void> {
       if (!existingPlan) {
         await prisma.subscriptionPlan.create({
           data: p as any,
+        }).catch(() => {});
+      } else {
+        await prisma.subscriptionPlan.update({
+          where: { id: existingPlan.id },
+          data: {
+            price: p.price,
+            platformType: p.platformType,
+            features: p.features,
+          } as any,
         }).catch(() => {});
       }
     }

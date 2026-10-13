@@ -12,13 +12,13 @@ import { toast } from 'sonner';
 import { AnimatePresence, motion } from 'framer-motion';
 import { io, Socket } from 'socket.io-client';
 import { useWaiterStore, WaiterCall } from '@/store/waiter.store';
-import { playNewOrderSound, playWaiterCallSound, processRealTimeEvent, requestDesktopNotificationPermission, sendDesktopNotification } from '@/utils/audio';
+import { playNewOrderSound, playWaiterCallSound, playOrderStatusSound, processRealTimeEvent, requestDesktopNotificationPermission, sendDesktopNotification } from '@/utils/audio';
 import { OwnerSidebar, OWNER_NAV_ITEMS } from '@/components/owner/OwnerSidebar';
 
-// Safe alert sound
+// Safe alert sound for generic alerts
 function playAlertBeep() {
   try {
-    playWaiterCallSound();
+    playOrderStatusSound();
   } catch { /* silent fail */ }
 }
 
@@ -291,7 +291,11 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
 
     // 4. Broadcast & Direct Chat Notifications
     socket.on('notification:new', (notif: any) => {
-      if (notif.type !== 'NEW_ORDER' && notif.type !== 'WAITER_CALL') {
+      if (notif.type === 'NEW_ORDER') {
+        playNewOrderSound();
+      } else if (notif.type === 'WAITER_CALL') {
+        playWaiterCallSound();
+      } else {
         const notifObj = {
           id: notif.id || `notif-${Date.now()}`,
           title: notif.title || 'New Notification Alert',
@@ -300,11 +304,9 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
           createdAt: notif.createdAt || new Date().toISOString(),
         };
 
-        processRealTimeEvent('waiter_called', () => {
+        processRealTimeEvent('order_status_changed', () => {
           setActiveGeneralNotificationAlert(notifObj);
         });
-      } else {
-        playAlertBeep();
       }
 
       if (notif.title && notif.type !== 'NEW_ORDER' && notif.type !== 'WAITER_CALL') {
@@ -470,6 +472,9 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                           }
                           useWaiterStore.getState().dismissWaiterCall(activeWaiterAlert.id, activeWaiterAlert.tableNumber);
                           useWaiterStore.getState().setActiveWaiterAlert(null);
+                          api.patch('/profile/notifications/read').then(() => {
+                            queryClient.invalidateQueries({ queryKey: ['owner-notifications'] });
+                          }).catch(() => {});
                         }
                       }}
                       className="p-2 rounded-full hover:bg-white/20 transition-colors text-white cursor-pointer"
@@ -558,6 +563,9 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                         }
                         useWaiterStore.getState().dismissWaiterCall(activeWaiterAlert.id, activeWaiterAlert.tableNumber);
                         useWaiterStore.getState().setActiveWaiterAlert(null);
+                        api.patch('/profile/notifications/read').then(() => {
+                          queryClient.invalidateQueries({ queryKey: ['owner-notifications'] });
+                        }).catch(() => {});
                       }}
                       className="py-3 px-5 rounded-xl border border-border text-foreground text-sm font-semibold hover:bg-muted transition-colors cursor-pointer"
                     >

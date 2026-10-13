@@ -22,6 +22,7 @@ type SubscriptionPlan = {
   name: string;
   price: number;
   duration?: number;
+  platformType?: string;
   features: string[] | Record<string, any>;
   isActive?: boolean;
 };
@@ -64,6 +65,87 @@ type RestaurantSubscriptionItem = {
   };
 };
 
+function formatPlanFeatures(features: string[] | Record<string, any>, platformType?: string, planName?: string) {
+  const isDual = platformType === 'DUAL' || planName?.toLowerCase().includes('dual');
+  const isHotel = !isDual && (platformType === 'HOTEL' || planName?.toLowerCase().includes('hotel'));
+  const isRestaurant = !isDual && (platformType === 'RESTAURANT' || planName?.toLowerCase().includes('restaurant'));
+
+  if (Array.isArray(features)) {
+    return features.map((item) => {
+      if (typeof item === 'string') {
+        if (isDual) {
+          return item
+            .replace(/\(Tables\/Rooms\)/gi, '(Tables & Rooms)')
+            .replace(/Room QR Codes/gi, 'QR Codes (Tables & Rooms)')
+            .replace(/Table QR Codes/gi, 'QR Codes (Tables & Rooms)');
+        }
+        if (isHotel) {
+          return item
+            .replace(/\(Tables\/Rooms\)/gi, '(Rooms)')
+            .replace(/\(Tables & Rooms\)/gi, '(Rooms)')
+            .replace(/Table & Room/gi, 'Room')
+            .replace(/Tables and Rooms/gi, 'Rooms');
+        }
+        if (isRestaurant) {
+          return item
+            .replace(/\(Tables\/Rooms\)/gi, '(Tables)')
+            .replace(/\(Tables & Rooms\)/gi, '(Tables)')
+            .replace(/Table & Room/gi, 'Table')
+            .replace(/Tables and Rooms/gi, 'Tables');
+        }
+      }
+      return item;
+    });
+  }
+
+  if (!features || typeof features !== 'object') return [];
+
+  const labels: string[] = [];
+  if (features.qrCodes !== undefined) {
+    if (features.qrCodes === -1) {
+      if (isDual) labels.push('Unlimited QR Code Tags (Tables & Rooms)');
+      else if (isHotel) labels.push('Unlimited Room QR Codes');
+      else if (isRestaurant) labels.push('Unlimited Table QR Codes');
+      else labels.push('Unlimited QR Code Tags');
+    } else {
+      if (isDual) labels.push(`${features.qrCodes} QR Codes (Tables & Rooms)`);
+      else if (isHotel) labels.push(`${features.qrCodes} Room QR Codes`);
+      else if (isRestaurant) labels.push(`${features.qrCodes} Table QR Codes`);
+      else labels.push(`${features.qrCodes} QR Codes`);
+    }
+  }
+  if (features.maxOrders !== undefined) {
+    labels.push(features.maxOrders === -1 ? 'Unlimited Orders / Month' : `${features.maxOrders} Orders / Month`);
+  }
+  if (features.maxMenuItems !== undefined) {
+    labels.push(features.maxMenuItems === -1 ? 'Unlimited Menu Items' : `${features.maxMenuItems} Menu Items`);
+  }
+  if (features.callWaiterEnabled) labels.push('Dine-In Waiter Call Bell');
+  if (features.roomServiceEnabled) labels.push('Hotel Room Service & Amenities');
+  if (features.aiEnabled) labels.push('AI Menu Upselling & Suggestions');
+  if (features.analyticsEnabled) labels.push('Real-Time Analytics & Reports');
+  if (features.customBranding) labels.push('Custom Logo & Theme Branding');
+  if (features.customDomain) labels.push('Custom Domain & White-Label Portal');
+  if (features.prioritySupport) labels.push('24/7 Priority Support & SLA');
+  if (features.dedicatedManager) labels.push('Dedicated Account Manager');
+  if (features.isCustomizable) labels.push('Fully Customizable Plan & Quotas');
+
+  Object.entries(features).forEach(([k, v]) => {
+    if ([
+      'qrCodes', 'maxOrders', 'maxMenuItems', 'callWaiterEnabled',
+      'roomServiceEnabled', 'aiEnabled', 'analyticsEnabled', 'customBranding',
+      'customDomain', 'prioritySupport', 'dedicatedManager', 'isCustomizable',
+      'trialDays', 'platformType'
+    ].includes(k)) {
+      return;
+    }
+    if (v === true) labels.push(k.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase()));
+    else if (typeof v === 'string' || typeof v === 'number') labels.push(`${k}: ${v}`);
+  });
+
+  return labels.length > 0 ? labels : Object.keys(features);
+}
+
 export function AdminSubscriptionsPage() {
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
@@ -94,7 +176,8 @@ export function AdminSubscriptionsPage() {
   });
 
   // State for Create Plan
-  const [newPlan, setNewPlan] = useState({ name: '', price: '', duration: '30', features: '' });
+  const [newPlan, setNewPlan] = useState({ name: '', price: '', duration: '30', platformType: 'RESTAURANT', features: '' });
+  const [planCategoryFilter, setPlanCategoryFilter] = useState<'ALL' | 'FREE' | 'PAID' | 'ENTERPRISE'>('ALL');
 
   // State for Assign Plan Modal
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -125,12 +208,13 @@ export function AdminSubscriptionsPage() {
         name: newPlan.name,
         price: parseFloat(newPlan.price),
         duration: parseInt(newPlan.duration, 10),
+        platformType: newPlan.platformType || 'RESTAURANT',
         features: featuresList,
       });
     },
     onSuccess: () => {
       toast.success('Subscription plan created successfully!');
-      setNewPlan({ name: '', price: '', duration: '30', features: '' });
+      setNewPlan({ name: '', price: '', duration: '30', platformType: 'RESTAURANT', features: '' });
       qc.invalidateQueries({ queryKey: ['admin-subscriptions'] });
     },
     onError: (err: any) => {
@@ -259,6 +343,47 @@ export function AdminSubscriptionsPage() {
     },
   });
 
+  // Approve Free Trial Mutation
+  const approveTrialMutation = useMutation({
+    mutationFn: async (subscriptionId: string) => {
+      const res = await api.patch(`/admin/subscriptions/requests/${subscriptionId}/approve`);
+      return res.data;
+    },
+    onSuccess: (data) => {
+      toast.success(data.message || 'Free trial approved and activated for 30 days! 🎉');
+      qc.invalidateQueries({ queryKey: ['admin-subscriptions'] });
+      qc.invalidateQueries({ queryKey: ['admin-all-restaurants'] });
+      refetch();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Failed to approve free trial');
+    },
+  });
+
+  // Reject Free Trial Mutation
+  const rejectTrialMutation = useMutation({
+    mutationFn: async (subscriptionId: string) => {
+      const res = await api.patch(`/admin/subscriptions/requests/${subscriptionId}/reject`);
+      return res.data;
+    },
+    onSuccess: (data) => {
+      toast.success(data.message || 'Free trial request rejected.');
+      qc.invalidateQueries({ queryKey: ['admin-subscriptions'] });
+      qc.invalidateQueries({ queryKey: ['admin-all-restaurants'] });
+      refetch();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Failed to reject trial request');
+    },
+  });
+
+  // Pending Trial Requests Approval Queue
+  const pendingTrialRequests = useMemo(() => {
+    return (adminSubData?.subscriptions || []).filter(
+      (s) => s.paymentStatus === 'TRIAL_PENDING' && !s.isActive && s.restaurant && !s.restaurant.deletedAt
+    );
+  }, [adminSubData?.subscriptions]);
+
   // Filter Subscriptions List - strict filter against dummy data, supports Free Trial!
   const filteredSubscriptions = useMemo(() => {
     const list = adminSubData?.subscriptions || [];
@@ -269,7 +394,7 @@ export function AdminSubscriptionsPage() {
       if (!sub.restaurant || sub.restaurant.deletedAt) return false;
       if (sub.restaurant.owner?.deletedAt || sub.restaurant.owner?.email?.startsWith('deleted_')) return false;
 
-      const isFreeTrial = sub.paymentStatus === 'FREE_TRIAL' || sub.paymentMethod === 'FREE_TRIAL' || sub.plan?.price === 0;
+      const isFreeTrial = sub.paymentStatus === 'FREE_TRIAL' || sub.paymentStatus === 'TRIAL_PENDING' || sub.paymentMethod === 'FREE_TRIAL' || sub.plan?.price === 0;
 
       // Exclude zero amount only if it is NOT a free trial
       if (typeof sub.amount === 'number' && sub.amount <= 0 && !isFreeTrial) return false;
@@ -517,6 +642,72 @@ export function AdminSubscriptionsPage() {
                 </div>
               </div>
 
+              {/* Pending Free Trial Requests Approval Queue Banner */}
+              {pendingTrialRequests.length > 0 && (
+                <div className="p-4 sm:p-5 rounded-3xl bg-amber-500/10 border border-amber-500/30 shadow-md space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400 animate-pulse" />
+                      <h3 className="font-display font-extrabold text-sm sm:text-base text-amber-900 dark:text-amber-200">
+                        Pending Free Trial Requests ({pendingTrialRequests.length})
+                      </h3>
+                    </div>
+                    <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-300">
+                      Requires Admin Approval
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    The following restaurants requested activation of their 30-Day Free Trial. Approving will activate ordering for 30 days and permanently hide the other trial options.
+                  </p>
+
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+                    {pendingTrialRequests.map((reqItem) => (
+                      <div
+                        key={reqItem.id}
+                        className="p-3.5 rounded-2xl bg-card border border-amber-500/30 shadow-sm flex flex-col justify-between gap-3"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-extrabold text-foreground text-sm truncate">
+                              {reqItem.restaurant.name}
+                            </span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-600 dark:text-purple-400 shrink-0">
+                              {reqItem.plan.name}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                            {reqItem.restaurant.owner?.email || reqItem.restaurant.slug}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground mt-1">
+                            Requested: {new Date(reqItem.createdAt || reqItem.startsAt).toLocaleDateString()}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-2 border-t border-border">
+                          <button
+                            type="button"
+                            onClick={() => approveTrialMutation.mutate(reqItem.id)}
+                            disabled={approveTrialMutation.isPending || rejectTrialMutation.isPending}
+                            className="flex-1 py-1.5 px-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-1 transition-all cursor-pointer shadow-sm"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Approve (30d)</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => rejectTrialMutation.mutate(reqItem.id)}
+                            disabled={approveTrialMutation.isPending || rejectTrialMutation.isPending}
+                            className="py-1.5 px-2.5 rounded-xl text-xs font-bold bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 transition-all cursor-pointer"
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Search and Filters Bar */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 rounded-2xl bg-card border border-border shadow-sm">
                 <div className="relative w-full sm:w-80">
@@ -667,7 +858,12 @@ export function AdminSubscriptionsPage() {
 
                             {/* Payment Status - Only PAID if confirmed! */}
                             <td className="py-3.5 px-4">
-                              {isFreeTrial ? (
+                              {sub.paymentStatus === 'TRIAL_PENDING' ? (
+                                <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 inline-flex items-center gap-1 shadow-sm">
+                                  <Clock className="w-3 h-3 text-amber-500" />
+                                  ⏳ PENDING APPROVAL
+                                </span>
+                              ) : isFreeTrial ? (
                                 <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/25 inline-flex items-center gap-1 shadow-sm">
                                   <Gift className="w-3 h-3 text-purple-500" />
                                   FREE TRIAL
@@ -705,17 +901,45 @@ export function AdminSubscriptionsPage() {
                             {/* Status */}
                             <td className="py-3.5 px-4">
                               <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
-                                sub.isActive && !isExpired
+                                sub.paymentStatus === 'TRIAL_PENDING'
+                                  ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30'
+                                  : sub.isActive && !isExpired
                                   ? 'bg-green-500/10 text-green-600 border border-green-500/20'
                                   : 'bg-red-500/10 text-red-600 border border-red-500/20'
                               }`}>
-                                {sub.isActive && !isExpired ? '🟢 Active' : '🔴 Inactive / Disabled'}
+                                {sub.paymentStatus === 'TRIAL_PENDING' ? '⏳ Awaiting Admin' : sub.isActive && !isExpired ? '🟢 Active' : '🔴 Inactive / Disabled'}
                               </span>
                             </td>
 
                             {/* Actions */}
                             <td className="py-3.5 px-4 text-right">
                               <div className="flex items-center justify-end gap-1.5">
+                                {sub.paymentStatus === 'TRIAL_PENDING' ? (
+                                  <>
+                                    <button
+                                      onClick={() => approveTrialMutation.mutate(sub.id)}
+                                      disabled={approveTrialMutation.isPending || rejectTrialMutation.isPending}
+                                      className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 cursor-pointer shadow-sm transition-all"
+                                      title="Approve Free Trial for 30 Days"
+                                    >
+                                      <CheckCircle2 className="w-3 h-3" />
+                                      <span>Approve (30d)</span>
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        if (confirm(`Decline free trial request for ${sub.restaurant.name}?`)) {
+                                          rejectTrialMutation.mutate(sub.id);
+                                        }
+                                      }}
+                                      disabled={approveTrialMutation.isPending || rejectTrialMutation.isPending}
+                                      className="px-2.5 py-1 rounded-lg text-[11px] font-bold border border-red-500/30 text-red-600 hover:bg-red-500/10 cursor-pointer transition-all"
+                                      title="Decline Request"
+                                    >
+                                      Decline
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
                                 {/* Toggle Active / Disable */}
                                 <button
                                   onClick={() => {
@@ -771,19 +995,21 @@ export function AdminSubscriptionsPage() {
                                   </button>
                                 )}
 
-                                {/* Delete Record */}
-                                <button
-                                  onClick={() => {
-                                    if (confirm(`Permanently delete this subscription record for ${sub.restaurant.name}?`)) {
-                                      deleteSubRecordMutation.mutate(sub.id);
-                                    }
-                                  }}
-                                  disabled={deleteSubRecordMutation.isPending}
-                                  className="p-1.5 rounded-lg text-muted-foreground hover:text-red-600 hover:bg-red-500/10 transition-colors cursor-pointer"
-                                  title="Delete subscription record"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                                  {/* Delete Record */}
+                                  <button
+                                    onClick={() => {
+                                      if (confirm(`Permanently delete this subscription record for ${sub.restaurant.name}?`)) {
+                                        deleteSubRecordMutation.mutate(sub.id);
+                                      }
+                                    }}
+                                    disabled={deleteSubRecordMutation.isPending}
+                                    className="p-1.5 rounded-lg text-muted-foreground hover:text-red-600 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                    title="Delete subscription record"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  </>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -807,92 +1033,182 @@ export function AdminSubscriptionsPage() {
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
               {/* Active Plans Grid */}
               <div className="xl:col-span-2 space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <h2 className="font-display font-semibold text-lg">Active Billing Tiers</h2>
-                    <p className="text-xs text-muted-foreground">Plans available for restaurants to purchase</p>
+                    <p className="text-xs text-muted-foreground">Plans available for restaurants & hotels to subscribe</p>
                   </div>
-                  <button
-                    onClick={() => qc.invalidateQueries({ queryKey: ['admin-subscriptions'] })}
-                    className="p-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => qc.invalidateQueries({ queryKey: ['admin-subscriptions'] })}
+                      className="p-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors cursor-pointer"
+                      title="Refresh Plans"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Plan Category Filter Tabs */}
+                <div className="flex items-center gap-1.5 flex-wrap bg-muted/40 p-1.5 rounded-2xl border border-border">
+                  {[
+                    { id: 'ALL', label: `All Tiers (${adminSubData?.plans?.length || 0})` },
+                    { id: 'FREE', label: '🎁 Free Trials (3)' },
+                    { id: 'PAID', label: '💼 Paid Plans (3)' },
+                    { id: 'ENTERPRISE', label: '🏢 Enterprise (1)' },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setPlanCategoryFilter(tab.id as any)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        planCategoryFilter === tab.id
+                          ? 'bg-card text-foreground shadow-xs border border-border/80'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-card/50'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
                 </div>
 
                 {isLoading ? (
                   <div className="grid md:grid-cols-2 gap-4">
-                    {[1, 2].map((i) => (
+                    {[1, 2, 3, 4].map((i) => (
                       <div key={i} className="bg-card border border-border rounded-2xl p-6 h-56 animate-pulse" />
                     ))}
                   </div>
                 ) : (
                   <div className="grid md:grid-cols-2 gap-6">
-                    {adminSubData?.plans.map((plan) => {
-                      const features = Array.isArray(plan.features)
-                        ? plan.features
-                        : typeof plan.features === 'object' && plan.features !== null
-                        ? Object.keys(plan.features)
-                        : [];
+                    {adminSubData?.plans
+                      ?.filter((plan) => {
+                        const isFree = plan.price === 0;
+                        const isEnt = plan.name.toLowerCase().includes('enterprise');
+                        if (planCategoryFilter === 'FREE') return isFree;
+                        if (planCategoryFilter === 'ENTERPRISE') return isEnt;
+                        if (planCategoryFilter === 'PAID') return !isFree && !isEnt;
+                        return true;
+                      })
+                      ?.map((plan) => {
+                        const features = formatPlanFeatures(plan.features, plan.platformType, plan.name);
+                        const isFree = plan.price === 0;
+                        const isEnterprise = plan.name.toLowerCase().includes('enterprise');
+                        const isDual = plan.platformType === 'DUAL';
 
-                      return (
-                        <motion.div
-                          key={plan.id}
-                          initial={{ opacity: 0, y: 15 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="bg-card border border-border rounded-2xl p-6 flex flex-col justify-between shadow-sm relative overflow-hidden"
-                        >
-                          <div>
-                            <div className="flex items-center justify-between mb-4">
-                              <span className="font-semibold text-lg font-display text-foreground">{plan.name}</span>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                                  Active Tier
+                        return (
+                          <motion.div
+                            key={plan.id}
+                            initial={{ opacity: 0, y: 15 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className={`bg-card border rounded-2xl p-6 flex flex-col justify-between shadow-sm relative overflow-hidden transition-all ${
+                              isEnterprise
+                                ? 'border-indigo-500/50 ring-2 ring-indigo-500/10 shadow-lg shadow-indigo-500/5'
+                                : isDual && !isFree
+                                ? 'border-amber-500/40 ring-1 ring-amber-500/10'
+                                : 'border-border'
+                            }`}
+                          >
+                            <div>
+                              {/* Badges Header */}
+                              <div className="flex items-center justify-between gap-2 mb-3">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {plan.platformType === 'DUAL' ? (
+                                    <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                                      🌟 Dual (Restaurant + Hotel)
+                                    </span>
+                                  ) : plan.platformType === 'HOTEL' ? (
+                                    <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30">
+                                      🏨 Hotel Only
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                                      🍽️ Restaurant
+                                    </span>
+                                  )}
+
+                                  {isFree ? (
+                                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20">
+                                      Free Trial
+                                    </span>
+                                  ) : isEnterprise ? (
+                                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 flex items-center gap-1">
+                                      <Sparkles className="w-2.5 h-2.5" />
+                                      Enterprise Customizable
+                                    </span>
+                                  ) : isDual ? (
+                                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                      2x Dual Bundle
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                                      Paid Tier
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <button
+                                    onClick={() => {
+                                      if (confirm(`Are you sure you want to delete the plan "${plan.name}"?`)) {
+                                        deletePlanMutation.mutate(plan.id);
+                                      }
+                                    }}
+                                    disabled={deletePlanMutation.isPending}
+                                    className="p-1.5 rounded-lg text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                    title="Delete Plan"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="mb-4">
+                                <span className="font-bold text-lg font-display text-foreground block">{plan.name}</span>
+                                {isDual && !isFree && !isEnterprise && (
+                                  <span className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold block mt-0.5">
+                                    Double single plan rate: Restaurant (₹1,499) + Hotel (₹1,499)
+                                  </span>
+                                )}
+                                {isEnterprise && (
+                                  <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold block mt-0.5">
+                                    Customizable enterprise tier with custom quotas, branding, and SLA
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-baseline gap-1.5 mb-5">
+                                <span className="text-3xl font-black font-display text-foreground">₹{plan.price.toLocaleString('en-IN')}</span>
+                                <span className="text-xs text-muted-foreground font-medium">
+                                  {isFree ? '/ free trial base' : '/ month (30 days base)'}
                                 </span>
-                                <button
-                                  onClick={() => {
-                                    if (confirm(`Are you sure you want to delete the plan "${plan.name}"?`)) {
-                                      deletePlanMutation.mutate(plan.id);
-                                    }
-                                  }}
-                                  disabled={deletePlanMutation.isPending}
-                                  className="p-1.5 rounded-lg text-red-500 hover:bg-red-500/10 transition-colors"
-                                  title="Delete Plan"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                              </div>
+
+                              <div className="space-y-2.5 border-t border-border/60 pt-4">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground tracking-wider mb-2">Features Included</p>
+                                {features.map((feature, idx) => (
+                                  <div key={idx} className="flex items-start gap-2 text-xs sm:text-sm text-muted-foreground">
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+                                    <span className="text-foreground/90">{String(feature)}</span>
+                                  </div>
+                                ))}
+                                {features.length === 0 && (
+                                  <p className="text-xs italic text-muted-foreground">No features specified</p>
+                                )}
                               </div>
                             </div>
-
-                            <div className="flex items-baseline gap-1 mb-5">
-                              <span className="text-3xl font-bold font-display">₹{plan.price}</span>
-                              <span className="text-xs text-muted-foreground">/ month (30 days base)</span>
-                            </div>
-
-                            <div className="space-y-2.5 border-t border-border/60 pt-4">
-                              <p className="text-xs font-semibold uppercase text-muted-foreground tracking-wider mb-2">Features</p>
-                              {features.map((feature, idx) => (
-                                <div key={idx} className="flex items-start gap-2 text-sm text-muted-foreground">
-                                  <CheckCircle2 className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
-                                  <span>{String(feature)}</span>
-                                </div>
-                              ))}
-                              {features.length === 0 && (
-                                <p className="text-xs italic text-muted-foreground">No features specified</p>
-                              )}
-                            </div>
-                          </div>
-                        </motion.div>
-                      );
-                    })}
+                          </motion.div>
+                        );
+                      })}
                   </div>
                 )}
               </div>
 
               {/* Create Plan form */}
               <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
-                <h2 className="font-display font-semibold text-lg">Create New Plan</h2>
-                <p className="text-xs text-muted-foreground">Add new subscription packages for restaurants.</p>
+                <div>
+                  <h2 className="font-display font-semibold text-lg">Create New Plan</h2>
+                  <p className="text-xs text-muted-foreground">Add new subscription packages for restaurants & hotels.</p>
+                </div>
 
                 <div className="space-y-3.5 pt-2">
                   <div>
@@ -900,9 +1216,33 @@ export function AdminSubscriptionsPage() {
                     <input
                       value={newPlan.name}
                       onChange={(e) => setNewPlan((p) => ({ ...p, name: e.target.value }))}
-                      placeholder="e.g. Pro Platinum"
+                      placeholder="e.g. Hotel Executive Suite"
                       className="w-full px-3.5 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                     />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground block mb-1.5 uppercase tracking-wider">Platform Type</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[
+                        { id: 'RESTAURANT', label: '🍽️ Restaurant' },
+                        { id: 'HOTEL', label: '🏨 Hotel' },
+                        { id: 'DUAL', label: '🌟 Dual' },
+                      ].map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setNewPlan((p) => ({ ...p, platformType: t.id }))}
+                          className={`py-2 px-1 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+                            newPlan.platformType === t.id
+                              ? 'bg-primary text-primary-foreground border-primary shadow-xs'
+                              : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted/60'
+                          }`}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -912,7 +1252,7 @@ export function AdminSubscriptionsPage() {
                         type="number"
                         value={newPlan.price}
                         onChange={(e) => setNewPlan((p) => ({ ...p, price: e.target.value }))}
-                        placeholder="e.g. 1999"
+                        placeholder="e.g. 1499"
                         className="w-full px-3.5 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                       />
                     </div>
@@ -941,7 +1281,7 @@ export function AdminSubscriptionsPage() {
 
                   <button
                     onClick={() => createPlanMutation.mutate()}
-                    disabled={!newPlan.name || !newPlan.price || createPlanMutation.isPending}
+                    disabled={!newPlan.name || newPlan.price === '' || createPlanMutation.isPending}
                     className="w-full flex items-center gap-2 justify-center px-4 py-3 bg-primary text-primary-foreground rounded-xl font-semibold text-sm hover:bg-primary/95 disabled:opacity-50 transition-colors shadow-md shadow-primary/10 mt-2 cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />

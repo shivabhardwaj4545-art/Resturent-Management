@@ -30,6 +30,8 @@ import {
   getFreeTrialSettings,
   updateFreeTrialSettings,
   extendFreeSubscription,
+  approveFreeTrial,
+  rejectFreeTrial,
   getAdminCoupons,
   createAdminCoupon,
   deleteAdminCoupon,
@@ -80,6 +82,8 @@ router.get('/subscriptions', getSubscriptionPlans);
 router.get('/subscriptions/free-trial-settings', getFreeTrialSettings);
 router.put('/subscriptions/free-trial-settings', updateFreeTrialSettings);
 router.patch('/subscriptions/records/:id/extend-free', extendFreeSubscription);
+router.patch('/subscriptions/requests/:subscriptionId/approve', approveFreeTrial);
+router.patch('/subscriptions/requests/:subscriptionId/reject', rejectFreeTrial);
 router.post('/subscriptions', createSubscriptionPlan);
 router.put('/subscriptions/:id', updateSubscriptionPlan);
 router.delete('/subscriptions/:id', deleteSubscriptionPlan);

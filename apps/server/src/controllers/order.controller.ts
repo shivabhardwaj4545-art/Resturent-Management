@@ -157,12 +157,17 @@ export async function placeGuestOrder(
     const flags = (restaurant.featureFlags as Record<string, boolean> | null) || {};
     if (tableNumber) {
       const cleanLoc = tableNumber.trim();
-      const isRoom = cleanLoc.toLowerCase().includes('room') || cleanLoc.toLowerCase().includes('suite');
-      if (isRoom && (restaurant.platformType === 'RESTAURANT' || flags.roomServiceEnabled === false || flags.roomQrEnabled === false)) {
-        throw new AppError('Hotel room service ordering is currently disabled for this restaurant by administration.', 403, 'ROOM_SERVICE_DISABLED');
-      }
-      if (!isRoom && (restaurant.platformType === 'HOTEL' || flags.callWaiterEnabled === false || flags.tableQrEnabled === false)) {
-        throw new AppError('Dine-In Table QR ordering is currently disabled for this restaurant by administration.', 403, 'TABLE_QR_DISABLED');
+      const isExplicitRoom = cleanLoc.toLowerCase().includes('room') || cleanLoc.toLowerCase().includes('suite');
+      const isRoom = restaurant.platformType === 'HOTEL' ? true : restaurant.platformType === 'RESTAURANT' ? false : isExplicitRoom;
+
+      if (isRoom) {
+        if (restaurant.platformType === 'RESTAURANT' || flags.roomServiceEnabled === false || flags.roomQrEnabled === false) {
+          throw new AppError('Hotel room service ordering is currently disabled for this restaurant by administration.', 403, 'ROOM_SERVICE_DISABLED');
+        }
+      } else {
+        if (restaurant.platformType === 'HOTEL' || flags.callWaiterEnabled === false || flags.tableQrEnabled === false) {
+          throw new AppError('Dine-In Table QR ordering is currently disabled for this restaurant by administration.', 403, 'TABLE_QR_DISABLED');
+        }
       }
     }
 
@@ -312,12 +317,17 @@ export async function placeOrder(
     const flags = (restaurant.featureFlags as Record<string, boolean> | null) || {};
     if (tableNumber) {
       const cleanLoc = tableNumber.trim();
-      const isRoom = cleanLoc.toLowerCase().includes('room') || cleanLoc.toLowerCase().includes('suite');
-      if (isRoom && (restaurant.platformType === 'RESTAURANT' || flags.roomServiceEnabled === false || flags.roomQrEnabled === false)) {
-        throw new AppError('Hotel room service ordering is currently disabled for this restaurant by administration.', 403, 'ROOM_SERVICE_DISABLED');
-      }
-      if (!isRoom && (restaurant.platformType === 'HOTEL' || flags.callWaiterEnabled === false || flags.tableQrEnabled === false)) {
-        throw new AppError('Dine-In Table QR ordering is currently disabled for this restaurant by administration.', 403, 'TABLE_QR_DISABLED');
+      const isExplicitRoom = cleanLoc.toLowerCase().includes('room') || cleanLoc.toLowerCase().includes('suite');
+      const isRoom = restaurant.platformType === 'HOTEL' ? true : restaurant.platformType === 'RESTAURANT' ? false : isExplicitRoom;
+
+      if (isRoom) {
+        if (restaurant.platformType === 'RESTAURANT' || flags.roomServiceEnabled === false || flags.roomQrEnabled === false) {
+          throw new AppError('Hotel room service ordering is currently disabled for this restaurant by administration.', 403, 'ROOM_SERVICE_DISABLED');
+        }
+      } else {
+        if (restaurant.platformType === 'HOTEL' || flags.callWaiterEnabled === false || flags.tableQrEnabled === false) {
+          throw new AppError('Dine-In Table QR ordering is currently disabled for this restaurant by administration.', 403, 'TABLE_QR_DISABLED');
+        }
       }
     }
 

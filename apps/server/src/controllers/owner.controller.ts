@@ -36,7 +36,7 @@ async function getOwnerRestaurant(ownerId: string) {
 
 export async function getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    let restaurant = await getOwnerRestaurant(req.user!.id);
     
     // Local start of today (00:00:00.000)
     const today = new Date();
@@ -194,6 +194,7 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response, nex
 
     // Check expiry & fetch active subscription for dashboard status
     await checkRestaurantSubscriptionExpiry(restaurant.id).catch(() => {});
+    restaurant = await syncRestaurantPlatformWithPlan(restaurant);
     const activeSubscription = await prisma.restaurantSubscription.findFirst({
       where: { restaurantId: restaurant.id, isActive: true },
       include: { plan: true },
@@ -247,6 +248,73 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response, nex
   } catch (error) { next(error); }
 }
 
+async function syncRestaurantPlatformWithPlan(restaurant: any) {
+  try {
+    const activeSub = await prisma.restaurantSubscription.findFirst({
+      where: {
+        restaurantId: restaurant.id,
+        isActive: true,
+        expiresAt: { gt: new Date() },
+      },
+      include: { plan: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (activeSub?.plan && (activeSub.plan as any).platformType) {
+      const planPlatform = (activeSub.plan as any).platformType;
+      const currentFlags = (restaurant.featureFlags as Record<string, boolean>) || {};
+      let shouldUpdate = false;
+      const updateData: any = {};
+
+      if (restaurant.platformType !== planPlatform) {
+        updateData.platformType = planPlatform;
+        shouldUpdate = true;
+      }
+
+      const nextFlags = { ...currentFlags };
+      if (planPlatform === 'DUAL') {
+        if (nextFlags.roomServiceEnabled !== true || nextFlags.callWaiterEnabled !== true || nextFlags.tableQrEnabled !== true || nextFlags.roomQrEnabled !== true) {
+          nextFlags.roomServiceEnabled = true;
+          nextFlags.callWaiterEnabled = true;
+          nextFlags.tableQrEnabled = true;
+          nextFlags.roomQrEnabled = true;
+          updateData.featureFlags = nextFlags;
+          shouldUpdate = true;
+        }
+      } else if (planPlatform === 'HOTEL') {
+        if (nextFlags.roomServiceEnabled !== true || nextFlags.callWaiterEnabled !== false || nextFlags.tableQrEnabled !== false || nextFlags.roomQrEnabled !== true) {
+          nextFlags.roomServiceEnabled = true;
+          nextFlags.callWaiterEnabled = false;
+          nextFlags.tableQrEnabled = false;
+          nextFlags.roomQrEnabled = true;
+          updateData.featureFlags = nextFlags;
+          shouldUpdate = true;
+        }
+      } else if (planPlatform === 'RESTAURANT') {
+        if (nextFlags.roomServiceEnabled !== false || nextFlags.callWaiterEnabled !== true || nextFlags.tableQrEnabled !== true || nextFlags.roomQrEnabled !== false) {
+          nextFlags.roomServiceEnabled = false;
+          nextFlags.callWaiterEnabled = true;
+          nextFlags.tableQrEnabled = true;
+          nextFlags.roomQrEnabled = false;
+          updateData.featureFlags = nextFlags;
+          shouldUpdate = true;
+        }
+      }
+
+      if (shouldUpdate) {
+        const updated = await prisma.restaurant.update({
+          where: { id: restaurant.id },
+          data: updateData,
+        });
+        return updated;
+      }
+    }
+  } catch (err) {
+    logger.warn('Failed to sync restaurant platform with plan:', err);
+  }
+  return restaurant;
+}
+
 // ── Restaurant Profile ────────────────────────────────────────
 
 export async function getRestaurant(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -257,6 +325,7 @@ export async function getRestaurant(req: AuthenticatedRequest, res: Response, ne
       const refreshed = await prisma.restaurant.findUnique({ where: { id: restaurant.id } });
       if (refreshed) restaurant = refreshed;
     }
+    restaurant = await syncRestaurantPlatformWithPlan(restaurant);
     if (restaurant && restaurant.operatingHours) {
       try {
         restaurant.operatingHours = sortOperatingHours(restaurant.operatingHours);
@@ -1771,14 +1840,50 @@ export async function getOwnerSubscription(req: AuthenticatedRequest, res: Respo
     ]);
 
     const activeSubscription = subscriptions.find((s) => s.isActive) || null;
+    const now = new Date();
+
+    // Check free trial history for this restaurant:
+    // 1. Currently active free trial
+    const activeFreeTrial = subscriptions.find(
+      (s) => s.isActive && (s.paymentStatus === 'FREE_TRIAL' || (s.plan?.price === 0 && s.amount === 0)) && new Date(s.expiresAt) > now
+    );
+
+    // 2. Pending free trial awaiting admin approval
+    const pendingTrialSub = subscriptions.find(
+      (s) => s.paymentStatus === 'TRIAL_PENDING'
+    );
+
+    // 3. Past or expired free trial (after 1 month)
+    const hadCompletedTrial = subscriptions.some(
+      (s) => (s.paymentStatus === 'FREE_TRIAL' || s.paymentMethod === 'FREE_TRIAL' || (s.plan?.price === 0 && s.amount === 0)) &&
+             (!s.isActive || new Date(s.expiresAt) <= now)
+    );
+
+    let filteredPlans = plans;
+
+    if (hadCompletedTrial && !activeFreeTrial && !pendingTrialSub) {
+      // Rule 3: After one month, remove ALL free trial plans completely for this restaurant!
+      filteredPlans = plans.filter((p) => p.price > 0);
+    } else if (activeFreeTrial || pendingTrialSub) {
+      // Rule 2: Once any free trial is taken/requested, the other two free trials are disabled and removed!
+      const chosenTrialPlanId = (activeFreeTrial || pendingTrialSub)!.planId;
+      filteredPlans = plans.filter((p) => p.price > 0 || p.id === chosenTrialPlanId);
+    }
 
     res.json({
       success: true,
       data: {
-        plans,
+        plans: filteredPlans,
         activeSubscription,
         subscriptions,
         restaurant: updatedRest,
+        trialStatus: {
+          hasActiveTrial: !!activeFreeTrial,
+          hasPendingTrial: !!pendingTrialSub,
+          hasCompletedTrial: hadCompletedTrial && !activeFreeTrial,
+          trialPlanId: activeFreeTrial?.planId || pendingTrialSub?.planId || null,
+          pendingSubscriptionId: pendingTrialSub?.id || null,
+        },
       },
     });
   } catch (error) {
@@ -1789,7 +1894,13 @@ export async function getOwnerSubscription(req: AuthenticatedRequest, res: Respo
 export async function buyOwnerSubscription(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const restaurant = await getOwnerRestaurant(req.user!.id);
-    const { planId, durationInDays = 30 } = req.body;
+    const {
+      planId,
+      durationInDays = 30,
+      customMonthlyPrice,
+      customQuotas,
+      platformType: requestedPlatformType,
+    } = req.body;
 
     if (!planId) {
       throw new AppError('Plan ID is required to subscribe.', 400, 'BAD_REQUEST');
@@ -1802,10 +1913,119 @@ export async function buyOwnerSubscription(req: AuthenticatedRequest, res: Respo
       throw new AppError('Selected subscription plan not found.', 404, 'PLAN_NOT_FOUND');
     }
 
+    const isEnterprise = plan.name.toLowerCase().includes('enterprise');
+    let effectiveMonthlyPrice = plan.price;
+    if (isEnterprise && customMonthlyPrice && Number(customMonthlyPrice) > 0) {
+      effectiveMonthlyPrice = Math.round(Number(customMonthlyPrice));
+    }
+
     const days = parseInt(String(durationInDays), 10) || 30;
     const months = days === 365 ? 12 : Math.max(1, Math.round(days / 30));
-    const totalPrice = plan.price * months;
+
+    // Dynamic duration pricing with volume savings
+    let totalPrice = effectiveMonthlyPrice * months;
+    if (effectiveMonthlyPrice > 0) {
+      if (days === 90) totalPrice = Math.round(effectiveMonthlyPrice * 3 * 0.95); // 5% discount
+      else if (days === 180) totalPrice = Math.round(effectiveMonthlyPrice * 6 * 0.90); // 10% discount
+      else if (days === 365) totalPrice = Math.round(effectiveMonthlyPrice * 12 * 0.85); // 15% discount
+    }
+
     const now = new Date();
+
+    // ── Free Tier Logic: Requires Admin Approval ──
+    if (plan.price === 0 || totalPrice === 0) {
+      // Check existing trial records for this restaurant
+      const existingTrials = await prisma.restaurantSubscription.findMany({
+        where: { restaurantId: restaurant.id },
+        include: { plan: true },
+      });
+
+      const hasTrialHistory = existingTrials.some(
+        (s) => s.paymentStatus === 'FREE_TRIAL' ||
+               s.paymentStatus === 'TRIAL_PENDING' ||
+               s.paymentMethod === 'FREE_TRIAL' ||
+               (s.plan?.price === 0 && s.amount === 0)
+      );
+
+      if (hasTrialHistory) {
+        throw new AppError(
+          'This restaurant has already requested or completed its free trial. Free trials can only be activated once and cannot be renewed.',
+          400,
+          'TRIAL_ALREADY_USED'
+        );
+      }
+
+      // Free trial is strictly 30 days (1 month), activated by ADMIN side
+      const trialDurationDays = 30;
+      const trialExpiresAt = new Date(now.getTime() + trialDurationDays * 24 * 60 * 60 * 1000);
+
+      const pendingSub = await prisma.restaurantSubscription.create({
+        data: {
+          restaurantId: restaurant.id,
+          planId,
+          startsAt: now,
+          expiresAt: trialExpiresAt,
+          isActive: false, // Inactive until Admin approval
+          amount: 0,
+          paymentStatus: 'TRIAL_PENDING',
+          paymentMethod: 'FREE_TRIAL',
+        },
+        include: { plan: true },
+      });
+
+      // Notify Admins about the request
+      const adminUsers = await prisma.user.findMany({
+        where: { role: 'SUPER_ADMIN', deletedAt: null },
+        select: { id: true },
+      });
+
+      for (const adm of adminUsers) {
+        await prisma.notification.create({
+          data: {
+            userId: adm.id,
+            type: 'FREE_TRIAL_REQUESTED',
+            title: '⏳ New Free Trial Request',
+            message: `${restaurant.name} has requested activation of free trial: ${plan.name}. Please review and approve in Subscriptions.`,
+          },
+        }).catch(() => {});
+
+        emitNotification(adm.id, {
+          type: 'FREE_TRIAL_REQUESTED',
+          title: '⏳ New Free Trial Request',
+          message: `${restaurant.name} requested activation of ${plan.name}.`,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      // Notify Owner
+      await prisma.notification.create({
+        data: {
+          restaurantId: restaurant.id,
+          userId: req.user!.id,
+          type: 'FREE_TRIAL_REQUESTED',
+          title: '⏳ Free Trial Request Submitted',
+          message: `Your request for ${plan.name} has been sent to Admin. It will be activated for 30 days once approved by admin!`,
+        },
+      }).catch(() => {});
+
+      emitNotification(req.user!.id, {
+        type: 'FREE_TRIAL_REQUESTED',
+        title: '⏳ Free Trial Request Submitted',
+        message: `Your request for ${plan.name} has been sent to Admin. It will be activated for 30 days once approved!`,
+        createdAt: new Date().toISOString(),
+      });
+
+      res.json({
+        success: true,
+        data: {
+          subscription: pendingSub,
+          isTrialPending: true,
+        },
+        message: `Free trial request for "${plan.name}" submitted! It will be activated once approved by the administrator.`,
+      });
+      return;
+    }
+
     const expiresAt = new Date(now);
     expiresAt.setDate(expiresAt.getDate() + days);
 
@@ -1830,27 +2050,32 @@ export async function buyOwnerSubscription(req: AuthenticatedRequest, res: Respo
       include: { plan: true },
     });
 
-    const planPlatformType = (plan as any).platformType;
-    let featureFlagsUpdate: any = undefined;
-    if (planPlatformType === 'DUAL') {
-      const currentFlags = (restaurant.featureFlags as Record<string, boolean>) || {};
-      featureFlagsUpdate = {
-        ...currentFlags,
-        roomServiceEnabled: true,
-        callWaiterEnabled: true,
-      };
-    } else if (planPlatformType === 'HOTEL') {
-      const currentFlags = (restaurant.featureFlags as Record<string, boolean>) || {};
-      featureFlagsUpdate = {
-        ...currentFlags,
-        roomServiceEnabled: true,
-      };
-    } else if (planPlatformType === 'RESTAURANT') {
-      const currentFlags = (restaurant.featureFlags as Record<string, boolean>) || {};
-      featureFlagsUpdate = {
-        ...currentFlags,
-        callWaiterEnabled: true,
-      };
+    const targetPlatformType = requestedPlatformType || (plan as any).platformType || 'DUAL';
+    const currentFlags = (restaurant.featureFlags as Record<string, boolean>) || {};
+    let featureFlagsUpdate: any = { ...currentFlags };
+
+    if (targetPlatformType === 'DUAL') {
+      featureFlagsUpdate.roomServiceEnabled = true;
+      featureFlagsUpdate.callWaiterEnabled = true;
+      featureFlagsUpdate.tableQrEnabled = true;
+      featureFlagsUpdate.roomQrEnabled = true;
+    } else if (targetPlatformType === 'HOTEL') {
+      featureFlagsUpdate.roomServiceEnabled = true;
+      featureFlagsUpdate.callWaiterEnabled = false;
+      featureFlagsUpdate.tableQrEnabled = false;
+      featureFlagsUpdate.roomQrEnabled = true;
+    } else if (targetPlatformType === 'RESTAURANT') {
+      featureFlagsUpdate.roomServiceEnabled = false;
+      featureFlagsUpdate.callWaiterEnabled = true;
+      featureFlagsUpdate.tableQrEnabled = true;
+      featureFlagsUpdate.roomQrEnabled = false;
+    }
+
+    if (customQuotas?.multiBranch !== undefined) {
+      featureFlagsUpdate.multiBranchEnabled = Boolean(customQuotas.multiBranch);
+    }
+    if (customQuotas?.customDomain !== undefined) {
+      featureFlagsUpdate.customDomainEnabled = Boolean(customQuotas.customDomain);
     }
 
     // Automatically unsuspend restaurant if it was suspended due to expired subscription!
@@ -1859,7 +2084,7 @@ export async function buyOwnerSubscription(req: AuthenticatedRequest, res: Respo
       data: {
         isSuspended: false,
         isOpen: true,
-        ...(planPlatformType && { platformType: planPlatformType }),
+        ...(targetPlatformType && { platformType: targetPlatformType }),
         ...(featureFlagsUpdate && { featureFlags: featureFlagsUpdate }),
       } as any,
     });
@@ -1903,21 +2128,59 @@ export async function buyOwnerSubscription(req: AuthenticatedRequest, res: Respo
 export async function createOwnerSubscriptionOrder(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const restaurant = await getOwnerRestaurant(req.user!.id);
-    const { planId, durationInDays = 30 } = req.body;
+    const {
+      planId,
+      durationInDays = 30,
+      customMonthlyPrice,
+      customQuotas,
+      platformType: requestedPlatformType,
+    } = req.body;
 
     if (!planId) throw new AppError('Plan ID is required.', 400, 'BAD_REQUEST');
     const plan = await prisma.subscriptionPlan.findUnique({ where: { id: planId } });
     if (!plan) throw new AppError('Plan not found.', 404, 'PLAN_NOT_FOUND');
 
+    const isEnterprise = plan.name.toLowerCase().includes('enterprise');
+    let effectiveMonthlyPrice = plan.price;
+    if (isEnterprise && customMonthlyPrice && Number(customMonthlyPrice) > 0) {
+      effectiveMonthlyPrice = Math.round(Number(customMonthlyPrice));
+    }
+
     const days = parseInt(String(durationInDays), 10) || 30;
     const months = days === 365 ? 12 : Math.max(1, Math.round(days / 30));
-    const totalPrice = plan.price * months;
+
+    let totalPrice = effectiveMonthlyPrice * months;
+    if (effectiveMonthlyPrice > 0) {
+      if (days === 90) totalPrice = Math.round(effectiveMonthlyPrice * 3 * 0.95);
+      else if (days === 180) totalPrice = Math.round(effectiveMonthlyPrice * 6 * 0.90);
+      else if (days === 365) totalPrice = Math.round(effectiveMonthlyPrice * 12 * 0.85);
+    }
 
     const keyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_placeholder';
     const keySecret = process.env.RAZORPAY_KEY_SECRET || 'secret_placeholder';
 
     // Free plan bypass
-    if (totalPrice <= 0) {
+    if (totalPrice <= 0 || plan.price === 0) {
+      const existingTrials = await prisma.restaurantSubscription.findMany({
+        where: { restaurantId: restaurant.id },
+        include: { plan: true },
+      });
+
+      const hasTrialHistory = existingTrials.some(
+        (s) => s.paymentStatus === 'FREE_TRIAL' ||
+               s.paymentStatus === 'TRIAL_PENDING' ||
+               s.paymentMethod === 'FREE_TRIAL' ||
+               (s.plan?.price === 0 && s.amount === 0)
+      );
+
+      if (hasTrialHistory) {
+        throw new AppError(
+          'This restaurant has already requested or completed its free trial. Free trials can only be activated once and cannot be renewed.',
+          400,
+          'TRIAL_ALREADY_USED'
+        );
+      }
+
       res.json({
         success: true,
         data: {
@@ -1926,7 +2189,7 @@ export async function createOwnerSubscriptionOrder(req: AuthenticatedRequest, re
           currency: 'INR',
           planId: plan.id,
           planName: plan.name,
-          durationInDays: days,
+          durationInDays: 30, // Free trial is strictly 30 days
         },
       });
       return;
@@ -1948,6 +2211,7 @@ export async function createOwnerSubscriptionOrder(req: AuthenticatedRequest, re
           planId: plan.id,
           planName: plan.name,
           durationInDays: String(days),
+          platformType: requestedPlatformType || (plan as any).platformType || 'DUAL',
         },
       });
       razorpayOrderId = rzpOrder.id;
@@ -1993,6 +2257,9 @@ export async function verifyOwnerSubscriptionPayment(req: AuthenticatedRequest, 
     const {
       planId,
       durationInDays = 30,
+      customMonthlyPrice,
+      customQuotas,
+      platformType: requestedPlatformType,
       razorpayOrderId,
       razorpayPaymentId,
       razorpaySignature,
@@ -2002,9 +2269,21 @@ export async function verifyOwnerSubscriptionPayment(req: AuthenticatedRequest, 
     const plan = await prisma.subscriptionPlan.findUnique({ where: { id: planId } });
     if (!plan) throw new AppError('Plan not found.', 404, 'PLAN_NOT_FOUND');
 
+    const isEnterprise = plan.name.toLowerCase().includes('enterprise');
+    let effectiveMonthlyPrice = plan.price;
+    if (isEnterprise && customMonthlyPrice && Number(customMonthlyPrice) > 0) {
+      effectiveMonthlyPrice = Math.round(Number(customMonthlyPrice));
+    }
+
     const days = parseInt(String(durationInDays), 10) || 30;
     const months = days === 365 ? 12 : Math.max(1, Math.round(days / 30));
-    const totalPrice = plan.price * months;
+
+    let totalPrice = effectiveMonthlyPrice * months;
+    if (effectiveMonthlyPrice > 0) {
+      if (days === 90) totalPrice = Math.round(effectiveMonthlyPrice * 3 * 0.95);
+      else if (days === 180) totalPrice = Math.round(effectiveMonthlyPrice * 6 * 0.90);
+      else if (days === 365) totalPrice = Math.round(effectiveMonthlyPrice * 12 * 0.85);
+    }
 
     // Verify signature if standard Razorpay keys available
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
@@ -2046,13 +2325,43 @@ export async function verifyOwnerSubscriptionPayment(req: AuthenticatedRequest, 
       include: { plan: true },
     });
 
+    const targetPlatformType = requestedPlatformType || (plan as any).platformType || 'DUAL';
+    const currentFlags = (restaurant.featureFlags as Record<string, boolean>) || {};
+    let featureFlagsUpdate: any = { ...currentFlags };
+
+    if (targetPlatformType === 'DUAL') {
+      featureFlagsUpdate.roomServiceEnabled = true;
+      featureFlagsUpdate.callWaiterEnabled = true;
+      featureFlagsUpdate.tableQrEnabled = true;
+      featureFlagsUpdate.roomQrEnabled = true;
+    } else if (targetPlatformType === 'HOTEL') {
+      featureFlagsUpdate.roomServiceEnabled = true;
+      featureFlagsUpdate.callWaiterEnabled = false;
+      featureFlagsUpdate.tableQrEnabled = false;
+      featureFlagsUpdate.roomQrEnabled = true;
+    } else if (targetPlatformType === 'RESTAURANT') {
+      featureFlagsUpdate.roomServiceEnabled = false;
+      featureFlagsUpdate.callWaiterEnabled = true;
+      featureFlagsUpdate.tableQrEnabled = true;
+      featureFlagsUpdate.roomQrEnabled = false;
+    }
+
+    if (customQuotas?.multiBranch !== undefined) {
+      featureFlagsUpdate.multiBranchEnabled = Boolean(customQuotas.multiBranch);
+    }
+    if (customQuotas?.customDomain !== undefined) {
+      featureFlagsUpdate.customDomainEnabled = Boolean(customQuotas.customDomain);
+    }
+
     // Automatically unsuspend restaurant
     const updatedRestaurant = await prisma.restaurant.update({
       where: { id: restaurant.id },
       data: {
         isSuspended: false,
         isOpen: true,
-      },
+        ...(targetPlatformType && { platformType: targetPlatformType }),
+        ...(featureFlagsUpdate && { featureFlags: featureFlagsUpdate }),
+      } as any,
     });
 
     await cacheDelPattern(`menu:${restaurant.slug}*`);

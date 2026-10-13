@@ -134,7 +134,7 @@ export function WaiterBell() {
       const purpose = purposeMatch ? purposeMatch[1] : undefined;
       const customNote = n.message.includes('"') ? n.message.split('"')[1] : undefined;
       if (!existing && !isHandled) {
-        const isCurrentAlertOpen = useWaiterStore.getState().activeWaiterAlert !== null;
+        // Sync into store for badge/list only — NEVER trigger modal popup on page load or refresh
         useWaiterStore.getState().addWaiterCall({
           tableNumber,
           calledAt: n.createdAt,
@@ -142,7 +142,7 @@ export function WaiterBell() {
           purpose,
           customNote,
           restaurantId: (n as any).restaurantId,
-        }, !isCurrentAlertOpen);
+        }, false);
       }
     });
   }, [notifData, waiterCalls]);
@@ -218,8 +218,30 @@ export function WaiterBell() {
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      playWaiterCallSound();
+                    }}
+                    className="p-1 px-1.5 rounded-lg border border-border bg-card hover:bg-accent text-[10px] font-semibold flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                    title="Preview Waiter Call Desk Bell Sound"
+                  >
+                    <span>🛎️ Bell</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      playNewOrderSound();
+                    }}
+                    className="p-1 px-1.5 rounded-lg border border-border bg-card hover:bg-accent text-[10px] font-semibold flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                    title="Preview Incoming Order POS Chime Sound"
+                  >
+                    <span>🛍️ Order Chime</span>
+                  </button>
+                  <button
                     onClick={() => setSoundEnabled(!soundEnabled)}
-                    className={`p-1 px-2 rounded-lg transition-colors border text-[10px] font-bold flex items-center gap-1 ${
+                    className={`p-1 px-2 rounded-lg transition-colors border text-[10px] font-bold flex items-center gap-1 cursor-pointer ${
                       soundEnabled
                         ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
                         : 'bg-muted text-muted-foreground border-border'
@@ -509,7 +531,9 @@ export function WaiterBell() {
                                   <span className="text-xs font-black text-foreground font-mono">#{orderIdShort}</span>
                                   {order.tableNumber && (
                                     <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full border border-primary/20">
-                                      Table {order.tableNumber}
+                                      {order.tableNumber.toLowerCase().includes('room') || order.tableNumber.toLowerCase().includes('suite')
+                                        ? (order.tableNumber.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`)
+                                        : `Table ${order.tableNumber}`}
                                     </span>
                                   )}
                                 </div>
