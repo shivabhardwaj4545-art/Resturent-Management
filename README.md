@@ -137,8 +137,8 @@ Ensure you have the following installed on your machine:
 ### 2. Clone Repository
 
 ```bash
-git clone https://github.com/Shivasharma12/Restaurant-Management-.git
-cd Restaurant-Management-
+git clone https://github.com/Shivasharma12/QR-Restro.git
+cd QR-Restro
 ```
 
 ---
@@ -285,7 +285,7 @@ Project Author & Maintainer:
 - **Name:** Shiva Sharma
 - **Email:** [shivasharmamoz123123@gmail.com](mailto:shivasharmamoz123123@gmail.com)
 - **GitHub:** [@Shivasharma12](https://github.com/Shivasharma12)
-- **Repository:** [Shivasharma12/Restaurant-Management-](https://github.com/Shivasharma12/Restaurant-Management-)
+- **Repository:** [Shivasharma12/QR-Restro](https://github.com/Shivasharma12/QR-Restro)
 
 ---
 
