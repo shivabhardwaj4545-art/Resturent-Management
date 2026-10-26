@@ -1,5 +1,4 @@
 import axios, { AxiosError } from 'axios';
-import { toast } from 'sonner';
 import { useAuthStore } from '@/store/auth.store';
 
 declare module 'axios' {
@@ -198,44 +197,26 @@ api.interceptors.response.use(
       }
     }
 
-    // Handle network / server unreachable errors
-    const isNetworkError =
+    // Handle network / slow connection / timeout / server unreachable errors
+    const isNetworkOrSlowError =
       error.code === 'ERR_NETWORK' ||
+      error.code === 'ECONNABORTED' ||
+      error.code === 'ETIMEDOUT' ||
       error.message === 'Network Error' ||
-      !error.response;
+      error.message?.toLowerCase().includes('timeout') ||
+      error.message?.toLowerCase().includes('network') ||
+      !error.response ||
+      error.response?.status >= 500;
 
-    const shouldSkipToast =
-      (originalRequest as any)?.skipToast ||
-      originalRequest?.headers?.['x-skip-toast'] === 'true' ||
-      (error.config as any)?.skipToast;
-
-    if (isNetworkError) {
-      if (!shouldSkipToast) {
-        toast.error('Unable to connect to backend server. Please verify the server is running.', {
-          id: 'network-error',
-        });
+    if (isNetworkOrSlowError) {
+      if (typeof window !== 'undefined') {
+        console.warn('⚠️ [API Network/Server] Network is slow, timed out, or backend server is unreachable.');
       }
       return Promise.reject(error);
     }
 
-    // Show error toast ONLY for 5xx server errors when skipToast is not enabled.
-    // Client errors (4xx: 400, 401, 403, 404, 409, 422, ORDER_NOT_FOUND) must be handled by the caller component/form.
-    const errorMessage =
-      error.response?.data?.error ?? error.message ?? 'Something went wrong';
-    const errorCode = error.response?.data?.code;
-    const status = error.response?.status;
-    const isClientError = status && status >= 400 && status < 500;
-
-    if (
-      !shouldSkipToast &&
-      !isClientError &&
-      errorCode !== 'VALIDATION_ERROR' &&
-      errorCode !== 'ORDER_NOT_FOUND' &&
-      !errorMessage.toLowerCase().includes('order not found')
-    ) {
-      toast.error(errorMessage);
-    }
-
+    // Do NOT show global red error toast popups on any request.
+    // Errors should be handled contextually by individual components without intrusive popups.
     return Promise.reject(error);
   }
 );

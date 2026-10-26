@@ -809,7 +809,10 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
                           : (order.tableNumber?.toLowerCase().startsWith('table') ? order.tableNumber : `Table ${order.tableNumber}`);
                         toast.success(`${isRoomOrder ? '🛎️ Room service call for payment sent for ' : '🙋 Call Waiter for Payment sent for '}${locLabel}!`);
                       } catch (err: any) {
-                        toast.error(err.response?.data?.error || 'Could not call staff for payment.');
+                        const isServerDown = err.code === 'ERR_NETWORK' || !err.response || err.response?.status >= 500;
+                        if (!isServerDown) {
+                          toast.error(err.response?.data?.error || 'Could not call staff for payment.');
+                        }
                       }
                     }}
                     className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center justify-center gap-1.5 shadow-sm"

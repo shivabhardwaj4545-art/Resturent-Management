@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import api, { getSocketUrl } from '@/lib/api';
-import { toast } from 'sonner';
 import { io, Socket } from 'socket.io-client';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -43,23 +42,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     socket.emit('join:user', user.id);
     socket.emit('join:admin');
 
-    socket.on('admin:new_restaurant', (data: any) => {
-      toast.info(`🏬 New Restaurant Registered: ${data.name || 'New Store'}`, { duration: 6000 });
+    socket.on('admin:new_restaurant', () => {
       queryClient.invalidateQueries({ queryKey: ['admin-restaurants'] });
       queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] });
     });
 
-    socket.on('admin:new_subscription', (data: any) => {
-      toast.success(`💳 New Subscription Activated: ${data.planName || 'Plan'}`, { duration: 6000 });
+    socket.on('admin:new_subscription', () => {
       queryClient.invalidateQueries({ queryKey: ['admin-subscriptions'] });
       queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] });
     });
 
-    socket.on('notification:new', (notif: any) => {
-      toast.info(notif.title || '📢 System Alert', {
-        description: notif.message,
-        duration: 8000,
-      });
+    socket.on('notification:new', () => {
       queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
       queryClient.invalidateQueries({ queryKey: ['chat-messages'] });
       queryClient.invalidateQueries({ queryKey: ['chat-contacts'] });

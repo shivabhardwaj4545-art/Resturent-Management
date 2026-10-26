@@ -621,17 +621,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
     }
   }, [data, slug, setRestaurant]);
 
-  useEffect(() => {
-    if (tableNumber && !isPreview) {
-      if (isHotelRoom) {
-        const roomLabel = tableNumber.toLowerCase().startsWith('room') ? tableNumber : `Room ${tableNumber}`;
-        toast.info(`Ordering for ${roomLabel}`);
-      } else {
-        const tableLabel = tableNumber.toLowerCase().startsWith('table') ? tableNumber : `Table ${tableNumber}`;
-        toast.info(`Ordering for ${tableLabel}`);
-      }
-    }
-  }, [tableNumber, isHotelRoom, isPreview]);
+  // Ordering location is already shown clearly in the header pill; no toast popup on every request/mount.
 
   useEffect(() => {
     const handleScroll = () => setShowScrollTop(window.scrollY > 500);
@@ -709,8 +699,11 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       setIsEditingLocation(false);
       startPendingState(cleanTable, 30);
     } catch (err: any) {
-      const errMsg = err.response?.data?.error || err.response?.data?.message || 'Could not send request. Please try again.';
-      toast.error(errMsg);
+      const isServerDown = err.code === 'ERR_NETWORK' || !err.response || err.response?.status >= 500;
+      if (!isServerDown) {
+        const errMsg = err.response?.data?.error || err.response?.data?.message || 'Could not send request. Please try again.';
+        toast.error(errMsg);
+      }
     } finally {
       setWaiterLoading(false);
     }
@@ -828,7 +821,6 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
             orderId: payload?.orderId,
             orderStatus: payload?.status,
           });
-          toast.info(`${info.icon} ${info.label}`, { duration: 6000 });
         },
         {
           title: `${info.icon} ${info.label}`,

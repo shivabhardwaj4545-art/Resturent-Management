@@ -23,6 +23,15 @@ const nextConfig: NextConfig = {
     },
   },
 
+  webpack: (config) => {
+    config.resolve = config.resolve || {};
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      sonner: path.resolve(__dirname, 'src/lib/sonner-mock.tsx'),
+    };
+    return config;
+  },
+
   async headers() {
     return [
       {

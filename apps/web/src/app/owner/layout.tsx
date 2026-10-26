@@ -8,7 +8,6 @@ import Link from 'next/link';
 import { Loader2, DollarSign, BellRing, Banknote, ShoppingBag, Check, X, Bed, Lock } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getSocketUrl } from '@/lib/api';
-import { toast } from 'sonner';
 import { AnimatePresence, motion } from 'framer-motion';
 import { io, Socket } from 'socket.io-client';
 import { useWaiterStore, WaiterCall } from '@/store/waiter.store';
@@ -199,11 +198,6 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
         'owner'
       );
 
-      toast.info(`${typeLabel}: ${detailLabel}`, {
-        id: `owner_waiter_toast_${payload.tableNumber}_${payload.type || 'default'}`,
-        duration: 10000,
-        icon: isRoom ? '🛎️' : '🔔',
-      });
       queryClient.invalidateQueries({ queryKey: ['owner-notifications'] });
       queryClient.refetchQueries({ queryKey: ['owner-notifications'] });
     };
@@ -243,13 +237,6 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
         },
         'owner'
       );
-      
-      toast.success(`🛍️ New Order Received! #${orderIdShort} for ₹${order.total ? Number(order.total).toFixed(0) : ''}`, {
-        id: `owner_order_toast_${orderIdShort}`,
-        description: itemsLabel,
-        duration: 12000,
-        icon: '🛍️',
-      });
       
       queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
       queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
@@ -313,12 +300,6 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
         sendDesktopNotification(notif.title, {
           body: notif.message || notif.body || '',
           tag: `notif-${notif.id || Date.now()}`,
-        });
-
-        toast.info(notif.title, {
-          description: notif.message,
-          duration: 10000,
-          icon: '🔔',
         });
       }
       queryClient.invalidateQueries({ queryKey: ['owner-notifications'] });
@@ -695,12 +676,11 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                       const orderId = activeNewOrderAlert.id;
                       try {
                         await api.patch(`/owner/orders/${orderId}/status`, { status: 'CONFIRMED' });
-                        toast.success(`Order #${orderId.slice(-8).toUpperCase()} Confirmed!`);
                         useWaiterStore.getState().removeNewOrder(orderId);
                         queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
                         queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
                       } catch {
-                        toast.error('Failed to confirm order.');
+                        // Silent fail or handled in order store
                       } finally {
                         setActiveNewOrderAlert(null);
                       }

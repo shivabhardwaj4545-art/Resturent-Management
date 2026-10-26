@@ -149,3 +149,26 @@ input[type="checkbox"]:checked {
 .razorpay-payment-button {
   @apply hidden;
 }
+
+/* Completely remove and hide all toaster popups across the application */
+[data-sonner-toaster],
+.data-sonner-toaster,
+[data-sonner-toast],
+[data-sonner-toast] *,
+[data-sonner-toaster] *,
+toaster,
+.toaster,
+ol[data-sonner-toaster],
+li[data-sonner-toast] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  width: 0 !important;
+  max-height: 0 !important;
+  max-width: 0 !important;
+  overflow: hidden !important;
+  transform: scale(0) !important;
+}
+

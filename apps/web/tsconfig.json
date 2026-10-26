@@ -17,7 +17,8 @@
     "plugins": [{ "name": "next" }],
     "paths": {
       "@/*": ["./src/*"],
-      "@shared/*": ["../../packages/shared/src/*"]
+      "@shared/*": ["../../packages/shared/src/*"],
+      "sonner": ["./src/lib/sonner-mock.tsx"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
