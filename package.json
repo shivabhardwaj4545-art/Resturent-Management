@@ -8,6 +8,7 @@
     "packages/*"
   ],
   "scripts": {
+    "predev": "npm --workspace=@qr-restaurant/shared run build",
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",

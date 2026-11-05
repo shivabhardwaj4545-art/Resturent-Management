@@ -93,7 +93,7 @@ const saveOrderToRecent = (orderId: string, restaurantSlug: string) => {
 
 export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: CheckoutPageProps) {
   const router = useRouter();
-  const { user: rawUser, logout } = useAuthStore();
+  const { user: rawUser, accessToken, logout } = useAuthStore();
   const queryClient = useQueryClient();
 
   const activeUser = useMemo(() => {
@@ -198,7 +198,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
       const response = await api.get('/profile/addresses');
       return response.data.data.addresses as Address[];
     },
-    enabled: !!activeUser,
+    enabled: !!activeUser && !!accessToken,
   });
 
   const { data: profileData, refetch: refetchProfile } = useQuery({
@@ -207,7 +207,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
       const response = await api.get('/profile');
       return response.data.data.user as { loyaltyPoints: number; walletBalance: number };
     },
-    enabled: !!activeUser,
+    enabled: !!activeUser && !!accessToken,
   });
 
   const { data: loyaltySettings } = useQuery({

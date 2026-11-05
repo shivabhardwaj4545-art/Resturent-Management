@@ -76,13 +76,6 @@ api.interceptors.request.use((config) => {
     delete (config.headers as any)['content-type'];
   }
   const token = useAuthStore.getState().accessToken;
-  if (typeof window !== 'undefined') {
-    console.log(`🚀 [API Request] ${config.method?.toUpperCase()} ${config.url}`, {
-      hasToken: !!token,
-      tokenPreview: token ? `${token.substring(0, 15)}...` : 'none',
-      isFormData: config.data instanceof FormData,
-    });
-  }
   if (token) {
     config.headers = config.headers || {};
     config.headers.Authorization = `Bearer ${token}`;

@@ -18,7 +18,7 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node -e \"const fs = require('fs'); const dest = '../../node_modules/@qr-restaurant/shared'; fs.cpSync('dist', dest + '/dist', {recursive: true}); fs.copyFileSync('package.json', dest + '/package.json');\"",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {

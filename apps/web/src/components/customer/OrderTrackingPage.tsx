@@ -129,7 +129,7 @@ interface OrderTrackingPageProps {
 
 export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPageProps) {
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, accessToken } = useAuthStore();
   const [mounted, setMounted] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<string>('PENDING');
   const [showRating, setShowRating] = useState(false);
@@ -150,7 +150,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
       const res = await api.get('/profile/notifications');
       return res.data.data as { unreadCount: number };
     },
-    enabled: !!user && mounted,
+    enabled: !!user?.id && !!accessToken && mounted,
     retry: false,
     refetchInterval: 12000,
   });

@@ -240,7 +240,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
   }, [getTableStorageKey, startComingTimer, startOccupiedTimer, startPendingState, tableNumber, manualTableNumber]);
 
   const { items: cartItems, itemCount, setRestaurant, total: getCartTotal } = useCartStore();
-  const { user: rawUser, logout } = useAuthStore();
+  const { user: rawUser, accessToken, logout } = useAuthStore();
   const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
   const [showNotifModal, setShowNotifModal] = useState(false);
   const [customerAlert, setCustomerAlert] = useState<CustomerAlertData | null>(null);
@@ -252,9 +252,10 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       const res = await api.get('/profile');
       return res.data.data.user as { id: string; loyaltyPoints: number };
     },
-    enabled: !!rawUser && !!rawUser.id,
+    enabled: !!rawUser?.id && !!accessToken,
+    staleTime: 60000,
     retry: false,
-    refetchInterval: 10000,
+    refetchInterval: 60000,
   });
 
   // Fetch dynamic loyalty program rules configured by Super Admin
@@ -275,9 +276,10 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       const res = await api.get('/profile/notifications');
       return res.data.data as { unreadCount: number };
     },
-    enabled: !!rawUser && !!rawUser.id,
+    enabled: !!rawUser?.id && !!accessToken,
+    staleTime: 60000,
     retry: false,
-    refetchInterval: 12000,
+    refetchInterval: 60000,
   });
 
   const unreadNotifCount = customerNotifData?.unreadCount ?? 0;
@@ -433,7 +435,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
       return Array.from(uniqueMap.values());
     },
     enabled: recentOrders.length > 0,
-    refetchInterval: 10000,
+    refetchInterval: 60000,
   });
 
   // Previous Orders for logged-in users
@@ -779,6 +781,10 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
 
     socket.on('waiter:dismissed', handleWaiterDismissed);
     socket.on('waiter_dismissed', handleWaiterDismissed);
+
+    socket.on('notification:new', () => {
+      queryClient.invalidateQueries({ queryKey: ['customer-notifications-count'] });
+    });
 
     socket.on('user:loyalty_updated', () => {
       queryClient.invalidateQueries({ queryKey: ['user-profile-loyalty'] });
