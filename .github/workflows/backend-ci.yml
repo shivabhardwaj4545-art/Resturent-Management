@@ -1,0 +1,87 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main, staging, develop]
+    paths:
+      - 'backend/**'
+      - 'packages/shared/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'turbo.json'
+      - '.github/workflows/backend-ci.yml'
+  pull_request:
+    branches: [main, staging, develop]
+    paths:
+      - 'backend/**'
+      - 'packages/shared/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'turbo.json'
+      - '.github/workflows/backend-ci.yml'
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: qr_restaurant_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared contracts
+        run: npm run build --workspace=@qr-restaurant/shared
+
+      - name: Generate Prisma Client
+        env:
+          DATABASE_URL: "postgresql://test_user:test_password@localhost:5432/qr_restaurant_test?schema=public"
+        run: |
+          cd backend
+          npx prisma generate
+
+      - name: Lint backend
+        run: npm run lint --workspace=@qr-restaurant/server
+
+      - name: Type check backend
+        run: npm run type-check --workspace=@qr-restaurant/server
+
+      - name: Build backend application
+        run: npm run build --workspace=@qr-restaurant/server
+
+      - name: Run backend tests
+        env:
+          DATABASE_URL: "postgresql://test_user:test_password@localhost:5432/qr_restaurant_test?schema=public"
+          JWT_ACCESS_SECRET: "test-jwt-access-secret-minimum-64-characters-for-ci-testing-purposes"
+          JWT_REFRESH_SECRET: "test-jwt-refresh-secret-minimum-64-characters-for-ci-testing-purposes"
+        run: npm run test --workspace=@qr-restaurant/server --if-present
+
+      - name: Security audit backend dependencies
+        run: npm audit --workspace=@qr-restaurant/server --audit-level=critical

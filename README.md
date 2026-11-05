@@ -74,49 +74,59 @@ Simultaneously, kitchen staff receive instant real-time kitchen tickets with sou
 
 ```
 Restaurant-Management/
-├── apps/
-│   ├── server/                     # Backend REST API & WebSocket Server
-│   │   ├── prisma/                 # Database Schema & Migration files
-│   │   │   ├── schema.prisma       # Prisma data models & relations
-│   │   │   └── seed.ts             # Initial DB seed data (Admin, Roles, Demo)
-│   │   ├── src/
-│   │   │   ├── config/             # DB, Redis, Cloudinary, OAuth configurations
-│   │   │   ├── controllers/        # Request controllers (Auth, Order, Menu, Admin)
-│   │   │   ├── jobs/               # Background scheduled jobs (Subscriptions, cleanups)
-│   │   │   ├── middlewares/        # Auth guard, RBAC, error handling, rate limits
-│   │   │   ├── routes/             # Express API route declarations
-│   │   │   ├── services/           # Business logic, AI, Payments, Mailer, Sockets
-│   │   │   ├── sockets/            # Socket.io event rooms and dispatchers
-│   │   │   ├── utils/              # Token utils, PDF generation, formatters
-│   │   │   └── index.ts            # Server entrypoint
-│   │   ├── package.json
-│   │   └── tsconfig.json
-│   │
-│   └── web/                        # Next.js 15 Frontend Web Application
-│       ├── public/                 # Static assets, sounds, icons
-│       ├── src/
-│       │   ├── app/                # App Router (Public, Menu, Kitchen, Owner, Admin)
-│       │   │   ├── [slug]/         # Customer QR Digital Menu & Cart
-│       │   │   ├── admin/          # Platform Super Admin Portal
-│       │   │   ├── kitchen/        # Live Kitchen Display Screen (KDS)
-│       │   │   ├── owner/          # Restaurant Owner Dashboard & Reports
-│       │   │   └── ...
-│       │   ├── components/         # Reusable UI component library (Radix + Tailwind)
-│       │   ├── hooks/              # Custom React hooks (Socket, Cart, Auth, Queries)
-│       │   ├── lib/                # API client (Axios), Socket client, utility helpers
-│       │   └── store/              # Zustand global state stores
-│       ├── package.json
-│       └── tsconfig.json
-│
+├── .github/                        # CI/CD Workflows, CODEOWNERS, Dependabot, PR templates
+│   ├── CODEOWNERS                  # Team ownership boundaries
+│   ├── pull_request_template.md    # PR checklists and guidelines
+│   ├── dependabot.yml              # Automated dependency update configuration
+│   └── workflows/
+│       ├── frontend-ci.yml         # Frontend build, lint, type-check, audit
+│       ├── backend-ci.yml          # Backend build, test, Postgres service, audit
+│       ├── security-scan.yml       # Gitleaks + CodeQL static analysis
+│       └── deploy.yml              # Path-filtered staging & production deployment
+├── frontend/                       # Next.js 15 Frontend Web Application
+│   ├── public/                     # Static assets, sounds, icons
+│   ├── src/
+│   │   ├── app/                    # App Router (Public, Menu, Kitchen, Owner, Admin)
+│   │   ├── components/             # Reusable UI component library (Radix + Tailwind)
+│   │   ├── hooks/                  # Custom React hooks (Socket, Cart, Auth, Queries)
+│   │   ├── services/api/           # Centralized API client (Axios & Socket.io)
+│   │   ├── store/                  # Zustand global state stores
+│   │   └── lib/                    # Helpers and backward-compatibility exports
+│   ├── .env.example
+│   ├── package.json
+│   └── README.md
+├── backend/                        # Express.js REST API & WebSocket Server
+│   ├── prisma/                     # Database Schema & Migration files
+│   │   ├── schema.prisma           # Prisma data models & relations
+│   │   ├── seed.ts                 # Initial DB seed data (Admin, Roles, Demo)
+│   │   └── migrations/             # Versioned SQL migration files
+│   ├── src/
+│   │   ├── config/                 # DB, Redis, Cloudinary, OAuth configurations
+│   │   ├── controllers/            # Request controllers (Auth, Order, Menu, Admin)
+│   │   ├── jobs/                   # Background scheduled jobs (Subscriptions, cleanups)
+│   │   ├── middlewares/            # Auth guard, RBAC, error handling, rate limits
+│   │   ├── routes/                 # Express API route declarations
+│   │   ├── services/               # Business logic, AI, Payments, Mailer, Sockets
+│   │   ├── sockets/                # Socket.io event rooms and dispatchers
+│   │   ├── utils/                  # Token utils, PDF generation, formatters
+│   │   └── index.ts                # Server entrypoint
+│   ├── .env.example
+│   ├── package.json
+│   └── README.md
 ├── packages/
 │   └── shared/                     # Shared TypeScript types, Zod schemas & DTOs
-│       ├── src/                    # Shared validation schemas & interfaces
-│       └── package.json
-│
-├── .env.example                    # Comprehensive environment template
+├── docker/                         # Production multi-stage Dockerfiles
+│   ├── Dockerfile.frontend         # Next.js frontend production container
+│   └── Dockerfile.backend          # Express backend production container
+├── docs/                           # Architecture, API & Runbook documentation
+│   ├── API.md                      # REST endpoints and WebSocket events
+│   ├── ARCHITECTURE.md             # System architecture & Mermaid diagrams
+│   └── RUNBOOK.md                  # Operations, migrations, deploy & rollbacks
+├── .editorconfig                   # Unified cross-editor styling rules
+├── .gitignore
 ├── docker-compose.yml              # Local containerized infrastructure (Postgres, Redis)
-├── Dockerfile.server               # Production Docker container for API server
-├── Dockerfile.web                  # Production Docker container for Next.js frontend
+├── render.yaml                     # Render Blueprint deployment definition
+├── SECURITY.md                     # Security policy & responsible disclosure SLA
 ├── turbo.json                      # Turborepo task pipeline configuration
 └── package.json                    # Workspace root scripts and dependencies
 ```

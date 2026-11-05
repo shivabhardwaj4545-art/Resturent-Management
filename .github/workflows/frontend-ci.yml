@@ -1,0 +1,65 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [main, staging, develop]
+    paths:
+      - 'frontend/**'
+      - 'packages/shared/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'turbo.json'
+      - '.github/workflows/frontend-ci.yml'
+  pull_request:
+    branches: [main, staging, develop]
+    paths:
+      - 'frontend/**'
+      - 'packages/shared/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'turbo.json'
+      - '.github/workflows/frontend-ci.yml'
+
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared contracts
+        run: npm run build --workspace=@qr-restaurant/shared
+
+      - name: Lint frontend
+        run: npm run lint --workspace=@qr-restaurant/web
+
+      - name: Type check frontend
+        run: npm run type-check --workspace=@qr-restaurant/web
+
+      - name: Build frontend Next.js application
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+          NODE_ENV: production
+          NEXT_PUBLIC_API_URL: https://api.qrrestaurant.com/api/v1
+        run: npm run build --workspace=@qr-restaurant/web
+
+      - name: Run frontend tests
+        run: npm run test --workspace=@qr-restaurant/web --if-present
+
+      - name: Security audit frontend dependencies
+        run: npm audit --workspace=@qr-restaurant/web --audit-level=critical
