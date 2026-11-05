@@ -3,7 +3,8 @@ services:
   - type: web
     name: qr-restaurant-server
     env: docker
-    dockerfilePath: Dockerfile.server
+    dockerfilePath: docker/Dockerfile.backend
+    rootDir: .
     region: singapore
     plan: free
     envVars:
@@ -50,7 +51,8 @@ services:
   - type: web
     name: qr-restaurant-web
     env: docker
-    dockerfilePath: Dockerfile.web
+    dockerfilePath: docker/Dockerfile.frontend
+    rootDir: .
     region: singapore
     plan: free
     envVars:

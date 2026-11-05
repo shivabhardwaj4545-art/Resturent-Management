@@ -13,8 +13,11 @@ build/
 .env
 .env.local
 .env.*.local
+backend/.env
+frontend/.env
 apps/server/.env
 apps/web/.env
+packages/shared/dist/
 
 # Logs
 *.log

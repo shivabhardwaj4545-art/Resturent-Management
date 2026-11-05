@@ -4,7 +4,8 @@
   "private": true,
   "packageManager": "npm@11.6.0",
   "workspaces": [
-    "apps/*",
+    "frontend",
+    "backend",
     "packages/*"
   ],
   "scripts": {
