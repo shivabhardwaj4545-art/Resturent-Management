@@ -64,6 +64,6 @@
     "ts-jest": "^29.2.5",
     "@types/jest": "^29.5.14",
     "supertest": "^7.0.0",
-    "@types/supertest": "^6.0.2"
+    "@types/supertest": "^7.2.1"
   }
 }
