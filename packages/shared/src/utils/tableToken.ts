@@ -16,23 +16,28 @@ function computeHash(slug: string, tableNumber: string): string {
 }
 
 function base64urlEncode(str: string): string {
-  if (typeof Buffer !== 'undefined') {
-    return Buffer.from(str, 'utf-8').toString('base64url');
-  }
   if (typeof btoa !== 'undefined') {
     return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(str, 'utf-8')
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
   }
   return str;
 }
 
 function base64urlDecode(b64url: string): string {
-  if (typeof Buffer !== 'undefined') {
-    return Buffer.from(b64url, 'base64url').toString('utf-8');
-  }
+  let b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+  while (b64.length % 4) b64 += '=';
+
   if (typeof atob !== 'undefined') {
-    let b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
-    while (b64.length % 4) b64 += '=';
     return atob(b64);
+  }
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(b64, 'base64').toString('utf-8');
   }
   return b64url;
 }
