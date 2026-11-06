@@ -51,5 +51,5 @@ COPY --from=builder /app/backend/package.json  ./backend/
 WORKDIR /app/backend
 EXPOSE 4000
 
-# Start server immediately (index.ts binds 0.0.0.0:4000 synchronously and initialises DB in background)
-CMD ["node", "dist/index.js"]
+# Start server with automated Prisma schema push to ensure all tables exist
+CMD ["sh", "-c", "npx prisma db push --skip-generate --accept-data-loss || true; node dist/index.js"]

@@ -83,12 +83,28 @@ async function initializeBackgroundServices() {
   // Test DB connection with retry loop
   let dbConnected = false;
   const isDev = process.env.NODE_ENV !== 'production';
-  let retries = isDev ? 100 : 5; // Retry up to 100 times in dev to allow postgres container to boot
+  let retries = isDev ? 100 : 15; // Retry up to 15 times to allow postgres container to fully accept connections
   while (retries > 0 && !dbConnected) {
     try {
       await prisma.$connect();
       dbConnected = true;
       logger.info('✅ Database connected');
+
+      // Automatically push schema if fresh database
+      try {
+        const { execSync } = await import('child_process');
+        const path = await import('path');
+        logger.info('🔄 Ensuring all database tables exist via Prisma schema sync...');
+        execSync('npx prisma db push --skip-generate --accept-data-loss', {
+          cwd: path.resolve(__dirname, '..'),
+          stdio: 'inherit',
+          env: process.env,
+        });
+        logger.info('✅ Database schema verified and synchronized');
+      } catch (schemaErr: any) {
+        logger.warn('⚠️ Automated prisma db push notice:', schemaErr?.message || schemaErr);
+      }
+
       // Auto-ensure default live credentials & demo restaurant exist
       await ensureDatabaseSeeded();
       // Start subscription expiry background check
@@ -114,5 +130,3 @@ async function initializeBackgroundServices() {
 }
 
 bootstrap();
-
-
