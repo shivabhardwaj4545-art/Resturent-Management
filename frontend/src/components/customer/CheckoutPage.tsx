@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, CreditCard, Banknote, Wallet, MapPin, User, Phone, Loader2, Plus, PlusCircle, Check, Lock, X, Smartphone, Building, Gift, Copy, QrCode } from 'lucide-react';
+import { ChevronLeft, CreditCard, Banknote, Wallet, MapPin, User, Phone, Loader2, Plus, PlusCircle, Check, Lock, X, Smartphone, Building, Gift, Copy, QrCode, AlertCircle, UtensilsCrossed, Pencil } from 'lucide-react';
 import { useCartStore } from '@/store/cart.store';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/services/api';
@@ -200,7 +200,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
   const [usePoints, setUsePoints] = useState(false);
 
   
-  const { items, couponCode, couponDiscount, clearCart, subtotal, total, removeItem } = useCartStore();
+  const { items, couponCode, couponDiscount, clearCart, subtotal, total, removeItem, updateQuantity } = useCartStore();
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<'RAZORPAY' | 'COD' | 'PAY_TO_WAITER'>('RAZORPAY');
@@ -302,7 +302,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
     const checkStatus = async () => {
       try {
         setIsCheckingUpiStatus(true);
-        const res = await api.get(`/payments/${upiData.paymentId}/status`);
+        const res = await api.get(`/payments/${upiData.paymentId}/status`, { skipToast: true } as any);
         const status = res.data?.data?.status || res.data?.data?.orderPaymentStatus;
         if (status === 'PAID') {
           saveOrderToRecent(upiData.orderId, restaurantSlug);
@@ -311,17 +311,62 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
           toast.success('Payment Verified & Order Confirmed! 🎉');
           router.push(`/r/${restaurantSlug}/order/${upiData.orderId}`);
         }
-      } catch (err) {
-        console.error('Error polling payment status:', err);
+      } catch (err: any) {
+        // Silently catch 429 or network blips so user isn't interrupted
+        if (err?.response?.status !== 429) {
+          console.debug('Polling payment status:', err?.message);
+        }
       } finally {
         setIsCheckingUpiStatus(false);
       }
     };
 
     checkStatus();
-    const interval = setInterval(checkStatus, 3000);
+    const interval = setInterval(checkStatus, 4000);
     return () => clearInterval(interval);
   }, [showUpiModal, upiData, restaurantSlug, router, clearCart]);
+
+
+  // Order Confirmation & Review Modal state
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [pendingGuestData, setPendingGuestData] = useState<GuestForm | null>(null);
+
+  const initiateGuestOrder = (formData: GuestForm) => {
+    if (items.length === 0) {
+      toast.error('Your cart is empty');
+      return;
+    }
+    if (!manualTableNumber || !manualTableNumber.trim()) {
+      toast.error('Please enter your table or room number.');
+      return;
+    }
+    setPendingGuestData(formData);
+    setShowConfirmModal(true);
+  };
+
+  const initiateUserOrder = () => {
+    if (items.length === 0) {
+      toast.error('Your cart is empty');
+      return;
+    }
+    if (!manualTableNumber || !manualTableNumber.trim()) {
+      toast.error('Please enter your table or room number.');
+      return;
+    }
+    setPendingGuestData(null);
+    setShowConfirmModal(true);
+  };
+
+  const confirmAndPlaceOrder = async () => {
+    setShowConfirmModal(false);
+    if (activeUser) {
+      await onUserOrder();
+    } else if (pendingGuestData) {
+      await onGuestSubmit(pendingGuestData);
+    } else {
+      await onGuestSubmit({} as any);
+    }
+  };
 
   const onGuestSubmit = async (formData: GuestForm) => {
     if (items.length === 0) {
@@ -755,7 +800,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
             </button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit(onGuestSubmit)} className="bg-card border border-border rounded-2xl p-4 space-y-4">
+          <form onSubmit={handleSubmit(initiateGuestOrder)} className="bg-card border border-border rounded-2xl p-4 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="font-display font-semibold">Your Details</h2>
               <Link
@@ -830,6 +875,155 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
         )}
       </div>
 
+
+      {/* Final Order Review & Confirmation Modal */}
+      <AnimatePresence>
+        {showConfirmModal && (
+          <div className="fixed inset-0 z-50 overflow-y-auto flex min-h-full items-center justify-center p-3 sm:p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowConfirmModal(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-card border border-border rounded-3xl shadow-2xl overflow-hidden z-10 max-h-[90vh] flex flex-col"
+            >
+              {/* Header */}
+              <div className="p-4 sm:p-5 border-b border-border flex items-center justify-between bg-muted/20">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-500">
+                    <UtensilsCrossed className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="font-display font-bold text-base text-foreground">Confirm Your Order</h2>
+                    <p className="text-xs text-muted-foreground">Review your dishes before sending to kitchen</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmModal(false)}
+                  className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Scrollable Content */}
+              <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
+                {/* Warning Alert Banner */}
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <div className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
+                    <span className="font-semibold">Notice: Orders cannot be changed after placing!</span>
+                    <p className="mt-0.5 opacity-90">
+                      Once placed, your order is sent directly to the kitchen. Please check items and quantities below. If you want to change anything, you can edit it right here!
+                    </p>
+                  </div>
+                </div>
+
+                {/* Items List with Edit Quantities */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Order Items</h3>
+                    <Link
+                      href={`/r/${restaurantSlug}`}
+                      onClick={() => setShowConfirmModal(false)}
+                      className="text-xs text-primary font-semibold hover:underline flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" /> Add More Dishes
+                    </Link>
+                  </div>
+
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1 divide-y divide-border/40">
+                    {items.map((item) => (
+                      <div key={item.id} className="pt-2 first:pt-0 flex items-center justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm text-foreground truncate">{item.name}</p>
+                          <p className="text-xs text-muted-foreground">₹{item.unitPrice.toFixed(0)} each</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center border border-border rounded-lg overflow-hidden bg-muted/40">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (item.quantity > 1) updateQuantity(item.id, item.quantity - 1);
+                                else removeItem(item.id);
+                              }}
+                              className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors font-bold text-xs"
+                            >
+                              -
+                            </button>
+                            <span className="w-6 text-center text-xs font-bold">{item.quantity}</span>
+                            <button
+                              type="button"
+                              onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                              className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors font-bold text-xs"
+                            >
+                              +
+                            </button>
+                          </div>
+                          <span className="font-semibold text-sm w-14 text-right">
+                            ₹{(item.unitPrice * item.quantity).toFixed(0)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Table & Payment Details */}
+                <div className="bg-muted/40 border border-border/60 rounded-2xl p-3.5 space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Dining Location:</span>
+                    <span className="font-bold text-foreground">Table {manualTableNumber}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Payment Method:</span>
+                    <span className="font-semibold text-foreground">
+                      {selectedPayment === 'PAY_TO_WAITER'
+                        ? 'Pay to Waiter'
+                        : selectedPayment === 'COD'
+                        ? 'Pay on Counter'
+                        : 'Pay via UPI'}
+                    </span>
+                  </div>
+                  <div className="border-t border-border/50 pt-2 flex items-center justify-between font-bold text-sm">
+                    <span className="text-foreground">Total to Pay:</span>
+                    <span className="text-primary font-bold text-base">₹{grandTotal.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer Actions */}
+              <div className="p-4 sm:p-5 border-t border-border bg-muted/10 flex gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmModal(false)}
+                  className="flex-1 py-3 px-3 rounded-xl border border-border font-semibold text-xs hover:bg-muted transition-colors text-foreground flex items-center justify-center gap-1.5"
+                >
+                  <Pencil className="w-3.5 h-3.5" /> Edit Order
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmAndPlaceOrder}
+                  disabled={loading || items.length === 0}
+                  className="flex-[1.5] py-3 px-4 rounded-xl font-bold text-xs text-white bg-gradient-to-r from-orange-500 to-amber-500 shadow-md shadow-orange-500/20 hover:opacity-95 disabled:opacity-60 flex items-center justify-center gap-1.5"
+                >
+                  {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {loading ? 'Sending to Kitchen...' : `Confirm & Place Order · ₹${grandTotal.toFixed(0)}`}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* UPI Intent Payment Modal & Verification Screen */}
       <AnimatePresence>
         {showUpiModal && upiData && (
@@ -852,10 +1046,10 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-              className="bg-card border border-border w-full max-w-md rounded-3xl shadow-2xl overflow-hidden relative z-10"
+              className="bg-card border border-border w-full max-w-md rounded-3xl shadow-2xl overflow-hidden relative z-10 my-auto flex flex-col max-h-[90vh]"
             >
               {/* Header */}
-              <div className="bg-gradient-to-r from-orange-500 to-amber-500 text-white p-6 relative">
+              <div className="bg-gradient-to-r from-orange-500 to-amber-500 text-white p-4 sm:p-5 relative flex-shrink-0">
                 <button
                   type="button"
                   onClick={() => {
@@ -877,7 +1071,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
               </div>
 
               {/* Order Info & Reference */}
-              <div className="p-6 border-b border-border bg-muted/30 flex justify-between items-center">
+              <div className="p-3.5 sm:p-4 border-b border-border bg-muted/30 flex justify-between items-center flex-shrink-0">
                 <div>
                   <p className="text-xs text-muted-foreground">Authoritative Amount</p>
                   <p className="font-display font-extrabold text-2xl text-foreground font-mono">₹{upiData.amount.toFixed(2)}</p>
@@ -915,31 +1109,31 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
               )}
 
               {/* QR Code & Mobile Launch */}
-              <div className="p-6 space-y-5 text-center">
+              <div className="p-4 sm:p-5 space-y-4 text-center overflow-y-auto flex-1 overscroll-contain">
                 {selectedQrTab === 'custom' && restaurant?.paymentQrCode ? (
-                  <div className="flex flex-col items-center justify-center p-4 bg-white rounded-2xl border border-border max-w-[220px] mx-auto shadow-sm">
+                  <div className="flex flex-col items-center justify-center p-4 bg-white rounded-2xl border border-border max-w-[200px] mx-auto shadow-sm p-3">
                     <img
                       src={getImageUrl(restaurant.paymentQrCode)}
                       alt="Owner Uploaded Payment QR"
-                      className="w-44 h-44 object-contain"
+                      className="w-36 h-36 object-contain"
                     />
                     <span className="text-[10px] text-gray-500 mt-2 font-semibold flex items-center gap-1">
                       <QrCode className="w-3 h-3 text-primary" /> Owner's Uploaded QR Image
                     </span>
                   </div>
                 ) : upiQrCodeDataUrl ? (
-                  <div className="flex flex-col items-center justify-center p-4 bg-white rounded-2xl border border-border max-w-[220px] mx-auto shadow-sm">
+                  <div className="flex flex-col items-center justify-center p-4 bg-white rounded-2xl border border-border max-w-[200px] mx-auto shadow-sm p-3">
                     <img
                       src={upiQrCodeDataUrl}
                       alt="UPI Payment QR Code"
-                      className="w-44 h-44 object-contain"
+                      className="w-36 h-36 object-contain"
                     />
                     <span className="text-[10px] text-gray-500 mt-2 font-semibold flex items-center gap-1">
                       <QrCode className="w-3 h-3 text-primary" /> Scan with any UPI App (Exact ₹{upiData.amount.toFixed(2)})
                     </span>
                   </div>
                 ) : (
-                  <div className="w-44 h-44 rounded-2xl bg-muted flex items-center justify-center mx-auto text-muted-foreground">
+                  <div className="w-36 h-36 rounded-2xl bg-muted flex items-center justify-center mx-auto text-muted-foreground">
                     <Loader2 className="w-8 h-8 animate-spin text-primary" />
                   </div>
                 )}
@@ -989,7 +1183,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
               </div>
 
               {/* Footer */}
-              <div className="p-6 pt-3 border-t border-border flex gap-3 bg-muted/10">
+              <div className="p-4 border-t border-border flex gap-3 bg-muted/10 flex-shrink-0">
                 <button
                   type="button"
                   onClick={() => {

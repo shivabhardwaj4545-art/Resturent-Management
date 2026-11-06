@@ -94,8 +94,8 @@ class FallbackStore implements Store {
 }
 
 const createLimiter = (windowMs: number, max: number, message: string) => {
-  const isTest = process.env.NODE_ENV === 'test';
-  const finalMax = isTest ? 10000 : max;
+  const isDevOrTest = process.env.NODE_ENV === 'test' || process.env.NODE_ENV !== 'production';
+  const finalMax = isDevOrTest ? 10000 : max;
 
   return rateLimit({
     windowMs,
@@ -103,14 +103,21 @@ const createLimiter = (windowMs: number, max: number, message: string) => {
     message: { success: false, error: message, code: 'RATE_LIMIT_EXCEEDED' },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => {
+      // Never rate-limit in development or local test environments
+      if (process.env.NODE_ENV !== 'production') return true;
+      // Always allow payment status polling and health checks
+      if (req.path?.includes('/status') || req.path?.includes('/health')) return true;
+      return false;
+    },
     store: new FallbackStore(),
   });
 };
 
-// General API limit: 100 req per 15 minutes
+// General API limit: 1000 req per 15 minutes in production
 export const generalLimiter = createLimiter(
   15 * 60 * 1000,
-  100,
+  1000,
   'Too many requests. Please try again in 15 minutes.'
 );
 
