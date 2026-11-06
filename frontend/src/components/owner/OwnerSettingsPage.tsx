@@ -332,6 +332,7 @@ export function OwnerSettingsPage() {
       const res = await api.get('/owner/restaurant');
       return res.data.data.restaurant as Restaurant;
     },
+    enabled: !!user && user.role === 'RESTAURANT_OWNER',
   });
 
   // Permissions controlled globally or per-restaurant by Super Admin

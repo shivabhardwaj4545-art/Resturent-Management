@@ -56,7 +56,7 @@ export function AuthBootstrap({ children }: { children: React.ReactNode }) {
           logout();
         }
       } finally {
-        if (isMounted) {
+        if (isMounted && useAuthStore.getState().isBootstrapping) {
           setBootstrapping(false);
         }
       }

@@ -52,15 +52,21 @@ export function TableQrCard({
     : '';
 
   useEffect(() => {
+    let active = true;
     if (targetUrl) {
       QRCode.toDataURL(targetUrl, {
         width: 320,
         margin: 1,
         color: { dark: '#000000', light: '#FFFFFF' },
       })
-        .then(setQrDataUrl)
+        .then((url) => {
+          if (active) setQrDataUrl(url);
+        })
         .catch(() => {});
     }
+    return () => {
+      active = false;
+    };
   }, [targetUrl]);
 
   const handleCopy = () => {

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuthStore } from '@/store/auth.store';
 import api from '@/services/api';
 import { useWaiterStore, WaiterCall, LiveOrderAlert } from '@/store/waiter.store';
 import {
@@ -95,6 +96,8 @@ export function WaiterBell() {
     return () => window.removeEventListener('resize', handleResize);
   }, [showWaiterPanel]);
 
+  const { user } = useAuthStore();
+
   // 1. Fetch recent activity notifications
   const { data: notifData, isLoading: isLoadingNotifs } = useQuery({
     queryKey: ['owner-notifications'],
@@ -102,7 +105,7 @@ export function WaiterBell() {
       const res = await api.get('/profile/notifications');
       return res.data.data as { notifications: NotificationItem[]; unreadCount: number };
     },
-    enabled: true,
+    enabled: !!user,
     refetchInterval: 8000,
   });
 

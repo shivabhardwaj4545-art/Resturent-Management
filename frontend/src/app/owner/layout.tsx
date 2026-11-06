@@ -76,14 +76,14 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
   }, []);
 
   useEffect(() => {
-    if (mounted) {
+    if (mounted && !isBootstrapping) {
       if (!isAuthenticated || !user) {
         router.push('/login');
       } else if (user.role !== 'RESTAURANT_OWNER') {
         router.push('/');
       }
     }
-  }, [mounted, user, isAuthenticated, router]);
+  }, [mounted, isBootstrapping, user, isAuthenticated, router]);
 
   const pathname = usePathname();
   const { data: restaurantData } = useQuery({
@@ -328,10 +328,11 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
   // Auto-open modal popup for any unhandled pending waiter call or new order
 
 
-  if (!mounted || !user || user.role !== 'RESTAURANT_OWNER') {
+  if (!mounted || isBootstrapping || !user || user.role !== 'RESTAURANT_OWNER') {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-3">
         <Loader2 className="w-10 h-10 animate-spin text-primary" />
+        <p className="text-sm font-medium text-muted-foreground">Authenticating session...</p>
       </div>
     );
   }

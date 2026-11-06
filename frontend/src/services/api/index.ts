@@ -128,7 +128,7 @@ export async function executeRefreshToken(): Promise<string> {
           (currentPath.startsWith('/owner') || currentPath.startsWith('/admin') || currentPath.startsWith('/kitchen')) &&
           !currentPath.includes('/login')
         ) {
-          window.location.href = '/login';
+          window.location.replace('/login');
         }
       }
       throw refreshErr;
@@ -155,6 +155,12 @@ api.interceptors.response.use(
 
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthUrl) {
       originalRequest._retry = true;
+
+      const currentToken = getInMemoryAccessToken();
+      const { isAuthenticated, isBootstrapping } = useAuthStore.getState();
+      if (!currentToken && !isAuthenticated && !isBootstrapping) {
+        return Promise.reject(error);
+      }
 
       try {
         const newToken = await executeRefreshToken();
