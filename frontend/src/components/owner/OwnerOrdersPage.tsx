@@ -127,7 +127,7 @@ export function OwnerOrdersPage() {
     if (!restId) return;
 
     const socket: Socket = io(getSocketUrl(), {
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       reconnectionAttempts: 10,
     });
 

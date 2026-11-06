@@ -720,7 +720,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
   useEffect(() => {
     if (!data?.restaurant?.id) return;
     const socket = io(getSocketUrl(), {
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       withCredentials: true,
     });
 

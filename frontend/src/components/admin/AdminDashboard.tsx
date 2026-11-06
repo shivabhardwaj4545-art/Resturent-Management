@@ -44,7 +44,7 @@ export function AdminDashboard() {
 
   useEffect(() => {
     if (!user?.id) return;
-    const socket = io(getSocketUrl(), { transports: ['websocket', 'polling'], withCredentials: true });
+    const socket = io(getSocketUrl(), { transports: ['polling', 'websocket'], withCredentials: true });
 
     socket.emit('join:user', user.id);
 

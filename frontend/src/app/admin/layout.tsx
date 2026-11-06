@@ -35,7 +35,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
     const token = getInMemoryAccessToken();
     const socket: Socket = io(getSocketUrl(), {
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       withCredentials: true,
       auth: { token: token ? `Bearer ${token}` : undefined },
     });

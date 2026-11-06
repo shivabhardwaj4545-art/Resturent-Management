@@ -145,7 +145,7 @@ export default function KitchenDashboardPage() {
     if (!targetRestId) return;
 
     const socket = io(getSocketUrl(), {
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       reconnectionAttempts: 10,
     });
     socketRef.current = socket;

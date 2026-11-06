@@ -44,7 +44,7 @@ export function OwnerAnalyticsPage() {
   useEffect(() => {
     if (!restId) return;
     const socket: Socket = io(getSocketUrl(), {
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       reconnectionAttempts: 10,
     });
     const joinRest = () => socket.emit('join:restaurant', restId);

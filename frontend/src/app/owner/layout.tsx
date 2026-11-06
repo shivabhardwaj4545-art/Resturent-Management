@@ -109,7 +109,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
 
     const socket: Socket = io(
       getSocketUrl(),
-      { transports: ['websocket', 'polling'], withCredentials: true }
+      { transports: ['polling', 'websocket'], withCredentials: true }
     );
     socketRef.current = socket;
     useWaiterStore.getState().setSocket(socket);

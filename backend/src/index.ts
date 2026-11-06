@@ -41,7 +41,7 @@ async function bootstrap() {
         methods: ['GET', 'POST'],
         credentials: true,
       },
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
     });
 
     initializeSocketService(io);

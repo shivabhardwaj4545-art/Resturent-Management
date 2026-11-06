@@ -236,7 +236,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
   useEffect(() => {
     const socket: Socket = io(
       getSocketUrl(),
-      { transports: ['websocket', 'polling'], withCredentials: true },
+      { transports: ['polling', 'websocket'], withCredentials: true },
     );
 
     // ✅ Correct event name: 'join:order'

@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, CreditCard, Banknote, Wallet, MapPin, User, Phone, Loader2, Plus, PlusCircle, Check, Home, Briefcase, Lock, X, Smartphone, Building, Gift, Copy, QrCode, UtensilsCrossed, Bike } from 'lucide-react';
+import { ChevronLeft, CreditCard, Banknote, Wallet, MapPin, User, Phone, Loader2, Plus, PlusCircle, Check, Lock, X, Smartphone, Building, Gift, Copy, QrCode } from 'lucide-react';
 import { useCartStore } from '@/store/cart.store';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/services/api';
@@ -50,19 +50,8 @@ const guestSchema = z.object({
 type GuestForm = z.infer<typeof guestSchema>;
 
 const GST_RATE = 0.18;
-const DELIVERY_FEE = 40;
-const PACKAGING_FEE = 15;
+// Dine-in only (no delivery fees)
 
-interface Address {
-  id: string;
-  label: string;
-  flat: string;
-  street: string;
-  area: string;
-  city: string;
-  pincode: string;
-  isDefault: boolean;
-}
 
 interface CheckoutPageProps {
   restaurantSlug: string;
@@ -114,14 +103,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
   });
 
   const restaurant = menuData?.restaurant;
-  const hasDelivery = restaurant?.hasDelivery ?? true;
-
-  const [diningOption, setDiningOption] = useState<'DINE_IN' | 'DELIVERY'>('DINE_IN');
-
-  useEffect(() => {
-    // Default to DINE_IN for restaurant & table QR ordering
-    setDiningOption('DINE_IN');
-  }, []);
+  
 
   const [manualTableNumber, setManualTableNumber] = useState(tableNumber || '');
 
@@ -195,15 +177,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
   };
 
   // Address queries & state
-  const { data: addressesData, refetch: refetchAddresses } = useQuery({
-    queryKey: ['profile-addresses'],
-    queryFn: async () => {
-      const response = await api.get('/profile/addresses');
-      return response.data.data.addresses as Address[];
-    },
-    enabled: !!activeUser && !!accessToken,
-  });
-
+  
   const { data: profileData, refetch: refetchProfile } = useQuery({
     queryKey: ['user-profile'],
     queryFn: async () => {
@@ -225,62 +199,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
 
   const [usePoints, setUsePoints] = useState(false);
 
-  const addresses = addressesData ?? [];
-  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (addresses.length > 0 && !selectedAddressId) {
-      const defaultAddr = addresses.find((a) => a.isDefault);
-      setSelectedAddressId(defaultAddr ? defaultAddr.id : addresses[0].id);
-    }
-  }, [addresses, selectedAddressId]);
-
-  // Add address form state
-  const [showAddAddress, setShowAddAddress] = useState(false);
-  const [addressLabel, setAddressLabel] = useState('Home');
-  const [addressFlat, setAddressFlat] = useState('');
-  const [addressStreet, setAddressStreet] = useState('');
-  const [addressArea, setAddressArea] = useState('');
-  const [addressCity, setAddressCity] = useState('');
-  const [addressPincode, setAddressPincode] = useState('');
-  const [addingAddress, setAddingAddress] = useState(false);
-
-  const handleAddAddress = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!addressFlat || !addressStreet || !addressArea || !addressCity || !addressPincode) {
-      toast.error('Please fill in all address fields.');
-      return;
-    }
-    setAddingAddress(true);
-    try {
-      const response = await api.post('/profile/addresses', {
-        label: addressLabel,
-        flat: addressFlat,
-        street: addressStreet,
-        area: addressArea,
-        city: addressCity,
-        pincode: addressPincode,
-        isDefault: addresses.length === 0,
-      });
-      const newAddr = response.data.data.address as Address;
-      toast.success('Address added successfully! 🎉');
-      setSelectedAddressId(newAddr.id);
-      setShowAddAddress(false);
-      
-      setAddressFlat('');
-      setAddressStreet('');
-      setAddressArea('');
-      setAddressCity('');
-      setAddressPincode('');
-      
-      await refetchAddresses();
-    } catch {
-      toast.error('Failed to add address.');
-    } finally {
-      setAddingAddress(false);
-    }
-  };
-
+  
   const { items, couponCode, couponDiscount, clearCart, subtotal, total, removeItem } = useCartStore();
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -330,10 +249,8 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
 
   const subtotalAmount = mounted ? subtotal() : 0;
   const gst = subtotalAmount * GST_RATE;
-  const isDineIn = diningOption === 'DINE_IN';
-  const deliveryPlusPackaging = isDineIn ? 0 : (DELIVERY_FEE + PACKAGING_FEE);
   const finalCouponDiscount = addonOrderId ? 0 : couponDiscount;
-  const grandTotalBeforePoints = Math.max(subtotalAmount + gst + deliveryPlusPackaging - finalCouponDiscount, 0);
+  const grandTotalBeforePoints = Math.max(subtotalAmount + gst - finalCouponDiscount, 0);
 
   const pointsAvailable = profileData?.loyaltyPoints ?? activeUser?.loyaltyPoints ?? 0;
   const maxPointsDiscount = pointsAvailable / pointsPerDiscountRupee;
@@ -411,24 +328,17 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
       toast.error('Your cart is empty');
       return;
     }
-    if (diningOption === 'DINE_IN' && (!manualTableNumber || !manualTableNumber.trim())) {
+    if (!manualTableNumber || !manualTableNumber.trim()) {
       toast.error('Please enter your table or room number.');
-      return;
-    }
-    if (diningOption === 'DELIVERY' && (!addressFlat || !addressStreet || !addressCity || !addressPincode)) {
-      toast.error('Please fill in your delivery address.');
       return;
     }
     setLoading(true);
     try {
       const token = tableToken || localStorage.getItem(`table_token_${restaurantSlug}`) || (manualTableNumber ? generateUniqueTableCode(restaurantSlug, manualTableNumber.trim()) : '');
-      const deliveryAddressStr = diningOption === 'DELIVERY'
-        ? [addressFlat, addressStreet, addressArea, addressCity, addressPincode].filter(Boolean).join(', ')
-        : '';
-      const response = await api.post('/orders/guest', {
+            const response = await api.post('/orders/guest', {
         guestName: formData.guestName?.trim() || 'Guest',
         guestPhone: formData.guestPhone?.trim() || '',
-        tableNumber: diningOption === 'DELIVERY' ? (deliveryAddressStr ? `Delivery: ${deliveryAddressStr}` : 'Delivery') : (manualTableNumber || '1'),
+        tableNumber: manualTableNumber ? manualTableNumber.trim() : '1',
         tableToken: token,
         paymentMethod: selectedPayment,
         isDirect: selectedPayment === 'RAZORPAY' && onlinePaymentType === 'DIRECT',
@@ -474,19 +384,16 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
 
   const onUserOrder = async () => {
     if (items.length === 0) return;
-    if (diningOption === 'DINE_IN' && (!manualTableNumber || !manualTableNumber.trim())) {
+    if (!manualTableNumber || !manualTableNumber.trim()) {
       toast.error('Please enter your table or room number.');
-      return;
-    }
-    if (diningOption === 'DELIVERY' && !selectedAddressId) {
-      toast.error('Please select or add a delivery address.');
       return;
     }
     setLoading(true);
     try {
       const token = tableToken || localStorage.getItem(`table_token_${restaurantSlug}`) || (manualTableNumber ? generateUniqueTableCode(restaurantSlug, manualTableNumber.trim()) : '');
       const response = await api.post('/orders', {
-        ...(diningOption === 'DINE_IN' ? { tableNumber: manualTableNumber || undefined, tableToken: token } : { addressId: selectedAddressId }),
+        tableNumber: manualTableNumber ? manualTableNumber.trim() : undefined,
+        tableToken: token,
         paymentMethod: selectedPayment,
         isDirect: selectedPayment === 'RAZORPAY' && onlinePaymentType === 'DIRECT',
         couponCode: couponCode ?? undefined,
@@ -579,34 +486,6 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
       </div>
 
       <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
-        {/* Dining Option Selector: Dine-In vs Home Delivery */}
-        {hasDelivery && (
-          <div className="bg-card border border-border rounded-2xl p-1.5 flex gap-1.5 shadow-xs">
-            <button
-              type="button"
-              onClick={() => setDiningOption('DINE_IN')}
-              className={`flex-1 py-2.5 rounded-xl font-semibold text-xs transition-all flex items-center justify-center gap-2 ${
-                diningOption === 'DINE_IN'
-                  ? 'bg-primary text-white shadow-sm'
-                  : 'text-muted-foreground hover:bg-muted'
-              }`}
-            >
-              <UtensilsCrossed className="w-4 h-4" /> Dine-In / In-Restaurant
-            </button>
-            <button
-              type="button"
-              onClick={() => setDiningOption('DELIVERY')}
-              className={`flex-1 py-2.5 rounded-xl font-semibold text-xs transition-all flex items-center justify-center gap-2 ${
-                diningOption === 'DELIVERY'
-                  ? 'bg-primary text-white shadow-sm'
-                  : 'text-muted-foreground hover:bg-muted'
-              }`}
-            >
-              <Bike className="w-4 h-4" /> Home Delivery
-            </button>
-          </div>
-        )}
-
         {/* Order Summary */}
         <div className="bg-card border border-border rounded-2xl p-4">
           <h2 className="font-display font-semibold mb-3">Order Summary</h2>
@@ -625,11 +504,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
             <div className="flex justify-between text-muted-foreground">
               <span>GST (18%)</span><span suppressHydrationWarning>₹{gst.toFixed(2)}</span>
             </div>
-            {!isDineIn && (
-              <div className="flex justify-between text-muted-foreground">
-                <span>Delivery + Packaging</span><span>₹{DELIVERY_FEE + PACKAGING_FEE}</span>
-              </div>
-            )}
+            
             {mounted && !addonOrderId && couponDiscount > 0 && (
               <div className="flex justify-between text-green-600">
                 <span>Coupon ({couponCode})</span><span>-₹{couponDiscount.toFixed(2)}</span>
@@ -645,144 +520,6 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
             </div>
           </div>
         </div>
-
-        {/* Home Delivery Address Selector (Logged in users only) */}
-        {diningOption === 'DELIVERY' && activeUser && (
-          <div className="bg-card border border-border rounded-2xl p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-display font-semibold flex items-center gap-2 text-sm text-foreground">
-                <MapPin className="w-4 h-4 text-primary" /> Delivery Address
-              </h2>
-              {!showAddAddress && (
-                <button
-                  type="button"
-                  onClick={() => setShowAddAddress(true)}
-                  className="text-xs text-primary font-semibold hover:underline flex items-center gap-1"
-                >
-                  <Plus className="w-3 h-3" /> Add Address
-                </button>
-              )}
-            </div>
-
-            {showAddAddress ? (
-              <form onSubmit={handleAddAddress} className="space-y-3 border-t border-border pt-4">
-                <div className="flex gap-2">
-                  {['Home', 'Work', 'Other'].map((lbl) => (
-                    <button
-                      key={lbl}
-                      type="button"
-                      onClick={() => setAddressLabel(lbl)}
-                      className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-all ${
-                        addressLabel === lbl
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border text-muted-foreground hover:bg-muted'
-                      }`}
-                    >
-                      {lbl}
-                    </button>
-                  ))}
-                </div>
-                <div className="grid sm:grid-cols-2 gap-3">
-                  <input
-                    placeholder="Flat / House No. / Building"
-                    value={addressFlat}
-                    onChange={(e) => setAddressFlat(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 bg-muted rounded-lg text-xs border-0 focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
-                  />
-                  <input
-                    placeholder="Street / Locality"
-                    value={addressStreet}
-                    onChange={(e) => setAddressStreet(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 bg-muted rounded-lg text-xs border-0 focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
-                  />
-                </div>
-                <div className="grid sm:grid-cols-3 gap-3">
-                  <input
-                    placeholder="Area"
-                    value={addressArea}
-                    onChange={(e) => setAddressArea(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 bg-muted rounded-lg text-xs border-0 focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
-                  />
-                  <input
-                    placeholder="City"
-                    value={addressCity}
-                    onChange={(e) => setAddressCity(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 bg-muted rounded-lg text-xs border-0 focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
-                  />
-                  <input
-                    placeholder="Pincode"
-                    value={addressPincode}
-                    onChange={(e) => setAddressPincode(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 bg-muted rounded-lg text-xs border-0 focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
-                  />
-                </div>
-                <div className="flex gap-2 justify-end pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddAddress(false)}
-                    className="px-3.5 py-1.5 rounded-lg border border-border text-xs font-semibold hover:bg-muted text-foreground"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={addingAddress}
-                    className="px-4 py-1.5 rounded-lg text-white bg-primary hover:bg-primary/95 text-xs font-semibold disabled:opacity-60 flex items-center gap-1.5"
-                  >
-                    {addingAddress && <Loader2 className="w-3 h-3 animate-spin" />}
-                    Save Address
-                  </button>
-                </div>
-              </form>
-            ) : addresses.length === 0 ? (
-              <div className="text-center py-6 border border-dashed border-border rounded-xl space-y-3">
-                <p className="text-xs text-muted-foreground">No saved addresses found.</p>
-                <button
-                  type="button"
-                  onClick={() => setShowAddAddress(true)}
-                  className="px-4 py-2 bg-primary/10 text-primary hover:bg-primary/20 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 mx-auto"
-                >
-                  <PlusCircle className="w-4 h-4" /> Add Delivery Address
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                {addresses.map((addr) => (
-                  <button
-                    key={addr.id}
-                    type="button"
-                    onClick={() => setSelectedAddressId(addr.id)}
-                    className={`w-full flex items-start gap-3 p-3 rounded-xl border text-left transition-all ${
-                      selectedAddressId === addr.id
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:bg-muted/50'
-                    }`}
-                  >
-                    <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center text-muted-foreground flex-shrink-0 mt-0.5">
-                      {addr.label === 'Home' ? <Home className="w-4 h-4" /> : addr.label === 'Work' ? <Briefcase className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-xs text-foreground">{addr.label}</span>
-                        {addr.isDefault && <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">Default</span>}
-                      </div>
-                      <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{addr.flat}, {addr.street}</p>
-                      <p className="text-[11px] text-muted-foreground truncate">{addr.area}, {addr.city} - {addr.pincode}</p>
-                    </div>
-                    {selectedAddressId === addr.id && (
-                      <Check className="w-4 h-4 text-primary mt-1 flex-shrink-0" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Loyalty Points Card */}
         {loyaltyEnabled && activeUser && pointsAvailable > 0 && !addonOrderId && (
@@ -982,8 +719,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                 <p className="text-xs text-muted-foreground">{activeUser.email}</p>
               </div>
             </div>
-            {diningOption === 'DINE_IN' && (
-              <div className="mt-4">
+                          <div className="mt-4">
                 <label className="text-xs font-semibold text-muted-foreground mb-1 flex items-center justify-between">
                   <span>Table Number <span className="text-red-500">*</span></span>
                   {hasTableToken || !!tableNumber ? (
@@ -1009,7 +745,6 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                   }`}
                 />
               </div>
-            )}
             <button
               onClick={onUserOrder}
               disabled={loading || items.length === 0}
@@ -1057,8 +792,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
               </div>
             </div>
 
-            {diningOption === 'DINE_IN' && (
-              <div>
+                          <div>
                 <label className="text-sm font-medium mb-1.5 flex items-center justify-between">
                   <span>Table / Room Number <span className="text-red-500">*</span></span>
                   {hasTableToken ? (
@@ -1084,56 +818,6 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                   }`}
                 />
               </div>
-            )}
-
-            {diningOption === 'DELIVERY' && (
-              <div className="space-y-3 pt-2 border-t border-border/50">
-                <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-primary" /> Delivery Address
-                </label>
-                <div className="grid sm:grid-cols-2 gap-2.5">
-                  <input
-                    placeholder="Flat / House No. / Building *"
-                    value={addressFlat}
-                    onChange={(e) => setAddressFlat(e.target.value)}
-                    required
-                    className="w-full px-3 py-2.5 bg-muted rounded-xl text-xs border-0 focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
-                  />
-                  <input
-                    placeholder="Street / Locality *"
-                    value={addressStreet}
-                    onChange={(e) => setAddressStreet(e.target.value)}
-                    required
-                    className="w-full px-3 py-2.5 bg-muted rounded-xl text-xs border-0 focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
-                  />
-                </div>
-                <div className="grid sm:grid-cols-3 gap-2.5">
-                  <input
-                    placeholder="Area *"
-                    value={addressArea}
-                    onChange={(e) => setAddressArea(e.target.value)}
-                    required
-                    className="w-full px-3 py-2.5 bg-muted rounded-xl text-xs border-0 focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
-                  />
-                  <input
-                    placeholder="City *"
-                    value={addressCity}
-                    onChange={(e) => setAddressCity(e.target.value)}
-                    required
-                    className="w-full px-3 py-2.5 bg-muted rounded-xl text-xs border-0 focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
-                  />
-                  <input
-                    placeholder="Pincode *"
-                    value={addressPincode}
-                    onChange={(e) => setAddressPincode(e.target.value)}
-                    required
-                    className="w-full px-3 py-2.5 bg-muted rounded-xl text-xs border-0 focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
-                  />
-                </div>
-              </div>
-            )}
-
-
             <button
               type="submit"
               disabled={loading || items.length === 0}
