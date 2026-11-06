@@ -3,6 +3,9 @@ FROM node:20-alpine AS builder
 RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 
+# Force development mode during build so devDependencies (TypeScript, compilers) are installed
+ENV NODE_ENV=development
+
 # Copy root manifests
 COPY package.json package-lock.json ./
 
@@ -10,8 +13,8 @@ COPY package.json package-lock.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY backend/package.json         ./backend/
 
-# Install ALL workspace dependencies from the root
-RUN npm ci
+# Install ALL workspace dependencies from the root including devDependencies
+RUN npm ci --include=dev
 
 # Copy source files
 COPY packages/shared/ ./packages/shared/
