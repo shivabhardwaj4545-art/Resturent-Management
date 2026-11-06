@@ -38,7 +38,7 @@ jobs:
       target_env: ${{ steps.set-env.outputs.target_env }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Detect Changed Paths
         uses: dorny/paths-filter@v3
