@@ -9,8 +9,9 @@ ENV NODE_ENV=development
 # Copy root manifests
 COPY package.json package-lock.json ./
 
-# Copy workspace package manifests
+# Copy all workspace package manifests so npm workspace graph is complete
 COPY packages/shared/package.json ./packages/shared/
+COPY backend/package.json         ./backend/
 COPY frontend/package.json        ./frontend/
 
 # Install ALL workspace dependencies from the root including devDependencies

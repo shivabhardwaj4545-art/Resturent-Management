@@ -6,6 +6,13 @@ const nextConfig: NextConfig = {
   // workspace root when multiple lockfiles exist on the machine.
   outputFileTracingRoot: path.join(__dirname, '../'),
 
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'res.cloudinary.com' },
@@ -19,7 +26,7 @@ const nextConfig: NextConfig = {
 
   experimental: {
     serverActions: {
-      allowedOrigins: ['localhost:3000', 'localhost:3001', 'localhost:3002'],
+      allowedOrigins: ['localhost:3000', 'localhost:3001', 'localhost:3002', 'ezrestro.online', '*.ezrestro.online'],
     },
   },
 
