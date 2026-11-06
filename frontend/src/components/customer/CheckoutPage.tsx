@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, CreditCard, Banknote, Wallet, MapPin, User, Phone, Loader2, Plus, PlusCircle, Check, Home, Briefcase, Lock, X, Smartphone, Building, Gift, Copy, QrCode } from 'lucide-react';
+import { ChevronLeft, CreditCard, Banknote, Wallet, MapPin, User, Phone, Loader2, Plus, PlusCircle, Check, Home, Briefcase, Lock, X, Smartphone, Building, Gift, Copy, QrCode, UtensilsCrossed, Bike } from 'lucide-react';
 import { useCartStore } from '@/store/cart.store';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/services/api';
@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getImageUrl } from '@/lib/image';
+import { generateUniqueTableCode } from '@/utils/tableCode';
 import QRCode from 'qrcode';
 
 declare global {
@@ -118,8 +119,9 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
   const [diningOption, setDiningOption] = useState<'DINE_IN' | 'DELIVERY'>('DINE_IN');
 
   useEffect(() => {
-    setDiningOption(isTableVerified ? 'DINE_IN' : (hasDelivery ? 'DELIVERY' : 'DINE_IN'));
-  }, [restaurant, hasDelivery]);
+    // Default to DINE_IN for restaurant & table QR ordering
+    setDiningOption('DINE_IN');
+  }, []);
 
   const [manualTableNumber, setManualTableNumber] = useState(tableNumber || '');
 
@@ -409,21 +411,24 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
       toast.error('Your cart is empty');
       return;
     }
-    if (diningOption === 'DINE_IN' && !hasTableToken) {
-      toast.error('Dine-in orders require scanning a valid table QR code inside the restaurant.');
+    if (diningOption === 'DINE_IN' && (!manualTableNumber || !manualTableNumber.trim())) {
+      toast.error('Please enter your table or room number.');
       return;
     }
-    if (diningOption === 'DINE_IN' && (!manualTableNumber || !manualTableNumber.trim())) {
-      toast.error('Please enter your table number.');
+    if (diningOption === 'DELIVERY' && (!addressFlat || !addressStreet || !addressCity || !addressPincode)) {
+      toast.error('Please fill in your delivery address.');
       return;
     }
     setLoading(true);
     try {
-      const token = tableToken || localStorage.getItem(`table_token_${restaurantSlug}`) || '';
+      const token = tableToken || localStorage.getItem(`table_token_${restaurantSlug}`) || (manualTableNumber ? generateUniqueTableCode(restaurantSlug, manualTableNumber.trim()) : '');
+      const deliveryAddressStr = diningOption === 'DELIVERY'
+        ? [addressFlat, addressStreet, addressArea, addressCity, addressPincode].filter(Boolean).join(', ')
+        : '';
       const response = await api.post('/orders/guest', {
         guestName: formData.guestName?.trim() || 'Guest',
         guestPhone: formData.guestPhone?.trim() || '',
-        tableNumber: manualTableNumber || undefined,
+        tableNumber: diningOption === 'DELIVERY' ? (deliveryAddressStr ? `Delivery: ${deliveryAddressStr}` : 'Delivery') : (manualTableNumber || '1'),
         tableToken: token,
         paymentMethod: selectedPayment,
         isDirect: selectedPayment === 'RAZORPAY' && onlinePaymentType === 'DIRECT',
@@ -469,12 +474,8 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
 
   const onUserOrder = async () => {
     if (items.length === 0) return;
-    if (diningOption === 'DINE_IN' && !hasTableToken) {
-      toast.error('Dine-in orders require scanning a valid table QR code inside the restaurant.');
-      return;
-    }
     if (diningOption === 'DINE_IN' && (!manualTableNumber || !manualTableNumber.trim())) {
-      toast.error('Please enter your table number.');
+      toast.error('Please enter your table or room number.');
       return;
     }
     if (diningOption === 'DELIVERY' && !selectedAddressId) {
@@ -483,7 +484,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
     }
     setLoading(true);
     try {
-      const token = tableToken || localStorage.getItem(`table_token_${restaurantSlug}`) || '';
+      const token = tableToken || localStorage.getItem(`table_token_${restaurantSlug}`) || (manualTableNumber ? generateUniqueTableCode(restaurantSlug, manualTableNumber.trim()) : '');
       const response = await api.post('/orders', {
         ...(diningOption === 'DINE_IN' ? { tableNumber: manualTableNumber || undefined, tableToken: token } : { addressId: selectedAddressId }),
         paymentMethod: selectedPayment,
@@ -578,7 +579,33 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
       </div>
 
       <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
-        {/* Dining Option Selector removed (Dine-In only) */}
+        {/* Dining Option Selector: Dine-In vs Home Delivery */}
+        {hasDelivery && (
+          <div className="bg-card border border-border rounded-2xl p-1.5 flex gap-1.5 shadow-xs">
+            <button
+              type="button"
+              onClick={() => setDiningOption('DINE_IN')}
+              className={`flex-1 py-2.5 rounded-xl font-semibold text-xs transition-all flex items-center justify-center gap-2 ${
+                diningOption === 'DINE_IN'
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              <UtensilsCrossed className="w-4 h-4" /> Dine-In / In-Restaurant
+            </button>
+            <button
+              type="button"
+              onClick={() => setDiningOption('DELIVERY')}
+              className={`flex-1 py-2.5 rounded-xl font-semibold text-xs transition-all flex items-center justify-center gap-2 ${
+                diningOption === 'DELIVERY'
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              <Bike className="w-4 h-4" /> Home Delivery
+            </button>
+          </div>
+        )}
 
         {/* Order Summary */}
         <div className="bg-card border border-border rounded-2xl p-4">
@@ -785,16 +812,30 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
           </div>
         )}
 
-        {/* Payment Method */}
-        {!(diningOption === 'DELIVERY' && !activeUser) && (
-          <div className="bg-card border border-border rounded-2xl p-4">
-            <h2 className="font-display font-semibold mb-3">Payment Method</h2>
-            <div className="space-y-2">
-              {[
-                { value: 'RAZORPAY', label: 'Pay Online', sublabel: 'UPI, Cards, Net Banking', icon: <CreditCard className="w-5 h-5" /> },
-                { value: 'COD', label: 'Pay on Counter', sublabel: 'Pay cash or card at the counter', icon: <Banknote className="w-5 h-5" /> },
-                { value: 'PAY_TO_WAITER', label: 'Pay to Waiter', sublabel: 'Pay at your table (Cash/UPI/Card)', icon: <User className="w-5 h-5" /> },
-              ].map((method) => (
+        {/* Payment Method - 3 Options: Pay to Waiter, Pay on Counter, Pay via UPI */}
+        <div className="bg-card border border-border rounded-2xl p-4">
+          <h2 className="font-display font-semibold mb-3">Payment Method</h2>
+          <div className="space-y-2">
+            {[
+              {
+                value: 'PAY_TO_WAITER',
+                label: 'Pay to Waiter',
+                sublabel: 'Pay cash, UPI, or card to your waiter at your table',
+                icon: <User className="w-5 h-5 text-orange-500" />,
+              },
+              {
+                value: 'COD',
+                label: 'Pay on Counter',
+                sublabel: 'Pay cash or card at the restaurant counter',
+                icon: <Banknote className="w-5 h-5 text-emerald-500" />,
+              },
+              {
+                value: 'RAZORPAY',
+                label: 'Pay via UPI',
+                sublabel: 'Instant UPI via Google Pay, PhonePe, Paytm, or QR scan',
+                icon: <Smartphone className="w-5 h-5 text-primary" />,
+              },
+            ].map((method) => (
                 <button
                   key={method.value}
                   type="button"
@@ -820,9 +861,38 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                 </button>
               ))}
             </div>
+        </div>
 
-            {/* Direct Payment sub-options removed to directly present owner QR & bank details */}
-          </div>
+        {selectedPayment === 'PAY_TO_WAITER' && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-card border border-border rounded-2xl p-4 space-y-2 shadow-xs"
+          >
+            <div className="flex items-center gap-2 text-primary">
+              <User className="w-4 h-4" />
+              <h3 className="font-display font-semibold text-xs text-foreground">Pay to Waiter</h3>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Place your order now. Your waiter will serve your food and bring the bill to your table, where you can pay via Cash, Card, or UPI scan.
+            </p>
+          </motion.div>
+        )}
+
+        {selectedPayment === 'COD' && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-card border border-border rounded-2xl p-4 space-y-2 shadow-xs"
+          >
+            <div className="flex items-center gap-2 text-primary">
+              <Banknote className="w-4 h-4" />
+              <h3 className="font-display font-semibold text-xs text-foreground">Pay on Counter</h3>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Place your order now. You can settle the bill with cash or card directly at the restaurant counter.
+            </p>
+          </motion.div>
         )}
 
         {selectedPayment === 'RAZORPAY' && (
@@ -853,29 +923,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
           </motion.div>
         )}
 
-        {diningOption === 'DELIVERY' && !activeUser ? (
-          <div className="bg-card border border-border rounded-2xl p-6 text-center space-y-4 shadow-xl relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 via-transparent to-transparent pointer-events-none" />
-            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto text-primary text-2xl">
-              🔑
-            </div>
-            <h2 className="font-display font-bold text-lg text-foreground">Customer Login Required</h2>
-            <p className="text-muted-foreground text-sm max-w-sm mx-auto leading-relaxed">
-              To request Home Delivery, you must log in to your account. This ensures you can track your order and save delivery addresses.
-            </p>
-            <div className="pt-2">
-              <Link
-                href={`/login?restaurant=${restaurantSlug}`}
-                className="inline-block px-8 py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-semibold rounded-xl shadow-lg shadow-orange-500/10 transition-all active:scale-95"
-              >
-                Log In to Continue
-              </Link>
-            </div>
-            <p className="text-xs text-muted-foreground pt-1">
-              Don't have an account? <Link href={`/register?restaurant=${restaurantSlug}`} className="text-primary hover:underline font-semibold">Sign up</Link>
-            </p>
-          </div>
-        ) : activeUser && activeUser.role !== 'CUSTOMER' ? (
+        {activeUser && activeUser.role !== 'CUSTOMER' ? (
           <div className="bg-card border border-border rounded-2xl p-6 text-center space-y-4 shadow-xl relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-br from-red-500/5 via-transparent to-transparent pointer-events-none" />
             <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto text-red-500 text-2xl">
@@ -973,7 +1021,15 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
           </div>
         ) : (
           <form onSubmit={handleSubmit(onGuestSubmit)} className="bg-card border border-border rounded-2xl p-4 space-y-4">
-            <h2 className="font-display font-semibold">Your Details</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="font-display font-semibold">Your Details</h2>
+              <Link
+                href={`/login?restaurant=${restaurantSlug}`}
+                className="text-xs text-primary font-semibold hover:underline"
+              >
+                Have an account? Log in (Optional)
+              </Link>
+            </div>
 
             <div>
               <label className="text-sm font-medium mb-1.5 block">Full Name <span className="text-muted-foreground text-xs font-normal">(Optional)</span></label>
@@ -1004,20 +1060,20 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
             {diningOption === 'DINE_IN' && (
               <div>
                 <label className="text-sm font-medium mb-1.5 flex items-center justify-between">
-                  <span>Table Number <span className="text-red-500">*</span></span>
+                  <span>Table / Room Number <span className="text-red-500">*</span></span>
                   {hasTableToken ? (
                     <span className="text-[10px] text-green-600 bg-green-500/10 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
-                      <Lock className="w-3 h-3" /> Scanned Table QR (Locked)
+                      <Lock className="w-3 h-3" /> Scanned QR (Locked)
                     </span>
                   ) : (
-                    <span className="text-[10px] text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-full font-medium">
-                      Table QR Scan Required
+                    <span className="text-[10px] text-muted-foreground">
+                      Enter your table or room
                     </span>
                   )}
                 </label>
                 <input
                   type="text"
-                  placeholder="Enter Table Number (e.g. 5, A2)"
+                  placeholder="Enter Table Number (e.g. 5, 11, Room 102)"
                   value={manualTableNumber}
                   readOnly={hasTableToken}
                   onChange={(e) => !hasTableToken && handleTableNumberChange(e.target.value)}
@@ -1027,6 +1083,53 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                       : 'bg-muted focus:ring-2 focus:ring-primary/20'
                   }`}
                 />
+              </div>
+            )}
+
+            {diningOption === 'DELIVERY' && (
+              <div className="space-y-3 pt-2 border-t border-border/50">
+                <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-primary" /> Delivery Address
+                </label>
+                <div className="grid sm:grid-cols-2 gap-2.5">
+                  <input
+                    placeholder="Flat / House No. / Building *"
+                    value={addressFlat}
+                    onChange={(e) => setAddressFlat(e.target.value)}
+                    required
+                    className="w-full px-3 py-2.5 bg-muted rounded-xl text-xs border-0 focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                  />
+                  <input
+                    placeholder="Street / Locality *"
+                    value={addressStreet}
+                    onChange={(e) => setAddressStreet(e.target.value)}
+                    required
+                    className="w-full px-3 py-2.5 bg-muted rounded-xl text-xs border-0 focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                  />
+                </div>
+                <div className="grid sm:grid-cols-3 gap-2.5">
+                  <input
+                    placeholder="Area *"
+                    value={addressArea}
+                    onChange={(e) => setAddressArea(e.target.value)}
+                    required
+                    className="w-full px-3 py-2.5 bg-muted rounded-xl text-xs border-0 focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                  />
+                  <input
+                    placeholder="City *"
+                    value={addressCity}
+                    onChange={(e) => setAddressCity(e.target.value)}
+                    required
+                    className="w-full px-3 py-2.5 bg-muted rounded-xl text-xs border-0 focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                  />
+                  <input
+                    placeholder="Pincode *"
+                    value={addressPincode}
+                    onChange={(e) => setAddressPincode(e.target.value)}
+                    required
+                    className="w-full px-3 py-2.5 bg-muted rounded-xl text-xs border-0 focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                  />
+                </div>
               </div>
             )}
 
