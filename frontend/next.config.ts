@@ -4,7 +4,7 @@ import path from 'path';
 const nextConfig: NextConfig = {
   // Explicitly set the monorepo root so Next.js doesn't pick the wrong
   // workspace root when multiple lockfiles exist on the machine.
-  outputFileTracingRoot: path.join(__dirname, '../../'),
+  outputFileTracingRoot: path.join(__dirname, '../'),
 
   images: {
     remotePatterns: [
