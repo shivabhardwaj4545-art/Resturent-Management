@@ -67,6 +67,7 @@ interface CheckoutPageProps {
   restaurantSlug: string;
   tableNumber?: string;
   tableToken?: string;
+  isTableVerified?: boolean;
 }
 
 const saveOrderToRecent = (orderId: string, restaurantSlug: string) => {
@@ -91,7 +92,7 @@ const saveOrderToRecent = (orderId: string, restaurantSlug: string) => {
 };
 
 
-export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: CheckoutPageProps) {
+export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableVerified }: CheckoutPageProps) {
   const router = useRouter();
   const { user: rawUser, accessToken, logout } = useAuthStore();
   const queryClient = useQueryClient();
@@ -117,13 +118,13 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
   const [diningOption, setDiningOption] = useState<'DINE_IN' | 'DELIVERY'>('DINE_IN');
 
   useEffect(() => {
-    setDiningOption('DINE_IN');
+    setDiningOption(isTableVerified ? 'DINE_IN' : (hasDelivery ? 'DELIVERY' : 'DINE_IN'));
   }, [restaurant, hasDelivery]);
 
   const [manualTableNumber, setManualTableNumber] = useState(tableNumber || '');
 
   useEffect(() => {
-    if (!tableNumber) {
+    if (!tableNumber || !isTableVerified) {
       const storedTable = localStorage.getItem(`table_num_${restaurantSlug}`);
       if (storedTable) {
         setManualTableNumber(storedTable);
@@ -131,7 +132,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
     } else {
       setManualTableNumber(tableNumber);
     }
-  }, [tableNumber, restaurantSlug]);
+  }, [tableNumber, isTableVerified, restaurantSlug]);
 
   const handleTableNumberChange = (val: string) => {
     setManualTableNumber(val);
@@ -143,7 +144,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
   };
 
   const hasTableToken = useMemo(() => {
-    if (tableToken && tableToken.trim() !== '') return true;
+    if (isTableVerified || (tableToken && tableToken.trim() !== '')) return true;
     if (typeof window !== 'undefined') {
       const storedToken = localStorage.getItem(`table_token_${restaurantSlug}`);
       return !!(storedToken && storedToken.trim() !== '');
@@ -408,6 +409,10 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
       toast.error('Your cart is empty');
       return;
     }
+    if (diningOption === 'DINE_IN' && !hasTableToken) {
+      toast.error('Dine-in orders require scanning a valid table QR code inside the restaurant.');
+      return;
+    }
     if (diningOption === 'DINE_IN' && (!manualTableNumber || !manualTableNumber.trim())) {
       toast.error('Please enter your table number.');
       return;
@@ -464,6 +469,10 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
 
   const onUserOrder = async () => {
     if (items.length === 0) return;
+    if (diningOption === 'DINE_IN' && !hasTableToken) {
+      toast.error('Dine-in orders require scanning a valid table QR code inside the restaurant.');
+      return;
+    }
     if (diningOption === 'DINE_IN' && (!manualTableNumber || !manualTableNumber.trim())) {
       toast.error('Please enter your table number.');
       return;
@@ -935,7 +944,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
                     </span>
                   ) : (
                     <span className="text-[10px] text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-full font-medium">
-                      General QR (Enter Table No.)
+                      Table QR Scan Required
                     </span>
                   )}
                 </label>
@@ -1002,7 +1011,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken }: Checko
                     </span>
                   ) : (
                     <span className="text-[10px] text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-full font-medium">
-                      General QR (Enter Table No.)
+                      Table QR Scan Required
                     </span>
                   )}
                 </label>

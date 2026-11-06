@@ -441,7 +441,7 @@ export function OwnerSettingsPage() {
 
   // Clean, obfuscated unique location QR code URL
   const qrUrl = data
-    ? `${typeof window !== 'undefined' ? window.location.origin : ''}/r/${data.slug}${uniqueTableCode ? `?t=${encodeURIComponent(uniqueTableCode)}` : ''}`
+    ? (uniqueTableCode ? `${typeof window !== 'undefined' ? window.location.origin : ''}/t/${encodeURIComponent(uniqueTableCode)}` : `${typeof window !== 'undefined' ? window.location.origin : ''}/r/${data.slug}`)
     : '';
 
   useEffect(() => {
@@ -1189,7 +1189,7 @@ export function OwnerSettingsPage() {
                       {/* Actions */}
                       <div className="flex flex-wrap gap-3 pt-2">
                         <Link
-                          href={qrUrl ? `/r/${data.slug}${uniqueTableCode ? `?t=${encodeURIComponent(uniqueTableCode)}` : ''}` : '#'}
+                          href={uniqueTableCode ? `/t/${encodeURIComponent(uniqueTableCode)}` : (data?.slug ? `/r/${data.slug}` : '#')}
                           target="_blank"
                           className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-muted hover:bg-muted/70 rounded-xl text-sm font-semibold transition-colors text-foreground"
                         >

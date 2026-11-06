@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { RestaurantMenuPage } from '@/components/customer/RestaurantMenuPage';
+import { resolveTableToken } from '@qr-restaurant/shared';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -30,31 +31,28 @@ export default async function MenuPage({ params, searchParams }: PageProps) {
 
   let effectiveTable: string | undefined = undefined;
   let effectiveToken: string | undefined = undefined;
+  let isTableVerified = false;
 
+  // 1. Verify cryptographic table token (?t=...)
   if (resolvedSearchParams.t) {
-    try {
-      const decoded = Buffer.from(resolvedSearchParams.t, 'base64').toString('utf-8');
-      const parts = decoded.split(':');
-      if (parts.length >= 2 && parts[0]) {
-        effectiveTable = parts[0];
-        effectiveToken = parts[1];
-      } else if (parts.length === 1 && parts[0]) {
-        effectiveTable = parts[0];
-      }
-    } catch {
-      // Invalid t token payload
+    const tokenResult = resolveTableToken(resolvedSearchParams.t, slug);
+    if (tokenResult.valid && tokenResult.tableNumber) {
+      effectiveTable = tokenResult.tableNumber;
+      effectiveToken = resolvedSearchParams.t;
+      isTableVerified = true;
     }
-  } else if (resolvedSearchParams.table && resolvedSearchParams.token) {
+  } else if (resolvedSearchParams.preview === 'true') {
+    // Owner preview in dashboard
     effectiveTable = resolvedSearchParams.table;
-    effectiveToken = resolvedSearchParams.token;
-  } else if (resolvedSearchParams.table) {
-    effectiveTable = resolvedSearchParams.table;
+    isTableVerified = true;
   }
 
   return (
     <RestaurantMenuPage
       slug={slug}
       tableNumber={effectiveTable}
+      tableToken={effectiveToken}
+      isTableVerified={isTableVerified}
       searchParams={{
         ...resolvedSearchParams,
         table: effectiveTable,

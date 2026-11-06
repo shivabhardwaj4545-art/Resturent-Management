@@ -270,9 +270,10 @@ export async function callWaiter(
     }
 
     // Verify cryptographic signature of the table number ONLY if ENFORCE_TABLE_SIGNATURE is set to true
-    if (tableToken && typeof tableToken === 'string' && tableToken.trim() !== '' && process.env.ENFORCE_TABLE_SIGNATURE === 'true') {
-      if (!verifyTableSignature(restaurant.id, tableNumber.trim(), tableToken)) {
-        throw new AppError('Invalid table QR code signature. Please scan the QR code on your table.', 403, 'INVALID_TABLE_TOKEN');
+    const enforceWaiterSignature = process.env.ENFORCE_TABLE_SIGNATURE === 'true' || process.env.NODE_ENV === 'production';
+    if (enforceWaiterSignature) {
+      if (!tableToken || (!verifyTableSignature(restaurant.id, cleanTable, tableToken) && !verifyTableSignature(restaurantSlug, cleanTable, tableToken))) {
+        throw new AppError('Calling a waiter requires scanning a valid table QR code.', 403, 'INVALID_TABLE_TOKEN');
       }
     }
     const label = isRoom ? (cleanTable.toLowerCase().startsWith('room') ? cleanTable : `Room ${cleanTable}`) : (cleanTable.toLowerCase().startsWith('table') ? cleanTable : `Table ${cleanTable}`);

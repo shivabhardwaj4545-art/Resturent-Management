@@ -53,6 +53,8 @@ function formatTimer(seconds: number): string {
 interface RestaurantMenuPageProps {
   slug: string;
   tableNumber?: string;
+  tableToken?: string;
+  isTableVerified?: boolean;
   searchParams?: {
     table?: string;
     t?: string;
@@ -67,7 +69,7 @@ interface RestaurantMenuPageProps {
   };
 }
 
-export function RestaurantMenuPage({ slug, tableNumber, searchParams }: RestaurantMenuPageProps) {
+export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerified, searchParams }: RestaurantMenuPageProps) {
   const queryClient = useQueryClient();
   const isPreview = searchParams?.preview === 'true';
   const [mounted, setMounted] = useState(false);
@@ -646,6 +648,10 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
     const storedTable = typeof window !== 'undefined' ? localStorage.getItem(`table_num_${slug}`) : null;
     const effectiveTable = tableNum || tableNumber || manualTableNumber || storedTable;
 
+    if (!isTableVerified && !isPreview) {
+      toast.error('Calling a waiter is only available when seated at a table with a scanned QR code.');
+      return;
+    }
     if (!effectiveTable || !String(effectiveTable).trim()) {
       setShowTableInput(true);
       return;
@@ -669,7 +675,7 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
 
     setWaiterLoading(true);
     try {
-      const token = searchParams?.token || localStorage.getItem(`table_token_${slug}`) || '';
+      const token = tableToken || searchParams?.t || searchParams?.token || (typeof window !== 'undefined' ? localStorage.getItem(`table_token_${slug}`) : '') || '';
       const chosenPurpose = purpose || (isRoom ? 'Room Cleaning' : 'General Assistance');
       await api.post(`/menu/${slug}/call-waiter`, {
         tableNumber: cleanTable,
@@ -1818,6 +1824,8 @@ export function RestaurantMenuPage({ slug, tableNumber, searchParams }: Restaura
         onClose={() => setCartOpen(false)}
         restaurantSlug={slug}
         tableNumber={displayTableNumber}
+        tableToken={tableToken}
+        isTableVerified={isTableVerified}
         themeColor={themeColor}
       />
 

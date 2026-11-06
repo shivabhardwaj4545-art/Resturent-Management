@@ -1,4 +1,5 @@
 import { CheckoutPage } from '@/components/customer/CheckoutPage';
+import { resolveTableToken } from '@qr-restaurant/shared';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -11,27 +12,25 @@ export default async function Checkout({ params, searchParams }: PageProps) {
 
   let effectiveTable: string | undefined = undefined;
   let effectiveToken: string | undefined = undefined;
+  let isTableVerified = false;
 
-  if (resolvedSearchParams.t) {
-    try {
-      const decoded = Buffer.from(resolvedSearchParams.t, 'base64').toString('utf-8');
-      const parts = decoded.split(':');
-      if (parts.length >= 2 && parts[0]) {
-        effectiveTable = parts[0];
-        effectiveToken = parts[1];
-      } else if (parts.length === 1 && parts[0]) {
-        effectiveTable = parts[0];
-      }
-    } catch {
-      // Invalid t token payload
+  // Resolve cryptographic table token
+  const rawToken = resolvedSearchParams.t || resolvedSearchParams.token;
+  if (rawToken) {
+    const tokenResult = resolveTableToken(rawToken, slug);
+    if (tokenResult.valid && tokenResult.tableNumber) {
+      effectiveTable = tokenResult.tableNumber;
+      effectiveToken = rawToken;
+      isTableVerified = true;
     }
-  } else if (resolvedSearchParams.table && resolvedSearchParams.token) {
-    effectiveTable = resolvedSearchParams.table;
-    effectiveToken = resolvedSearchParams.token;
-  } else if (resolvedSearchParams.table) {
-    effectiveTable = resolvedSearchParams.table;
   }
 
-  return <CheckoutPage restaurantSlug={slug} tableNumber={effectiveTable} tableToken={effectiveToken} />;
+  return (
+    <CheckoutPage
+      restaurantSlug={slug}
+      tableNumber={effectiveTable}
+      tableToken={effectiveToken}
+      isTableVerified={isTableVerified}
+    />
+  );
 }
-

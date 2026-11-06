@@ -17,10 +17,12 @@ interface CartDrawerProps {
   onClose: () => void;
   restaurantSlug: string;
   tableNumber?: string;
+  tableToken?: string;
+  isTableVerified?: boolean;
   themeColor: string;
 }
 
-export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, themeColor }: CartDrawerProps) {
+export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, tableToken, isTableVerified, themeColor }: CartDrawerProps) {
   const { items, updateQuantity, removeItem, couponCode, couponDiscount, applyCoupon, removeCoupon, subtotal, gstAmount, total } = useCartStore();
   const { user } = useAuthStore();
   const router = useRouter();
@@ -114,11 +116,11 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, themeCo
   const handleCheckout = () => {
     onClose();
     const params = new URLSearchParams();
-    const activeTable = tableNumber || (typeof window !== 'undefined' ? localStorage.getItem(`table_num_${restaurantSlug}`) : null);
-    const activeToken = typeof window !== 'undefined' ? localStorage.getItem(`table_token_${restaurantSlug}`) : null;
+    const activeTable = isTableVerified ? tableNumber : null;
+    const activeToken = isTableVerified ? tableToken : null;
 
     if (activeTable) params.set('table', activeTable);
-    if (activeToken) params.set('token', activeToken);
+    if (activeToken) params.set('t', activeToken);
     router.push(`/r/${restaurantSlug}/checkout?${params.toString()}`);
   };
 
