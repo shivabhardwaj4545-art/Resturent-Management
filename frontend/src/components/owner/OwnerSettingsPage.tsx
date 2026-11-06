@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
@@ -20,6 +20,7 @@ import { DAYS_OF_WEEK } from '@/utils/operatingHours';
 import QRCode from 'qrcode';
 import { downloadPlacardImage, printPlacard, formatLocationBadgeText } from '@/utils/qrPlacard';
 import { generateUniqueTableCode } from '@/utils/tableCode';
+import { TableQrGallery } from './TableQrGallery';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
@@ -296,7 +297,15 @@ export function OwnerSettingsPage() {
         bankAccountNumber: form.bankAccountNumber ?? null,
         bankIfsc: form.bankIfsc ?? null,
         bankAccountHolder: form.bankAccountHolder ?? null,
-        qrSettings: qrSettings,
+        qrSettings: {
+          ...qrSettings,
+          customLocations: allTableLocations.filter(
+            (loc) => ![
+              'table 1', 'table 2', 'table 3', 'table 4', 'table 5', 'table 10',
+              'room 101', 'room 102', 'room 103', 'room 104', 'room 201', 'room 202'
+            ].includes(loc.trim().toLowerCase())
+          ),
+        },
       };
       const res = await api.put('/owner/restaurant', payload);
       return res.data.data.restaurant;
@@ -435,6 +444,41 @@ export function OwnerSettingsPage() {
     : tableNumber.trim();
 
   // Unique, non-predictable, restaurant-isolated, permanent table/room code
+  // Dynamically compute all table and room locations including custom and active tables
+  const allTableLocations = useMemo(() => {
+    const defaults = data?.platformType === 'HOTEL'
+      ? ['Room 101', 'Room 102', 'Room 103', 'Room 104', 'Room 201', 'Room 202']
+      : data?.platformType === 'RESTAURANT'
+      ? ['Table 1', 'Table 2', 'Table 3', 'Table 4', 'Table 5', 'Table 10']
+      : [
+          'Table 1', 'Table 2', 'Table 3', 'Table 4', 'Table 5', 'Table 10',
+          'Room 101', 'Room 102', 'Room 103', 'Room 104', 'Room 201', 'Room 202'
+        ];
+
+    const customs = qrSettings.customLocations || [];
+    const activeFormatted = activeLocationStr
+      ? (qrMode === 'ROOM'
+          ? (activeLocationStr.toLowerCase().startsWith('room') ? activeLocationStr : `Room ${activeLocationStr}`)
+          : (activeLocationStr.toLowerCase().startsWith('table') ? activeLocationStr : `Table ${activeLocationStr}`))
+      : '';
+
+    const list = [...defaults, ...customs];
+    if (activeFormatted && !list.some((l) => l.toLowerCase() === activeFormatted.toLowerCase())) {
+      list.push(activeFormatted);
+    }
+
+    const seen = new Set<string>();
+    const uniqueList: string[] = [];
+    for (const item of list) {
+      const lower = item.trim().toLowerCase();
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        uniqueList.push(item);
+      }
+    }
+    return uniqueList;
+  }, [data?.platformType, qrSettings.customLocations, activeLocationStr, qrMode]);
+
   const uniqueTableCode = data?.slug && activeLocationStr
     ? generateUniqueTableCode(data.slug, activeLocationStr)
     : '';
@@ -1103,8 +1147,8 @@ export function OwnerSettingsPage() {
                                   Table {num}
                                 </button>
                               ))}
-                              {(qrSettings.customLocations || [])
-                                .filter((loc) => !loc.toLowerCase().startsWith('room') && !loc.toLowerCase().includes('suite'))
+                              {allTableLocations
+                                .filter((loc) => !loc.toLowerCase().startsWith('room') && !loc.toLowerCase().includes('suite') && !['table 1', 'table 2', 'table 3', 'table 4', 'table 5', 'table 10'].includes(loc.toLowerCase()))
                                 .map((loc) => (
                                   <button
                                     key={loc}
@@ -1313,6 +1357,51 @@ export function OwnerSettingsPage() {
                 </motion.div>
               )}
 
+              {/* All Generated Table QR Codes & Placards Gallery */}
+              {data && (
+                <TableQrGallery
+                  locations={allTableLocations}
+                  restaurantName={data.name}
+                  restaurantSlug={data.slug}
+                  themeColor={form.themeColor || '#E85D04'}
+                  activeLocation={activeLocationStr}
+                  disabledLocations={qrSettings.disabledLocations || []}
+                  isTableQrAllowed={isTableQrAllowed}
+                  isRoomQrAllowed={isRoomQrAllowed}
+                  onSelectLocation={(loc) => {
+                    const clean = loc.replace(/^(Table|Room)\s+/i, '');
+                    if (loc.toLowerCase().startsWith('room')) {
+                      setQrMode('ROOM');
+                      setRoomNumber(clean);
+                    } else {
+                      setQrMode('TABLE');
+                      setTableNumber(clean);
+                    }
+                    window.scrollTo({ top: 400, behavior: 'smooth' });
+                  }}
+                  onToggleStatus={(loc) => {
+                    const isRoomLoc = loc.toLowerCase().includes('room') || loc.toLowerCase().includes('suite');
+                    const isAdminLocked = isRoomLoc ? !isRoomQrAllowed : !isTableQrAllowed;
+                    if (isAdminLocked) {
+                      toast.error(`${isRoomLoc ? 'Hotel Room' : 'Dine-In Table'} QR is locked/disabled by Admin.`);
+                      return;
+                    }
+                    setQrSettings((s) => {
+                      const currentDisabled = s.disabledLocations || [];
+                      const exists = currentDisabled.some(
+                        (d) => d.trim().toLowerCase() === loc.trim().toLowerCase()
+                      );
+                      return {
+                        ...s,
+                        disabledLocations: exists
+                          ? currentDisabled.filter((d) => d.trim().toLowerCase() !== loc.trim().toLowerCase())
+                          : [...currentDisabled, loc],
+                      };
+                    });
+                  }}
+                />
+              )}
+
               {/* QR Code Disable & Enable Management */}
               {data && (
                 <motion.div
@@ -1355,26 +1444,10 @@ export function OwnerSettingsPage() {
 
                     <div className="flex flex-wrap gap-2.5">
                       {Array.from(
-                        new Set(
-                          data.platformType === 'HOTEL'
-                            ? [
-                                'Room 101', 'Room 102', 'Room 103', 'Room 104', 'Room 201', 'Room 202',
-                                ...(qrSettings.customLocations || []).filter(l => !l.toLowerCase().includes('table')),
-                                ...(qrSettings.disabledLocations || []).filter(l => !l.toLowerCase().includes('table')),
-                              ]
-                            : data.platformType === 'RESTAURANT'
-                            ? [
-                                'Table 1', 'Table 2', 'Table 3', 'Table 4', 'Table 5', 'Table 10',
-                                ...(qrSettings.customLocations || []).filter(l => !l.toLowerCase().includes('room') && !l.toLowerCase().includes('suite')),
-                                ...(qrSettings.disabledLocations || []).filter(l => !l.toLowerCase().includes('room') && !l.toLowerCase().includes('suite')),
-                              ]
-                            : [
-                                'Table 1', 'Table 2', 'Table 3', 'Table 4', 'Table 5', 'Table 10',
-                                'Room 101', 'Room 102', 'Room 103', 'Room 104', 'Room 201', 'Room 202',
-                                ...(qrSettings.customLocations || []),
-                                ...(qrSettings.disabledLocations || [])
-                              ]
-                        )
+                        new Set([
+                          ...allTableLocations,
+                          ...(qrSettings.disabledLocations || []),
+                        ])
                       ).map((loc) => {
                         const isRoomLoc = data.platformType === 'HOTEL' ? true : data.platformType === 'RESTAURANT' ? false : (loc.toLowerCase().includes('room') || loc.toLowerCase().includes('suite'));
                         const isAdminLocked = isRoomLoc ? !isRoomQrAllowed : !isTableQrAllowed;
