@@ -21,7 +21,7 @@ class FallbackStore implements Store {
 
   init(options: any) {
     if (this.isRedisReady && this.redisStore.init) {
-      Promise.resolve(this.redisStore.init(options)).catch((err) => {
+      Promise.resolve(this.redisStore.init(options)).catch(() => {
         logger.warn('Redis rate-limit store initialization failed. Operating with memory fallback.');
       });
     }
@@ -94,7 +94,8 @@ class FallbackStore implements Store {
 }
 
 const createLimiter = (windowMs: number, max: number, message: string) => {
-  const finalMax = max * 1000;
+  const isTest = process.env.NODE_ENV === 'test';
+  const finalMax = isTest ? 10000 : max;
 
   return rateLimit({
     windowMs,
@@ -113,11 +114,11 @@ export const generalLimiter = createLimiter(
   'Too many requests. Please try again in 15 minutes.'
 );
 
-// Auth routes: 10 req per 15 minutes
+// Auth routes (/login, /refresh, /register): 15 attempts per 15 minutes
 export const authLimiter = createLimiter(
   15 * 60 * 1000,
-  10,
-  'Too many login attempts. Please wait 15 minutes before trying again.'
+  15,
+  'Too many authentication attempts. Please wait 15 minutes before trying again.'
 );
 
 // Password reset: 3 attempts per hour

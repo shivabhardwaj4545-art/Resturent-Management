@@ -117,6 +117,7 @@ model User {
   receivedDirectMessages DirectMessage[] @relation("ReceivedDirectMessages")
   favoriteItems       FavoriteItem[]
   activeSessions      ActiveSession[]
+  refreshTokens       RefreshToken[]
   maxLogins           Int @default(1)
 
   @@index([email])
@@ -674,3 +675,25 @@ model ActiveSession {
   @@map("active_sessions")
 }
 
+
+
+model RefreshToken {
+  id           String    @id @default(cuid())
+  tokenHash    String    @unique
+  familyId     String
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  replacedById String?
+  userAgent    String?
+  ip           String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}

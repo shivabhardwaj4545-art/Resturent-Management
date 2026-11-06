@@ -65,7 +65,7 @@ function hexToHsl(hex: string): { primary: string; foreground: string } {
 }
 
 export default function OwnerLayout({ children }: { children: React.ReactNode }) {
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated, isBootstrapping } = useAuthStore();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const { activeWaiterAlert, activeNewOrderAlert, activeGeneralNotificationAlert, setActiveWaiterAlert, setActiveNewOrderAlert, setActiveGeneralNotificationAlert } = useWaiterStore();

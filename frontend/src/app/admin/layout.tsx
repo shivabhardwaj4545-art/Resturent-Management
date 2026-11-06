@@ -1,15 +1,15 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useAuthStore } from '@/store/auth.store';
+import { useAuthStore, getInMemoryAccessToken } from '@/store/auth.store';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import api, { getSocketUrl } from '@/services/api';
+import api, { getSocketUrl, registerSocket } from '@/services/api';
 import { io, Socket } from 'socket.io-client';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated, isBootstrapping } = useAuthStore();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const queryClient = useQueryClient();
@@ -20,23 +20,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, []);
 
   useEffect(() => {
-    if (mounted) {
+    if (mounted && !isBootstrapping) {
       if (!isAuthenticated || !user) {
         router.push('/login');
       } else if (user.role !== 'SUPER_ADMIN') {
         router.push('/');
       }
     }
-  }, [mounted, user, isAuthenticated, router]);
+  }, [mounted, isBootstrapping, user, isAuthenticated, router]);
 
   // Socket.io connection for Super Admin real-time updates
   useEffect(() => {
     if (!user || user.role !== 'SUPER_ADMIN') return;
 
+    const token = getInMemoryAccessToken();
     const socket: Socket = io(getSocketUrl(), {
       transports: ['websocket', 'polling'],
       withCredentials: true,
+      auth: { token: token ? `Bearer ${token}` : undefined },
     });
+    const unregister = registerSocket(socket);
     socketRef.current = socket;
 
     socket.emit('join:user', user.id);
@@ -64,6 +67,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     });
 
     return () => {
+      unregister();
       socket.disconnect();
     };
   }, [user, queryClient]);

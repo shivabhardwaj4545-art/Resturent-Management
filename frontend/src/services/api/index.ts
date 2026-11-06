@@ -1,9 +1,11 @@
 import axios, { AxiosError } from 'axios';
-import { useAuthStore } from '@/store/auth.store';
+import type { Socket } from 'socket.io-client';
+import { useAuthStore, getInMemoryAccessToken, setInMemoryAccessToken } from '@/store/auth.store';
 
 declare module 'axios' {
   export interface AxiosRequestConfig {
     skipToast?: boolean;
+    _retry?: boolean;
   }
 }
 
@@ -19,10 +21,15 @@ export function getApiBaseUrl(): string {
   const envUrl = process.env.NEXT_PUBLIC_API_URL;
 
   if (typeof window !== 'undefined') {
+    // In the browser, prefer the relative Next.js rewrite proxy /api/v1 so cookies stay first-party
+    if (!envUrl || envUrl === '/api/v1' || envUrl.startsWith('/')) {
+      return '/api/v1';
+    }
+
     const hostname = window.location.hostname;
     const protocol = window.location.protocol;
 
-    // 1. Live Render deployment resolution
+    // Live Render deployment resolution
     if (hostname.includes('.onrender.com')) {
       if (!envUrl || envUrl.includes('localhost') || envUrl.includes('127.0.0.1')) {
         const serverHostname = hostname.replace('-web', '-server');
@@ -30,35 +37,32 @@ export function getApiBaseUrl(): string {
       }
     }
 
-    // 2. Local development fallback
+    // Local development fallback
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       if (envUrl && !envUrl.includes('localhost')) {
         return sanitizeApiUrl(envUrl);
       }
-      return 'http://localhost:4000/api/v1';
+      return '/api/v1';
     }
 
-    // 3. Live VPS / Railway / Custom Domain resolution
+    // Custom domain
     if (envUrl && !envUrl.includes('localhost')) {
       return sanitizeApiUrl(envUrl);
     }
 
-    return `${window.location.origin}/api/v1`;
+    return '/api/v1';
   }
 
   // Fallback for SSR or build time
-  if (envUrl) {
+  if (envUrl && !envUrl.startsWith('/')) {
     return sanitizeApiUrl(envUrl);
   }
 
-  return 'http://localhost:4000/api/v1';
+  const backendUrl = process.env.BACKEND_URL || 'http://localhost:4000';
+  return `${backendUrl.replace(/\/+$/, '')}/api/v1`;
 }
 
 export const API_BASE_URL = getApiBaseUrl();
-
-if (typeof window !== 'undefined') {
-  console.log('🔌 Dynamic API Base URL resolved:', API_BASE_URL);
-}
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -69,13 +73,13 @@ export const api = axios.create({
   timeout: 30000,
 });
 
-// Request interceptor — attach access token & fix FormData content-type header
+// Request interceptor — attach in-memory access token & fix FormData content-type header
 api.interceptors.request.use((config) => {
   if (config.data instanceof FormData && config.headers) {
     delete config.headers['Content-Type'];
     delete (config.headers as any)['content-type'];
   }
-  const token = useAuthStore.getState().accessToken;
+  const token = getInMemoryAccessToken() || useAuthStore.getState().accessToken;
   if (token) {
     config.headers = config.headers || {};
     config.headers.Authorization = `Bearer ${token}`;
@@ -83,136 +87,115 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor — handle 401 and refresh token
-let isRefreshing = false;
-let failedQueue: Array<{
-  resolve: (value: string) => void;
-  reject: (error: Error) => void;
-}> = [];
+// Single-flight refresh mutex shared across parallel requests
+let refreshPromise: Promise<string> | null = null;
 
-const processQueue = (error: Error | null, token: string | null = null) => {
-  failedQueue.forEach((prom) => {
-    if (error) {
-      prom.reject(error);
-    } else {
-      prom.resolve(token ?? '');
+export async function executeRefreshToken(): Promise<string> {
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+
+  refreshPromise = (async () => {
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/auth/refresh`,
+        {},
+        { withCredentials: true }
+      );
+
+      const newToken = response.data?.data?.accessToken as string;
+      const refreshedUser = response.data?.data?.user;
+
+      if (!newToken) {
+        throw new Error('Refresh response did not contain access token.');
+      }
+
+      setInMemoryAccessToken(newToken);
+      if (refreshedUser) {
+        useAuthStore.getState().setUser(refreshedUser, newToken);
+      } else {
+        useAuthStore.getState().setAccessToken(newToken);
+      }
+
+      reconnectSocketWithToken(newToken);
+      return newToken;
+    } catch (refreshErr) {
+      setInMemoryAccessToken(null);
+      useAuthStore.getState().logout();
+      if (typeof window !== 'undefined') {
+        const currentPath = window.location.pathname;
+        if (
+          (currentPath.startsWith('/owner') || currentPath.startsWith('/admin') || currentPath.startsWith('/kitchen')) &&
+          !currentPath.includes('/login')
+        ) {
+          window.location.href = '/login';
+        }
+      }
+      throw refreshErr;
+    } finally {
+      refreshPromise = null;
     }
-  });
-  failedQueue = [];
-};
+  })();
 
+  return refreshPromise;
+}
+
+// Response interceptor — handle 401 and perform single-flight refresh
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError<{ error: string; code: string }>) => {
     const originalRequest = error.config as typeof error.config & { _retry?: boolean };
-
-    if (typeof window !== 'undefined') {
-      console.warn(`⚠️ [API Response Error] ${originalRequest?.method?.toUpperCase()} ${originalRequest?.url}`, {
-        status: error.response?.status,
-        data: error.response?.data,
-        message: error.message,
-      });
-    }
+    const url = originalRequest?.url || '';
 
     const isAuthUrl =
-      originalRequest?.url?.includes('/auth/login') ||
-      originalRequest?.url?.includes('/auth/register') ||
-      originalRequest?.url?.includes('/auth/refresh');
+      url.includes('/auth/login') ||
+      url.includes('/auth/register') ||
+      url.includes('/auth/refresh') ||
+      url.includes('/auth/logout');
 
-    const hasSession = typeof window !== 'undefined' && (!!useAuthStore.getState().accessToken || !!useAuthStore.getState().user);
-
-    if (error.response?.status === 401 && !originalRequest._retry && !isAuthUrl && hasSession) {
-      if (isRefreshing) {
-        if (typeof window !== 'undefined') {
-          console.log('🔄 [API Refresh] Already refreshing, queuing request...');
-        }
-        return new Promise((resolve, reject) => {
-          failedQueue.push({ resolve, reject });
-        })
-          .then((token) => {
-            if (originalRequest.headers) {
-              originalRequest.headers.Authorization = `Bearer ${token}`;
-            }
-            return api(originalRequest);
-          })
-          .catch((err) => Promise.reject(err));
-      }
-
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthUrl) {
       originalRequest._retry = true;
-      isRefreshing = true;
-
-      if (typeof window !== 'undefined') {
-        console.log('🔄 [API Refresh] Starting token refresh...');
-      }
 
       try {
-        const { data } = await axios.post(
-          `${API_BASE_URL}/auth/refresh`,
-          {},
-          { withCredentials: true }
-        );
-
-        const newToken = data.data.accessToken as string;
-        const refreshedUser = data.data.user;
-
-        if (typeof window !== 'undefined') {
-          console.log('🔄 [API Refresh] Success. New token obtained. User:', refreshedUser);
-        }
-
-        if (refreshedUser) {
-          useAuthStore.getState().setUser(refreshedUser, newToken);
-        } else {
-          useAuthStore.getState().setAccessToken(newToken);
-        }
-
-        processQueue(null, newToken);
-
-        if (originalRequest.headers) {
-          originalRequest.headers.Authorization = `Bearer ${newToken}`;
-        }
-
+        const newToken = await executeRefreshToken();
+        originalRequest.headers = originalRequest.headers || {};
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
         return api(originalRequest);
-      } catch (refreshError: any) {
-        if (typeof window !== 'undefined') {
-          console.warn('⚠️ [API Refresh] Refresh token expired or unavailable.');
-        }
-        processQueue(refreshError as Error, null);
-        useAuthStore.getState().logout();
-        if (typeof window !== 'undefined') {
-          const currentPath = window.location.pathname;
-          if ((currentPath.startsWith('/owner') || currentPath.startsWith('/admin')) && !currentPath.includes('/login')) {
-            window.location.href = '/login';
-          }
-        }
-        return Promise.reject(error);
-      } finally {
-        isRefreshing = false;
+      } catch (refreshError) {
+        return Promise.reject(refreshError);
       }
     }
 
-    // Handle network / slow connection / timeout / server unreachable errors
-    const isNetworkOrSlowError =
-      error.code === 'ERR_NETWORK' ||
-      error.code === 'ECONNABORTED' ||
-      error.code === 'ETIMEDOUT' ||
-      error.message === 'Network Error' ||
-      error.message?.toLowerCase().includes('timeout') ||
-      error.message?.toLowerCase().includes('network') ||
-      !error.response ||
-      error.response?.status >= 500;
-
-    if (isNetworkOrSlowError) {
-      if (typeof window !== 'undefined') {
-        console.warn('⚠️ [API Network/Server] Network is slow, timed out, or backend server is unreachable.');
-      }
-      return Promise.reject(error);
-    }
-
-    // Do NOT show global red error toast popups on any request.
-    // Errors should be handled contextually by individual components without intrusive popups.
     return Promise.reject(error);
   }
 );
+
+// Socket.io connection helper and token synchronizer
+const activeSockets = new Set<Socket>();
+
+export function registerSocket(socket: Socket): () => void {
+  activeSockets.add(socket);
+  return () => {
+    activeSockets.delete(socket);
+  };
+}
+
+export function reconnectSocketWithToken(newToken: string): void {
+  activeSockets.forEach((sock) => {
+    try {
+      if (sock.auth && typeof sock.auth === 'object') {
+        (sock.auth as any).token = `Bearer ${newToken}`;
+      } else {
+        sock.auth = { token: `Bearer ${newToken}` };
+      }
+      if (sock.connected) {
+        sock.disconnect().connect();
+      }
+    } catch (e) {
+      console.warn('Failed to reconnect socket with new token:', e);
+    }
+  });
+}
 
 export function getSocketUrl(): string {
   if (typeof window !== 'undefined') {
@@ -229,26 +212,14 @@ export function getSocketUrl(): string {
       return `${protocol}//${serverHostname}`;
     }
 
-    // Automatically derive socket URL from resolved API base URL
-    const apiBase = getApiBaseUrl();
-    if (apiBase && !apiBase.includes('localhost') && !apiBase.includes('127.0.0.1')) {
-      const derived = apiBase.replace(/\/api\/v1\/?$/, '').replace(/\/+$/, '');
-      if (derived && !derived.includes(hostname)) {
-        return derived;
-      }
-    }
-
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      if (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost')) {
-        return process.env.NEXT_PUBLIC_API_URL.replace(/\/api\/v1\/?$/, '').replace(/\/+$/, '');
-      }
       return 'http://localhost:4000';
     }
 
     return `${window.location.origin}`;
   }
 
-  const envSocket = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/v1\/?$/, '');
+  const envSocket = process.env.NEXT_PUBLIC_SOCKET_URL;
   return envSocket ? envSocket.replace(/\/+$/, '') : 'http://localhost:4000';
 }
 

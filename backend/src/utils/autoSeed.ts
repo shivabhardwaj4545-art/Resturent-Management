@@ -73,6 +73,11 @@ export async function syncDatabaseSchema(): Promise<void> {
     'ALTER TABLE "subscription_plans" ADD COLUMN IF NOT EXISTS "platformType" TEXT DEFAULT \'RESTAURANT\'',
     'CREATE TABLE IF NOT EXISTS "active_sessions" ("id" TEXT NOT NULL PRIMARY KEY, "userId" TEXT NOT NULL, "sessionToken" TEXT NOT NULL UNIQUE, "userAgent" TEXT, "ipAddress" TEXT, "deviceInfo" TEXT, "lastActiveAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)',
     'CREATE INDEX IF NOT EXISTS "active_sessions_userId_idx" ON "active_sessions" ("userId")',
+    'CREATE TABLE IF NOT EXISTS "refresh_tokens" ("id" TEXT NOT NULL PRIMARY KEY, "tokenHash" TEXT NOT NULL UNIQUE, "familyId" TEXT NOT NULL, "userId" TEXT NOT NULL, "expiresAt" TIMESTAMP NOT NULL, "revokedAt" TIMESTAMP, "replacedById" TEXT, "userAgent" TEXT, "ip" TEXT, "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "refresh_tokens_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE)',
+    'CREATE INDEX IF NOT EXISTS "refresh_tokens_userId_idx" ON "refresh_tokens" ("userId")',
+    'CREATE INDEX IF NOT EXISTS "refresh_tokens_familyId_idx" ON "refresh_tokens" ("familyId")',
+    'CREATE INDEX IF NOT EXISTS "refresh_tokens_tokenHash_idx" ON "refresh_tokens" ("tokenHash")',
+    'CREATE INDEX IF NOT EXISTS "refresh_tokens_expiresAt_idx" ON "refresh_tokens" ("expiresAt")',
   ];
 
   for (const sql of statements) {

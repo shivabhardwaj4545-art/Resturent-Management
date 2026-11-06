@@ -17,6 +17,11 @@
     "type-check": {
       "outputs": []
     },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "cache": false
+    },
     "db:generate": {
       "cache": false
     },

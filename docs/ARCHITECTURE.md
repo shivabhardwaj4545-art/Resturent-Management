@@ -64,34 +64,58 @@ flowchart TD
 
 ---
 
-## 3. Request Lifecycle & Authentication Flow
+## 3. Request Lifecycle & Single-Flight Refresh Token Architecture
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Customer as Diner / Owner
-    participant Web as Next.js Web App
-    participant Client as API Client (services/api)
-    participant Router as Express Router
-    participant Auth as Auth & RBAC Middleware
-    participant Controller as Business Controller
+    actor User as User / Browser
+    participant Store as Auth Store (In-Memory)
+    participant Client as Axios API Client
+    participant Proxy as Next.js Proxy (/api/v1)
+    participant AuthAPI as Express Auth Router
+    participant API as Express Protected API
     participant DB as PostgreSQL (Prisma)
 
-    Customer->>Web: Interacts with UI (e.g. Place Order)
-    Web->>Client: Call api.orders.create(orderPayload)
-    Client->>Router: POST /api/v1/orders (Bearer JWT in Header)
-    Router->>Auth: Verify JWT & Validate User/Tenant
-    alt Token Invalid / Expired
-        Auth-->>Client: 401 Unauthorized
-        Client-->>Web: Redirect or trigger refresh
-    else Valid Tenant Session
-        Auth->>Controller: Pass Request with req.user & req.tenant
-        Controller->>DB: Prisma Transaction (Create Order & Items)
-        DB-->>Controller: Persisted Order Entity
-        Controller-->>Router: Response (201 Created + Clean DTO)
-        Router-->>Client: JSON Response
-        Client-->>Web: Updated Order State
-    end
+    %% 1. Initial Login
+    User->>Client: Submit Login Credentials
+    Client->>Proxy: POST /api/v1/auth/login { email, password }
+    Proxy->>AuthAPI: Forward POST /auth/login
+    AuthAPI->>DB: Validate User & Password Hash
+    AuthAPI->>DB: Create RefreshToken (SHA-256 hash, familyId)
+    AuthAPI-->>Client: 200 OK + Set-Cookie "rt" (HttpOnly, path=/api/v1/auth) + Body { accessToken: "jwt_1" }
+    Client->>Store: Store accessToken ("jwt_1") in-memory only
+
+    %% 2. Normal Request & 401
+    Note over User,DB: ... 15 Minutes Pass (Access Token "jwt_1" Expires) ...
+    User->>Client: Trigger API Call (e.g. GET /owner/orders)
+    Client->>Proxy: GET /api/v1/owner/orders [Header: Authorization Bearer jwt_1]
+    Proxy->>API: Forward GET /owner/orders [Bearer jwt_1]
+    API->>API: Verify JWT (fails: TokenExpiredError)
+    API-->>Proxy: 401 Unauthorized { code: "TOKEN_EXPIRED" }
+    Proxy-->>Client: 401 Unauthorized
+
+    %% 3. Single-Flight Refresh
+    Note over Client,AuthAPI: Interceptor captures 401: creates single-flight refresh promise
+    Client->>Proxy: POST /api/v1/auth/refresh [Cookie: rt=token_v1]
+    Proxy->>AuthAPI: Forward POST /auth/refresh [Cookie: rt=token_v1]
+    AuthAPI->>DB: Verify SHA-256(token_v1) & check revokedAt is NULL
+    AuthAPI->>DB: Transaction: revoke token_v1 & issue token_v2 in same familyId
+    AuthAPI-->>Proxy: 200 OK + Set-Cookie "rt=token_v2" + Body { accessToken: "jwt_2" }
+    Proxy-->>Client: 200 OK + Set-Cookie "rt=token_v2" + Body { accessToken: "jwt_2" }
+    Client->>Store: Update in-memory accessToken ("jwt_2")
+    Client->>Client: Reconnect active Socket.io client with "jwt_2"
+
+    %% 4. Automatic Retry
+    Note over Client,API: Interceptor retries original failed request with new access token
+    Client->>Proxy: GET /api/v1/owner/orders [Header: Authorization Bearer jwt_2]
+    Proxy->>API: Forward GET /owner/orders [Bearer jwt_2]
+    API->>API: Verify JWT (valid)
+    API->>DB: Query owner orders
+    DB-->>API: Orders data
+    API-->>Proxy: 200 OK + { data: orders }
+    Proxy-->>Client: 200 OK
+    Client-->>User: Seamless Render (Zero Flashing, Zero Logout)
 ```
 
 ---

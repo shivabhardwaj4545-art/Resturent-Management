@@ -1,3 +1,5 @@
+import { validateEnv } from './config/env';
+validateEnv();
 import express from 'express';
 import path from 'path';
 import cors from 'cors';
@@ -35,42 +37,41 @@ app.use(
 );
 
 // ── CORS ─────────────────────────────────────────────────────
-export const allowedOrigins = [
-  process.env.CLIENT_URL?.replace(/\/$/, ''),
-  'http://localhost:3000',
-  'http://localhost:3001',
-  'http://127.0.0.1:3000',
-  'http://127.0.0.1:3001',
-].filter(Boolean) as string[];
+const configuredClientUrls = (process.env.CLIENT_URL || '')
+  .split(',')
+  .map((u) => u.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+
+export const allowedOrigins = Array.from(
+  new Set([
+    ...configuredClientUrls,
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+  ])
+).filter(Boolean);
+
+export function isOriginAllowed(origin?: string): boolean {
+  if (!origin) return true;
+  const normalized = origin.replace(/\/+$/, '');
+  if (allowedOrigins.includes(normalized)) return true;
+  if (process.env.NODE_ENV !== 'production') {
+    if (normalized.startsWith('http://localhost:') || normalized.startsWith('http://127.0.0.1:')) {
+      return true;
+    }
+  }
+  return false;
+}
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (curl, mobile apps, Postman)
-      if (!origin) return callback(null, true);
-      
-      const normalizedOrigin = origin.replace(/\/$/, '');
-      
-      const isIpOrigin = /^https?:\/\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(normalizedOrigin);
-
-      if (
-        allowedOrigins.includes(normalizedOrigin) ||
-        normalizedOrigin.startsWith('http://localhost:') ||
-        normalizedOrigin.startsWith('http://127.0.0.1:') ||
-        normalizedOrigin.endsWith('.up.railway.app') ||
-        normalizedOrigin.endsWith('.onrender.com') ||
-        normalizedOrigin.endsWith('.hostinger.com') ||
-        normalizedOrigin.endsWith('.hostingersite.com') ||
-        normalizedOrigin.endsWith('ezrestro.online') ||
-        isIpOrigin ||
-        (process.env.CLIENT_URL && normalizedOrigin === process.env.CLIENT_URL.replace(/\/$/, '')) ||
-        process.env.NODE_ENV !== 'production'
-      ) {
+      if (isOriginAllowed(origin)) {
         return callback(null, true);
       }
-      
       console.warn(`[CORS Blocked] Origin: ${origin}. Allowed:`, allowedOrigins);
-      callback(null, false);
+      callback(new Error('CORS blocked for this origin'));
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

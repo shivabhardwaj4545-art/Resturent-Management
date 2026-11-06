@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
-import app, { allowedOrigins } from './app';
+import app, { allowedOrigins, isOriginAllowed } from './app';
 import { initializeSocketService } from './services/socket.service';
 import { logger } from './utils/logger';
 import { connectRedis, isRedisReady } from './services/redis.service';
@@ -10,6 +10,7 @@ import { prisma } from './lib/prisma';
 import { ensureDatabaseSeeded } from './utils/autoSeed';
 import { startKeepAliveJob } from './jobs/keepAlive.job';
 import { startSubscriptionCheckerJob } from './jobs/subscription.job';
+import { startTokenCleanupJob } from './jobs/tokenCleanup.job';
 
 // Gracefully handle background disconnections / uncaught exceptions in production without crashing the server process
 process.on('unhandledRejection', (reason: any) => {
@@ -32,22 +33,7 @@ async function bootstrap() {
     const io = new SocketIOServer(httpServer, {
       cors: {
         origin: (origin, callback) => {
-          if (!origin) return callback(null, true);
-          const normalizedOrigin = origin.replace(/\/$/, '');
-          const isIpOrigin = /^https?:\/\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(normalizedOrigin);
-          if (
-            allowedOrigins.includes(normalizedOrigin) ||
-            normalizedOrigin.startsWith('http://localhost:') ||
-            normalizedOrigin.startsWith('http://127.0.0.1:') ||
-            normalizedOrigin.endsWith('.up.railway.app') ||
-            normalizedOrigin.endsWith('.onrender.com') ||
-            normalizedOrigin.endsWith('.hostinger.com') ||
-            normalizedOrigin.endsWith('.hostingersite.com') ||
-            normalizedOrigin.endsWith('ezrestro.online') ||
-            isIpOrigin ||
-            (process.env.CLIENT_URL && normalizedOrigin === process.env.CLIENT_URL.replace(/\/$/, '')) ||
-            process.env.NODE_ENV !== 'production'
-          ) {
+          if (isOriginAllowed(origin)) {
             return callback(null, true);
           }
           callback(new Error('CORS: origin not allowed by Socket.io'));
@@ -67,6 +53,7 @@ async function bootstrap() {
       logger.info(`📚 API docs: http://${HOST}:${PORT}/api-docs`);
       logger.info(`🌍 Environment: ${process.env.NODE_ENV ?? 'development'}`);
       startKeepAliveJob();
+      startTokenCleanupJob();
     });
 
     // Initialize database & redis in parallel after server is already listening

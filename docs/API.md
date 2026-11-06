@@ -6,16 +6,18 @@ This document describes the REST API and WebSocket events provided by the backen
 
 ## 1. Authentication & Security
 
-All protected endpoints require an `Authorization` header containing a valid Bearer JWT:
-```http
-Authorization: Bearer <access_token>
-```
+Authentication is built on short-lived in-memory JWT Access Tokens coupled with rotated, cryptographically random Refresh Tokens via HttpOnly cookies:
 
-### Roles and Permissions:
-- `SUPER_ADMIN`: Full system-wide access to tenants, platforms, subscriptions, and analytics.
-- `ADMIN` / `RESTAURANT_OWNER`: Access restricted strictly to resources belonging to their restaurant.
-- `STAFF` / `WAITER` / `KITCHEN`: Access restricted to operational tasks (orders, tables, kitchen display) within their restaurant.
-- `CUSTOMER`: Public or guest customer session token access for ordering and menu viewing.
+- **Access Token**: JWT containing user identity and role. Expires in **15 minutes** (`JWT_ACCESS_EXPIRES_IN=15m`). Stored strictly **in-memory** in the frontend client (never in `localStorage` or `sessionStorage`).
+- **Refresh Token**: 64-byte random string (`crypto.randomBytes(64).toString('base64url')`), valid for 30 days. Stored on the server exclusively as a **SHA-256 hash** in the `refresh_tokens` table.
+- **Cookie Specification**:
+  - Name: `rt`
+  - Path: `/api/v1/auth`
+  - Attributes: `HttpOnly`, `SameSite=Lax`, `Secure` (in production), `Max-Age=30 days`
+  - The refresh token is transmitted **exclusively** via the `rt` cookie and never in request or response JSON bodies.
+- **Rotation & Replay Detection**:
+  - Each `POST /auth/refresh` call revokes the incoming token and issues a new refresh token within the same cryptographic family (`familyId`).
+  - If a previously revoked refresh token is presented (replay attack), the server **immediately revokes the entire token family**, invalidating all sessions across all devices for that user.
 
 ---
 
@@ -23,14 +25,17 @@ Authorization: Bearer <access_token>
 
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
-| `POST` | `/auth/register` | Public | Register a new restaurant owner account and restaurant. |
-| `POST` | `/auth/login` | Public | Authenticate with email/password; returns access and refresh tokens. |
-| `POST` | `/auth/refresh` | Public | Refresh expired access token using refresh token. |
-| `POST` | `/auth/logout` | Authenticated | Invalidate refresh token and clear session. |
+| `POST` | `/auth/register` | Public | Register a new account. Issues `rt` cookie and returns in-memory access token. |
+| `POST` | `/auth/login` | Public | Authenticate credentials. Issues `rt` cookie and returns in-memory access token. |
+| `POST` | `/auth/refresh` | Public (Cookie) | Rotates refresh token in `rt` cookie and returns new 15m access token. |
+| `POST` | `/auth/logout` | Public (Cookie) | Revokes active token family and clears the `rt` cookie. |
+| `POST` | `/auth/logout-all` | Authenticated | Revokes **all** refresh tokens and active sessions for the user across all devices. |
 | `POST` | `/auth/forgot-password` | Public | Request password reset email. |
-| `POST` | `/auth/reset-password` | Public | Reset password using one-time reset token. |
+| `POST` | `/auth/reset-password` | Public | Reset password using one-time token; invalidates all existing user refresh tokens. |
+| `GET` | `/auth/me` | Authenticated | Fetch current authenticated user profile using Bearer access token. |
 | `GET` | `/auth/google` | Public | Initiate Google OAuth 2.0 flow. |
-| `GET` | `/auth/google/callback` | Public | Google OAuth callback handler. |
+| `GET` | `/auth/google/callback` | Public | Google OAuth callback handler; issues `rt` cookie and redirects with access token. |
+| `POST` | `/auth/google/onetap` | Public | Google OneTap authentication; issues `rt` cookie and returns access token. |
 
 ---
 

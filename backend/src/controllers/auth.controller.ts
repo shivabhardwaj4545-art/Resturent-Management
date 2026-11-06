@@ -15,39 +15,16 @@ import { logger } from '../utils/logger';
 import { ensureDatabaseSeeded } from '../utils/autoSeed';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { autoAssignFreeTrial } from './admin.controller';
-
-// ── Token Helpers ─────────────────────────────────────────────
-
-function generateAccessToken(payload: {
-  id: string;
-  email: string;
-  role: string;
-  name: string;
-  sessionId?: string;
-}): string {
-  const secret = process.env.JWT_ACCESS_SECRET ?? '';
-  return jwt.sign(payload, secret, {
-    expiresIn: (process.env.JWT_ACCESS_EXPIRES_IN ?? '7d') as any,
-  });
-}
-
-function generateRefreshToken(userId: string): string {
-  const secret = process.env.JWT_REFRESH_SECRET ?? '';
-  return jwt.sign({ id: userId }, secret, {
-    expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN ?? '7d') as any,
-  });
-}
-
-function setRefreshTokenCookie(res: Response, token: string): void {
-  const isProd = process.env.NODE_ENV === 'production';
-  res.cookie('refreshToken', token, {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: isProd ? 'none' : 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    path: '/',
-  });
-}
+import {
+  generateAccessToken,
+  issueRefreshToken,
+  rotateRefreshToken,
+  setRefreshTokenCookie,
+  clearRefreshTokenCookie,
+  revokeRefreshTokenFamily,
+  revokeAllUserRefreshTokens,
+  REFRESH_TOKEN_COOKIE_NAME,
+} from '../services/refreshToken.service';
 
 // ── Register ──────────────────────────────────────────────────
 
@@ -166,10 +143,27 @@ export async function register(req: Request, res: Response, next: NextFunction):
       email: user.email.includes(':') ? user.email.split(':')[1] : user.email,
     };
 
+    const userAgent = req.headers['user-agent'] || 'Web Browser';
+    const ipAddress = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+
+    const { rawToken } = await issueRefreshToken(
+      user.id,
+      String(userAgent).slice(0, 255),
+      String(ipAddress).slice(0, 100)
+    );
+    setRefreshTokenCookie(res, rawToken);
+
+    const accessToken = generateAccessToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      name: user.name,
+    });
+
     res.status(201).json({
       success: true,
-      data: { user: cleanUser },
-      message: 'Account created! You can now log in.',
+      data: { accessToken, user: cleanUser },
+      message: 'Account created! You are now logged in.',
     });
   } catch (error) {
     next(error);
@@ -299,10 +293,14 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
       sessionId,
     };
 
-    const accessToken = generateAccessToken(tokenPayload);
-    const refreshToken = generateRefreshToken(user.id);
+    const { rawToken } = await issueRefreshToken(
+      user.id,
+      String(userAgent).slice(0, 255),
+      String(ipAddress).slice(0, 100)
+    );
+    setRefreshTokenCookie(res, rawToken);
 
-    setRefreshTokenCookie(res, refreshToken);
+    const accessToken = generateAccessToken(tokenPayload);
 
     res.json({
       success: true,
@@ -454,9 +452,12 @@ export async function resetPassword(
       logger.error(`Failed to send password reset confirmation email to ${recipientEmail}:`, err);
     });
 
-    // Invalidate all existing refresh tokens by clearing cookies on client
-    res.clearCookie('refreshToken', { path: '/' });
-    res.clearCookie('refreshToken', { path: '/api/v1/auth' });
+    // Invalidate all existing refresh tokens and active sessions
+    await revokeAllUserRefreshTokens(user.id);
+    await (prisma as any).activeSession.deleteMany({
+      where: { userId: user.id },
+    });
+    clearRefreshTokenCookie(res);
 
     res.json({
       success: true,
@@ -472,50 +473,37 @@ export async function resetPassword(
 
 export async function refreshToken(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const token = req.cookies.refreshToken as string | undefined;
+    const rawToken = req.cookies[REFRESH_TOKEN_COOKIE_NAME] as string | undefined;
 
-    if (!token) {
-      throw new AppError('No refresh token found.', 401, 'NO_REFRESH_TOKEN');
+    if (!rawToken) {
+      throw new AppError('No refresh token provided.', 401, 'REFRESH_TOKEN_REQUIRED');
     }
 
-    const secret = process.env.JWT_REFRESH_SECRET ?? '';
-    let decoded: { id: string };
+    const userAgent = req.headers['user-agent'] || 'Web Browser';
+    const ipAddress = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
 
     try {
-      decoded = jwt.verify(token, secret) as { id: string };
-    } catch {
-      throw new AppError('Invalid or expired refresh token.', 401, 'INVALID_REFRESH_TOKEN');
+      const { accessToken, newRawToken, user } = await rotateRefreshToken(
+        rawToken,
+        String(userAgent).slice(0, 255),
+        String(ipAddress).slice(0, 100)
+      );
+
+      setRefreshTokenCookie(res, newRawToken);
+
+      const cleanUser = {
+        ...user,
+        email: user.email.includes(':') ? user.email.split(':')[1] : user.email,
+      };
+
+      res.json({
+        success: true,
+        data: { accessToken, user: cleanUser },
+      });
+    } catch (err) {
+      clearRefreshTokenCookie(res);
+      throw err;
     }
-
-    const user = await prisma.user.findFirst({
-      where: { id: decoded.id, deletedAt: null },
-      select: { id: true, name: true, email: true, role: true, isVerified: true },
-    });
-
-    if (!user) {
-      throw new AppError('User not found.', 401, 'USER_NOT_FOUND');
-    }
-
-    // Rotate tokens
-    const accessToken = generateAccessToken({
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      name: user.name,
-    });
-    const newRefreshToken = generateRefreshToken(user.id);
-
-    setRefreshTokenCookie(res, newRefreshToken);
-
-    const cleanUser = {
-      ...user,
-      email: user.email.includes(':') ? user.email.split(':')[1] : user.email,
-    };
-
-    res.json({
-      success: true,
-      data: { accessToken, user: cleanUser },
-    });
   } catch (error) {
     next(error);
   }
@@ -523,8 +511,13 @@ export async function refreshToken(req: Request, res: Response, next: NextFuncti
 
 // ── Logout ────────────────────────────────────────────────────
 
-export async function logout(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+export async function logout(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const rawToken = req.cookies[REFRESH_TOKEN_COOKIE_NAME] as string | undefined;
+    if (rawToken) {
+      await revokeRefreshTokenFamily(rawToken);
+    }
+
     const authHeader = req.headers.authorization;
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
     if (token) {
@@ -537,9 +530,26 @@ export async function logout(req: AuthenticatedRequest, res: Response, next: Nex
         }
       } catch {}
     }
-    res.clearCookie('refreshToken', { path: '/' });
-    res.clearCookie('refreshToken', { path: '/api/v1/auth' });
+
+    clearRefreshTokenCookie(res);
     res.json({ success: true, data: null, message: 'Logged out successfully' });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function logoutAll(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user?.id;
+    if (userId) {
+      await revokeAllUserRefreshTokens(userId);
+      await (prisma as any).activeSession.deleteMany({
+        where: { userId },
+      });
+    }
+
+    clearRefreshTokenCookie(res);
+    res.json({ success: true, data: null, message: 'All active sessions logged out successfully' });
   } catch (error) {
     next(error);
   }
@@ -728,15 +738,15 @@ export async function googleCallback(
       });
     }
 
+    const { rawToken } = await issueRefreshToken(user.id, 'Google OAuth', String(req.socket.remoteAddress || '127.0.0.1'));
+    setRefreshTokenCookie(res, rawToken);
+
     const accessToken = generateAccessToken({
       id: user.id,
       email: user.email,
       role: user.role,
       name: user.name,
     });
-    const newRefreshToken = generateRefreshToken(user.id);
-
-    setRefreshTokenCookie(res, newRefreshToken);
 
     const redirectTarget = restaurantSlug
       ? `${clientUrl.replace(/\/$/, '')}/auth/callback?token=${accessToken}&restaurant=${encodeURIComponent(restaurantSlug)}`
@@ -810,14 +820,15 @@ export async function googleOneTap(req: Request, res: Response, next: NextFuncti
       });
     }
 
+    const { rawToken } = await issueRefreshToken(user.id, 'Google OneTap', String(req.socket.remoteAddress || '127.0.0.1'));
+    setRefreshTokenCookie(res, rawToken);
+
     const accessToken = generateAccessToken({
       id: user.id,
       email: user.email,
       role: user.role,
       name: user.name,
     });
-    const newRefreshToken = generateRefreshToken(user.id);
-    setRefreshTokenCookie(res, newRefreshToken);
 
     res.json({
       success: true,
