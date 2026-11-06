@@ -28,6 +28,9 @@ services:
       - RAZORPAY_WEBHOOK_SECRET=${RAZORPAY_WEBHOOK_SECRET}
       - GROQ_API_KEY=${GROQ_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+    networks:
+      - coolify
+      - default
 
   frontend:
     build:
@@ -37,6 +40,7 @@ services:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-/api/v1}
         - NEXT_PUBLIC_SOCKET_URL=${NEXT_PUBLIC_SOCKET_URL}
         - NEXT_PUBLIC_RAZORPAY_KEY_ID=${NEXT_PUBLIC_RAZORPAY_KEY_ID}
+        - BACKEND_URL=http://backend:4000
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -47,8 +51,12 @@ services:
       - HOSTNAME=0.0.0.0
     depends_on:
       - backend
+    networks:
+      - coolify
+      - default
 
 networks:
-  default:
+  coolify:
     name: coolify
     external: true
+  default:

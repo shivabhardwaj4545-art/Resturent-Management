@@ -22,6 +22,7 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: 'api.qrserver.com' },
       { protocol: 'http', hostname: 'localhost', port: '4000' },
       { protocol: 'http', hostname: '127.0.0.1', port: '4000' },
+      { protocol: 'http', hostname: 'backend', port: '4000' },
     ],
   },
 
@@ -41,7 +42,7 @@ const nextConfig: NextConfig = {
   },
 
   async rewrites() {
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:4000';
+    const backendUrl = process.env.BACKEND_URL || 'http://backend:4000';
     return [
       {
         source: '/api/v1/:path*',
