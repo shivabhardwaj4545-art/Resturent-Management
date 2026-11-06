@@ -38,7 +38,7 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 
-# Build Next.js app
+# Build Next.js app in standalone mode
 RUN cd frontend && npm run build
 
 # ── Stage 2: Production image ──────────────────────────────────────
@@ -47,18 +47,15 @@ RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 
-# Next.js production files
-COPY --from=builder /app/package.json          ./
-COPY --from=builder /app/node_modules          ./node_modules
-COPY --from=builder /app/packages/shared/dist  ./packages/shared/dist
-COPY --from=builder /app/packages/shared/package.json ./packages/shared/
-COPY --from=builder /app/frontend/.next        ./frontend/.next
-COPY --from=builder /app/frontend/public       ./frontend/public
-COPY --from=builder /app/frontend/package.json ./frontend/
-COPY --from=builder /app/frontend/next.config.ts ./frontend/
+# Copy standalone build and static assets
+COPY --from=builder /app/frontend/.next/standalone ./
+COPY --from=builder /app/frontend/.next/static ./frontend/.next/static
+COPY --from=builder /app/frontend/public ./frontend/public
 
 WORKDIR /app/frontend
 EXPOSE 3000
 
-CMD ["npm", "run", "start"]
+CMD ["node", "server.js"]

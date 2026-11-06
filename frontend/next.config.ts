@@ -2,6 +2,7 @@ import type { NextConfig } from 'next';
 import path from 'path';
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
   // Explicitly set the monorepo root so Next.js doesn't pick the wrong
   // workspace root when multiple lockfiles exist on the machine.
   outputFileTracingRoot: path.join(__dirname, '../'),
