@@ -47,3 +47,8 @@ services:
       - HOSTNAME=0.0.0.0
     depends_on:
       - backend
+
+networks:
+  default:
+    name: coolify
+    external: true
