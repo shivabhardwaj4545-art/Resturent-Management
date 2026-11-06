@@ -3,7 +3,7 @@ FROM node:20-alpine AS builder
 RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 
-# Force development mode during build so devDependencies (TypeScript, compilers) are installed
+# Force development mode during dependency installation so devDependencies (TypeScript, compilers) are installed
 ENV NODE_ENV=development
 
 # Copy root manifests
@@ -26,6 +26,9 @@ RUN cd packages/shared && npm run build
 
 # Generate Prisma client
 RUN cd backend && npx prisma generate
+
+# Set NODE_ENV to production for backend build
+ENV NODE_ENV=production
 
 # Build Express server (TypeScript → dist/)
 RUN cd backend && npm run build

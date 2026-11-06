@@ -3,7 +3,7 @@ FROM node:20-alpine AS builder
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
 
-# Force development mode during build so devDependencies (TypeScript, Next.js build tools) are installed
+# Force development mode during dependency installation so devDependencies (TypeScript, build tools) are installed
 ENV NODE_ENV=development
 
 # Copy root manifests
@@ -33,6 +33,8 @@ ENV NEXT_PUBLIC_SOCKET_URL=${NEXT_PUBLIC_SOCKET_URL}
 ARG NEXT_PUBLIC_RAZORPAY_KEY_ID
 ENV NEXT_PUBLIC_RAZORPAY_KEY_ID=${NEXT_PUBLIC_RAZORPAY_KEY_ID}
 
+# Set NODE_ENV to production for next build (Next.js requires NODE_ENV=production to build production bundles)
+ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 
@@ -46,7 +48,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Next.js standalone output needs these
+# Next.js production files
 COPY --from=builder /app/package.json          ./
 COPY --from=builder /app/node_modules          ./node_modules
 COPY --from=builder /app/packages/shared/dist  ./packages/shared/dist
