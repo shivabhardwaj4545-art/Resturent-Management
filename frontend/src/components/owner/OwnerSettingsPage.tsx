@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import {
   Settings, UtensilsCrossed, LayoutDashboard, ShoppingBag, Tag, BarChart3, LogOut,
   Menu, Save, Globe, Phone, MapPin, Clock, Palette, QrCode, Download, CreditCard, Banknote, Building2, Smartphone, Star, Printer,
-  Upload, Trash2, CheckCircle2, Sparkles, RefreshCw, FileImage, Info, Bed, Power, Ban, Plus, Check, Lock
+  Upload, Trash2, CheckCircle2, Sparkles, RefreshCw, FileImage, Info, Bed, Power, Ban, Plus, Check, Lock, X
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/services/api';
@@ -146,6 +146,78 @@ export function OwnerSettingsPage() {
     }
   };
 
+  const handleGenerateAndSaveTable = () => {
+    const val = tableNumber.trim();
+    if (!val) {
+      toast.error('Please enter a table number (e.g. 11, Patio 2)');
+      return;
+    }
+
+    const formattedName = val.toLowerCase().startsWith('table') ? val : `Table ${val}`;
+    const cleanNumber = val.replace(/^(table)\s+/i, '').trim();
+
+    const isAlreadyInDefaults = ['Table 1', 'Table 2', 'Table 3', 'Table 4', 'Table 5', 'Table 10']
+      .some((d) => d.toLowerCase() === formattedName.toLowerCase());
+
+    const currentCustoms = qrSettings.customLocations || [];
+    const existsInCustoms = currentCustoms.some(
+      (loc) => loc.trim().toLowerCase() === formattedName.toLowerCase()
+    );
+
+    let updatedCustoms = currentCustoms;
+    if (!isAlreadyInDefaults && !existsInCustoms) {
+      updatedCustoms = [...currentCustoms, formattedName];
+      setQrSettings((prev) => ({
+        ...prev,
+        customLocations: updatedCustoms,
+      }));
+    }
+
+    setTableNumber(cleanNumber);
+
+    saveMutation.mutate({
+      ...qrSettings,
+      customLocations: updatedCustoms,
+    });
+    toast.success(`${formattedName} QR code generated & saved permanently! 🎉`);
+  };
+
+  const handleGenerateAndSaveRoom = () => {
+    const val = roomNumber.trim();
+    if (!val) {
+      toast.error('Please enter a room number (e.g. 105, Suite 4)');
+      return;
+    }
+
+    const formattedName = val.toLowerCase().startsWith('room') || val.toLowerCase().includes('suite') ? val : `Room ${val}`;
+    const cleanNumber = val.replace(/^(room)\s+/i, '').trim();
+
+    const isAlreadyInDefaults = ['Room 101', 'Room 102', 'Room 103', 'Room 104', 'Room 201', 'Room 202']
+      .some((d) => d.toLowerCase() === formattedName.toLowerCase());
+
+    const currentCustoms = qrSettings.customLocations || [];
+    const existsInCustoms = currentCustoms.some(
+      (loc) => loc.trim().toLowerCase() === formattedName.toLowerCase()
+    );
+
+    let updatedCustoms = currentCustoms;
+    if (!isAlreadyInDefaults && !existsInCustoms) {
+      updatedCustoms = [...currentCustoms, formattedName];
+      setQrSettings((prev) => ({
+        ...prev,
+        customLocations: updatedCustoms,
+      }));
+    }
+
+    setRoomNumber(cleanNumber);
+
+    saveMutation.mutate({
+      ...qrSettings,
+      customLocations: updatedCustoms,
+    });
+    toast.success(`${formattedName} QR code generated & saved permanently! 🎉`);
+  };
+
   const handleRemoveCustomLocation = (locToRemove: string) => {
     const updatedCustoms = (qrSettings.customLocations || []).filter(
       (l) => l.trim().toLowerCase() !== locToRemove.trim().toLowerCase()
@@ -153,11 +225,13 @@ export function OwnerSettingsPage() {
     const updatedDisabled = (qrSettings.disabledLocations || []).filter(
       (l) => l.trim().toLowerCase() !== locToRemove.trim().toLowerCase()
     );
-    setQrSettings((prev) => ({
-      ...prev,
+    const nextSettings = {
+      ...qrSettings,
       customLocations: updatedCustoms,
       disabledLocations: updatedDisabled,
-    }));
+    };
+    setQrSettings(nextSettings);
+    saveMutation.mutate(nextSettings);
     toast.success(`Removed location "${locToRemove}"`);
   };
 
@@ -273,7 +347,8 @@ export function OwnerSettingsPage() {
   }, [data]);
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (customQrSettings?: { enabled: boolean; disabledLocations: string[]; customLocations: string[] } | void) => {
+      const activeQrSettings = customQrSettings || qrSettings;
       const payload: Record<string, any> = {
         name: form.name ? form.name.trim() : undefined,
         slug: form.slug ? form.slug.trim() : undefined,
@@ -298,8 +373,8 @@ export function OwnerSettingsPage() {
         bankIfsc: form.bankIfsc ?? null,
         bankAccountHolder: form.bankAccountHolder ?? null,
         qrSettings: {
-          ...qrSettings,
-          customLocations: allTableLocations.filter(
+          ...activeQrSettings,
+          customLocations: (activeQrSettings.customLocations || []).filter(
             (loc) => ![
               'table 1', 'table 2', 'table 3', 'table 4', 'table 5', 'table 10',
               'room 101', 'room 102', 'room 103', 'room 104', 'room 201', 'room 202'
@@ -1106,16 +1181,46 @@ export function OwnerSettingsPage() {
                       {qrMode === 'TABLE' ? (
                         <>
                           <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-muted-foreground block">
-                              Table Number (Optional)
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="e.g. 5, 12, A4 (leave empty for general menu)"
-                              value={tableNumber}
-                              onChange={(e) => setTableNumber(e.target.value)}
-                              className="w-full px-3.5 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground font-medium"
-                            />
+                            <div className="flex items-center justify-between">
+                              <label className="text-xs font-semibold text-muted-foreground block">
+                                Table Number (Optional)
+                              </label>
+                              {tableNumber && (
+                                <button
+                                  type="button"
+                                  onClick={() => setTableNumber('')}
+                                  className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+                                >
+                                  <X className="w-3 h-3" /> Clear (General Menu)
+                                </button>
+                              )}
+                            </div>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="e.g. 5, 12, A4 (leave empty for general menu)"
+                                value={tableNumber}
+                                onChange={(e) => setTableNumber(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleGenerateAndSaveTable();
+                                  }
+                                }}
+                                className="flex-1 px-3.5 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground font-medium"
+                              />
+                              <button
+                                type="button"
+                                onClick={handleGenerateAndSaveTable}
+                                disabled={!tableNumber.trim()}
+                                className="px-4 py-2.5 bg-primary text-white hover:bg-primary/95 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 shrink-0"
+                              >
+                                <Plus className="w-3.5 h-3.5" /> Generate &amp; Save QR
+                              </button>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                              Enter a table number and click <strong className="text-foreground">Generate &amp; Save QR</strong> so it is permanently saved in your QR list even when the input is cleared.
+                            </p>
                           </div>
 
                           {/* Quick Table Presets */}
@@ -1168,16 +1273,46 @@ export function OwnerSettingsPage() {
                       ) : (
                         <>
                           <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-muted-foreground block flex items-center gap-1.5">
-                              <Bed className="w-3.5 h-3.5 text-primary" /> Hotel Room Number / Suite
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="e.g. 101, 102, 201, Executive Suite A"
-                              value={roomNumber}
-                              onChange={(e) => setRoomNumber(e.target.value)}
-                              className="w-full px-3.5 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground font-medium"
-                            />
+                            <div className="flex items-center justify-between">
+                              <label className="text-xs font-semibold text-muted-foreground block flex items-center gap-1.5">
+                                <Bed className="w-3.5 h-3.5 text-primary" /> Hotel Room Number / Suite
+                              </label>
+                              {roomNumber && (
+                                <button
+                                  type="button"
+                                  onClick={() => setRoomNumber('')}
+                                  className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+                                >
+                                  <X className="w-3 h-3" /> Clear (General Menu)
+                                </button>
+                              )}
+                            </div>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="e.g. 101, 102, 201, Executive Suite A"
+                                value={roomNumber}
+                                onChange={(e) => setRoomNumber(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleGenerateAndSaveRoom();
+                                  }
+                                }}
+                                className="flex-1 px-3.5 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground font-medium"
+                              />
+                              <button
+                                type="button"
+                                onClick={handleGenerateAndSaveRoom}
+                                disabled={!roomNumber.trim()}
+                                className="px-4 py-2.5 bg-primary text-white hover:bg-primary/95 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 shrink-0"
+                              >
+                                <Plus className="w-3.5 h-3.5" /> Generate &amp; Save QR
+                              </button>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                              Enter a room number and click <strong className="text-foreground">Generate &amp; Save QR</strong> to permanently store it in your QR list.
+                            </p>
                           </div>
 
                           {/* Quick Room Presets */}
@@ -1366,19 +1501,26 @@ export function OwnerSettingsPage() {
                   themeColor={form.themeColor || '#E85D04'}
                   activeLocation={activeLocationStr}
                   disabledLocations={qrSettings.disabledLocations || []}
+                  customLocations={qrSettings.customLocations || []}
                   isTableQrAllowed={isTableQrAllowed}
                   isRoomQrAllowed={isRoomQrAllowed}
                   onSelectLocation={(loc) => {
-                    const clean = loc.replace(/^(Table|Room)\s+/i, '');
-                    if (loc.toLowerCase().startsWith('room')) {
-                      setQrMode('ROOM');
-                      setRoomNumber(clean);
+                    if (loc === 'General Menu') {
+                      setTableNumber('');
+                      setRoomNumber('');
                     } else {
-                      setQrMode('TABLE');
-                      setTableNumber(clean);
+                      const clean = loc.replace(/^(Table|Room)\s+/i, '');
+                      if (loc.toLowerCase().startsWith('room')) {
+                        setQrMode('ROOM');
+                        setRoomNumber(clean);
+                      } else {
+                        setQrMode('TABLE');
+                        setTableNumber(clean);
+                      }
                     }
                     window.scrollTo({ top: 400, behavior: 'smooth' });
                   }}
+                  onRemoveLocation={handleRemoveCustomLocation}
                   onToggleStatus={(loc) => {
                     const isRoomLoc = loc.toLowerCase().includes('room') || loc.toLowerCase().includes('suite');
                     const isAdminLocked = isRoomLoc ? !isRoomQrAllowed : !isTableQrAllowed;
