@@ -76,7 +76,7 @@ type Restaurant = {
   bankAccountNumber: string | null;
   bankIfsc: string | null;
   bankAccountHolder: string | null;
-  qrSettings?: { enabled?: boolean; disabledLocations?: string[]; customLocations?: string[] } | null;
+  qrSettings?: { enabled?: boolean; disabledLocations?: string[]; customLocations?: string[]; deletedLocations?: string[] } | null;
 };
 
 export function OwnerSettingsPage() {
@@ -97,10 +97,16 @@ export function OwnerSettingsPage() {
   const [qrMode, setQrMode] = useState<'TABLE' | 'ROOM'>('TABLE');
   const [roomNumber, setRoomNumber] = useState('');
   const [newCustomLocation, setNewCustomLocation] = useState('');
-  const [qrSettings, setQrSettings] = useState<{ enabled: boolean; disabledLocations: string[]; customLocations: string[] }>({
+  const [qrSettings, setQrSettings] = useState<{
+    enabled: boolean;
+    disabledLocations: string[];
+    customLocations: string[];
+    deletedLocations: string[];
+  }>({
     enabled: true,
     disabledLocations: [],
     customLocations: [],
+    deletedLocations: [],
   });
 
   const handleAddCustomLocation = () => {
@@ -167,18 +173,23 @@ export function OwnerSettingsPage() {
     let updatedCustoms = currentCustoms;
     if (!isAlreadyInDefaults && !existsInCustoms) {
       updatedCustoms = [...currentCustoms, formattedName];
-      setQrSettings((prev) => ({
-        ...prev,
-        customLocations: updatedCustoms,
-      }));
     }
 
-    setTableNumber(cleanNumber);
+    const currentDeleted = qrSettings.deletedLocations || [];
+    const updatedDeleted = currentDeleted.filter(
+      (d) => d.trim().toLowerCase() !== formattedName.toLowerCase()
+    );
 
-    saveMutation.mutate({
+    const nextSettings = {
       ...qrSettings,
       customLocations: updatedCustoms,
-    });
+      deletedLocations: updatedDeleted,
+    };
+
+    setQrSettings(nextSettings);
+    setTableNumber(cleanNumber);
+
+    saveMutation.mutate(nextSettings);
     toast.success(`${formattedName} QR code generated & saved permanently! 🎉`);
   };
 
@@ -203,37 +214,59 @@ export function OwnerSettingsPage() {
     let updatedCustoms = currentCustoms;
     if (!isAlreadyInDefaults && !existsInCustoms) {
       updatedCustoms = [...currentCustoms, formattedName];
-      setQrSettings((prev) => ({
-        ...prev,
-        customLocations: updatedCustoms,
-      }));
     }
 
-    setRoomNumber(cleanNumber);
+    const currentDeleted = qrSettings.deletedLocations || [];
+    const updatedDeleted = currentDeleted.filter(
+      (d) => d.trim().toLowerCase() !== formattedName.toLowerCase()
+    );
 
-    saveMutation.mutate({
+    const nextSettings = {
       ...qrSettings,
       customLocations: updatedCustoms,
-    });
+      deletedLocations: updatedDeleted,
+    };
+
+    setQrSettings(nextSettings);
+    setRoomNumber(cleanNumber);
+
+    saveMutation.mutate(nextSettings);
     toast.success(`${formattedName} QR code generated & saved permanently! 🎉`);
   };
 
-  const handleRemoveCustomLocation = (locToRemove: string) => {
+  const handleRemoveLocation = (locToRemove: string) => {
+    const norm = locToRemove.trim().toLowerCase();
     const updatedCustoms = (qrSettings.customLocations || []).filter(
-      (l) => l.trim().toLowerCase() !== locToRemove.trim().toLowerCase()
+      (l) => l.trim().toLowerCase() !== norm
     );
     const updatedDisabled = (qrSettings.disabledLocations || []).filter(
-      (l) => l.trim().toLowerCase() !== locToRemove.trim().toLowerCase()
+      (l) => l.trim().toLowerCase() !== norm
     );
+    const currentDeleted = qrSettings.deletedLocations || [];
+    const updatedDeleted = currentDeleted.some((d) => d.trim().toLowerCase() === norm)
+      ? currentDeleted
+      : [...currentDeleted, locToRemove];
+
     const nextSettings = {
       ...qrSettings,
       customLocations: updatedCustoms,
       disabledLocations: updatedDisabled,
+      deletedLocations: updatedDeleted,
     };
+
     setQrSettings(nextSettings);
     saveMutation.mutate(nextSettings);
-    toast.success(`Removed location "${locToRemove}"`);
+    toast.success(`Deleted QR code for "${locToRemove}"`);
+
+    const cleanActive = (activeLocationStr || '').trim().toLowerCase();
+    const cleanRemoved = locToRemove.replace(/^(Table|Room)\s+/i, '').trim().toLowerCase();
+    if (cleanActive === cleanRemoved || cleanActive === norm) {
+      setTableNumber('');
+      setRoomNumber('');
+    }
   };
+
+  const handleRemoveCustomLocation = handleRemoveLocation;
 
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
   const [operatingHours, setOperatingHours] = useState<OperatingHours>({
@@ -341,13 +374,14 @@ export function OwnerSettingsPage() {
           enabled: data.qrSettings.enabled ?? true,
           disabledLocations: Array.isArray(data.qrSettings.disabledLocations) ? data.qrSettings.disabledLocations : [],
           customLocations: Array.isArray(data.qrSettings.customLocations) ? data.qrSettings.customLocations : [],
+          deletedLocations: Array.isArray(data.qrSettings.deletedLocations) ? data.qrSettings.deletedLocations : [],
         });
       }
     }
   }, [data]);
 
   const saveMutation = useMutation({
-    mutationFn: async (customQrSettings?: { enabled: boolean; disabledLocations: string[]; customLocations: string[] } | void) => {
+    mutationFn: async (customQrSettings?: { enabled: boolean; disabledLocations: string[]; customLocations: string[]; deletedLocations?: string[] } | void) => {
       const activeQrSettings = customQrSettings || qrSettings;
       const payload: Record<string, any> = {
         name: form.name ? form.name.trim() : undefined,
@@ -380,6 +414,7 @@ export function OwnerSettingsPage() {
               'room 101', 'room 102', 'room 103', 'room 104', 'room 201', 'room 202'
             ].includes(loc.trim().toLowerCase())
           ),
+          deletedLocations: activeQrSettings.deletedLocations || [],
         },
       };
       const res = await api.put('/owner/restaurant', payload);
@@ -396,6 +431,7 @@ export function OwnerSettingsPage() {
             enabled: updatedRestaurant.qrSettings.enabled ?? true,
             disabledLocations: Array.isArray(updatedRestaurant.qrSettings.disabledLocations) ? updatedRestaurant.qrSettings.disabledLocations : [],
             customLocations: Array.isArray(updatedRestaurant.qrSettings.customLocations) ? updatedRestaurant.qrSettings.customLocations : [],
+            deletedLocations: Array.isArray(updatedRestaurant.qrSettings.deletedLocations) ? updatedRestaurant.qrSettings.deletedLocations : [],
           });
         }
         formInitialized.current = true;
@@ -537,6 +573,7 @@ export function OwnerSettingsPage() {
           : (activeLocationStr.toLowerCase().startsWith('table') ? activeLocationStr : `Table ${activeLocationStr}`))
       : '';
 
+    const deleted = (qrSettings.deletedLocations || []).map((d) => d.trim().toLowerCase());
     const list = [...defaults, ...customs];
     if (activeFormatted && !list.some((l) => l.toLowerCase() === activeFormatted.toLowerCase())) {
       list.push(activeFormatted);
@@ -546,13 +583,13 @@ export function OwnerSettingsPage() {
     const uniqueList: string[] = [];
     for (const item of list) {
       const lower = item.trim().toLowerCase();
-      if (!seen.has(lower)) {
+      if (!deleted.includes(lower) && !seen.has(lower)) {
         seen.add(lower);
         uniqueList.push(item);
       }
     }
     return uniqueList;
-  }, [data?.platformType, qrSettings.customLocations, activeLocationStr, qrMode]);
+  }, [data?.platformType, qrSettings.customLocations, qrSettings.deletedLocations, activeLocationStr, qrMode]);
 
   const uniqueTableCode = data?.slug && activeLocationStr
     ? generateUniqueTableCode(data.slug, activeLocationStr)
@@ -1501,7 +1538,6 @@ export function OwnerSettingsPage() {
                   themeColor={form.themeColor || '#E85D04'}
                   activeLocation={activeLocationStr}
                   disabledLocations={qrSettings.disabledLocations || []}
-                  customLocations={qrSettings.customLocations || []}
                   isTableQrAllowed={isTableQrAllowed}
                   isRoomQrAllowed={isRoomQrAllowed}
                   onSelectLocation={(loc) => {
@@ -1520,7 +1556,7 @@ export function OwnerSettingsPage() {
                     }
                     window.scrollTo({ top: 400, behavior: 'smooth' });
                   }}
-                  onRemoveLocation={handleRemoveCustomLocation}
+                  onRemoveLocation={handleRemoveLocation}
                   onToggleStatus={(loc) => {
                     const isRoomLoc = loc.toLowerCase().includes('room') || loc.toLowerCase().includes('suite');
                     const isAdminLocked = isRoomLoc ? !isRoomQrAllowed : !isTableQrAllowed;
@@ -1645,12 +1681,12 @@ export function OwnerSettingsPage() {
                               </span>
                             </button>
 
-                            {isCustom && (
+                            {loc !== 'General Menu' && (
                               <button
                                 type="button"
-                                onClick={() => handleRemoveCustomLocation(loc)}
+                                onClick={() => handleRemoveLocation(loc)}
                                 className="ml-1 p-0.5 rounded hover:bg-red-500/20 text-red-500 transition-colors"
-                                title="Remove custom location"
+                                title={`Delete ${loc}`}
                               >
                                 <Trash2 className="w-3 h-3" />
                               </button>
