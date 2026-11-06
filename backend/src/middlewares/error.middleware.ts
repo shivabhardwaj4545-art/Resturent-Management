@@ -123,10 +123,7 @@ export function errorHandler(
   const statusCode = res.statusCode !== 200 ? res.statusCode : 500;
   res.status(statusCode).json({
     success: false,
-    error:
-      process.env.NODE_ENV === 'production'
-        ? 'An unexpected error occurred. Please try again later.'
-        : error.message,
+    error: error.message || 'An unexpected error occurred. Please try again later.',
     code: 'INTERNAL_SERVER_ERROR',
   });
 }

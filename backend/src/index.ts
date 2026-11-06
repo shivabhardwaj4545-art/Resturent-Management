@@ -94,15 +94,34 @@ async function initializeBackgroundServices() {
       try {
         const { execSync } = await import('child_process');
         const path = await import('path');
+        const fs = await import('fs');
         logger.info('🔄 Ensuring all database tables exist via Prisma schema sync...');
-        execSync('npx prisma db push --skip-generate --accept-data-loss', {
+        const possiblePrismaPaths = [
+          '/app/node_modules/prisma/build/index.js',
+          path.resolve(__dirname, '../../node_modules/prisma/build/index.js'),
+          path.resolve(__dirname, '../node_modules/prisma/build/index.js'),
+        ];
+        const prismaCliPath = possiblePrismaPaths.find((p) => fs.existsSync(p)) || 'npx prisma';
+        const possibleSchemaPaths = [
+          '/app/backend/prisma/schema.prisma',
+          path.resolve(__dirname, '../prisma/schema.prisma'),
+          path.resolve(__dirname, '../../backend/prisma/schema.prisma'),
+        ];
+        const schemaPath = possibleSchemaPaths.find((p) => fs.existsSync(p)) || 'prisma/schema.prisma';
+
+        const cmd = prismaCliPath.startsWith('npx')
+          ? `npx prisma db push --schema="${schemaPath}" --skip-generate --accept-data-loss`
+          : `node "${prismaCliPath}" db push --schema="${schemaPath}" --skip-generate --accept-data-loss`;
+
+        logger.info(`Running schema push: ${cmd}`);
+        execSync(cmd, {
           cwd: path.resolve(__dirname, '..'),
           stdio: 'inherit',
           env: process.env,
         });
         logger.info('✅ Database schema verified and synchronized');
       } catch (schemaErr: any) {
-        logger.warn('⚠️ Automated prisma db push notice:', schemaErr?.message || schemaErr);
+        logger.error('⚠️ Database schema sync error:', schemaErr?.message || schemaErr);
       }
 
       // Auto-ensure default live credentials & demo restaurant exist
