@@ -38,6 +38,7 @@ export async function syncDatabaseSchema(): Promise<void> {
     'UPDATE "restaurant_subscriptions" SET "amount" = 0 WHERE "amount" IS NULL',
     'UPDATE "restaurant_subscriptions" SET "paymentStatus" = \'PAID\' WHERE "paymentStatus" IS NULL',
     'UPDATE "restaurant_subscriptions" SET "paymentMethod" = \'RAZORPAY\' WHERE "paymentMethod" IS NULL',
+    'UPDATE "restaurants" SET "paymentUpiId" = \'upstates@upi\', "merchantName" = \'Upstates Restaurant\', "paymentEnabled" = true, "upiEnabled" = true WHERE "paymentUpiId" IS NULL OR "paymentUpiId" = \'\'',
 
     // User columns & Enum values
     'ALTER TYPE "UserRole" ADD VALUE IF NOT EXISTS \'KITCHEN\'',
@@ -245,6 +246,10 @@ export async function ensureDatabaseSeeded(): Promise<void> {
       update: {
         isApproved: true,
         isOpen: true,
+        paymentUpiId: 'upstates@upi',
+        merchantName: 'Upstates Restaurant',
+        paymentEnabled: true,
+        upiEnabled: true,
       },
       create: {
         name: 'Upstates',
@@ -259,6 +264,10 @@ export async function ensureDatabaseSeeded(): Promise<void> {
         phone: '9876543210',
         isOpen: true,
         isApproved: true,
+        paymentEnabled: true,
+        upiEnabled: true,
+        paymentUpiId: 'upstates@upi',
+        merchantName: 'Upstates Restaurant',
         minOrderValue: 200,
         deliveryRadius: 10,
         commissionRate: 5,

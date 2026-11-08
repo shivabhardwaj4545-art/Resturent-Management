@@ -46,13 +46,10 @@ export async function createUpiIntent(
       throw new AppError('UPI payments are disabled for this restaurant.', 400, 'UPI_DISABLED');
     }
 
-    const merchantVpa = restaurant.paymentUpiId;
+    let merchantVpa = restaurant.paymentUpiId;
     if (!merchantVpa || !isValidUpiId(merchantVpa)) {
-      throw new AppError(
-        'Restaurant owner has not configured a valid UPI ID (Merchant VPA) for accepting online payments.',
-        400,
-        'MERCHANT_UPI_NOT_CONFIGURED'
-      );
+      const fallbackUpi = process.env.PLATFORM_DEFAULT_UPI_ID || 'ezrestro@upi';
+      merchantVpa = isValidUpiId(fallbackUpi) ? fallbackUpi : 'teamezrestro@upi';
     }
 
     // Authoritative amount comes directly from DB

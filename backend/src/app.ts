@@ -56,6 +56,20 @@ export function isOriginAllowed(origin?: string): boolean {
   if (!origin) return true;
   const normalized = origin.replace(/\/+$/, '');
   if (allowedOrigins.includes(normalized)) return true;
+  try {
+    const url = new URL(normalized);
+    const configuredHosts = allowedOrigins.map((u) => {
+      try {
+        return new URL(u).hostname.replace(/^www\./, '');
+      } catch {
+        return u;
+      }
+    });
+    const currentHost = url.hostname.replace(/^www\./, '');
+    if (configuredHosts.includes(currentHost)) {
+      return true;
+    }
+  } catch {}
   if (process.env.NODE_ENV !== 'production') {
     if (normalized.startsWith('http://localhost:') || normalized.startsWith('http://127.0.0.1:')) {
       return true;

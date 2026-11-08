@@ -48,6 +48,14 @@ const nextConfig: NextConfig = {
         source: '/api/v1/:path*',
         destination: `${backendUrl.replace(/\/+$/, '')}/api/v1/:path*`,
       },
+      {
+        source: '/socket.io',
+        destination: `${backendUrl.replace(/\/+$/, '')}/socket.io`,
+      },
+      {
+        source: '/socket.io/:path*',
+        destination: `${backendUrl.replace(/\/+$/, '')}/socket.io/:path*`,
+      },
     ];
   },
 
