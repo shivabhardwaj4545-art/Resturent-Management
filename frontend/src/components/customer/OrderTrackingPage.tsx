@@ -36,20 +36,20 @@ import { useCartStore } from '@/store/cart.store';
 // ─── Tracking Step Definitions ────────────────────────────────────────────────
 
 const DELIVERY_STEPS = [
-  { key: 'PENDING',    icon: <Clock className="w-5 h-5" />,        label: 'Order Placed' },
-  { key: 'CONFIRMED',  icon: <CheckCircle2 className="w-5 h-5" />, label: 'Confirmed' },
-  { key: 'PREPARING',  icon: <ChefHat className="w-5 h-5" />,      label: 'Preparing' },
-  { key: 'READY',      icon: <Package className="w-5 h-5" />,      label: 'Ready for Pickup' },
-  { key: 'ON_THE_WAY', icon: <Bike className="w-5 h-5" />,         label: 'On the Way' },
-  { key: 'DELIVERED',  icon: <Star className="w-5 h-5" />,         label: 'Delivered' },
+  { key: 'PENDING', icon: <Clock className="w-5 h-5" />, label: 'Order Placed' },
+  { key: 'CONFIRMED', icon: <CheckCircle2 className="w-5 h-5" />, label: 'Confirmed' },
+  { key: 'PREPARING', icon: <ChefHat className="w-5 h-5" />, label: 'Preparing' },
+  { key: 'READY', icon: <Package className="w-5 h-5" />, label: 'Ready for Pickup' },
+  { key: 'ON_THE_WAY', icon: <Bike className="w-5 h-5" />, label: 'On the Way' },
+  { key: 'DELIVERED', icon: <Star className="w-5 h-5" />, label: 'Delivered' },
 ];
 
 const DINE_IN_STEPS = [
-  { key: 'PENDING',   icon: <Clock className="w-5 h-5" />,        label: 'Order Placed' },
+  { key: 'PENDING', icon: <Clock className="w-5 h-5" />, label: 'Order Placed' },
   { key: 'CONFIRMED', icon: <CheckCircle2 className="w-5 h-5" />, label: 'Confirmed' },
-  { key: 'PREPARING', icon: <ChefHat className="w-5 h-5" />,      label: 'Preparing' },
-  { key: 'READY',     icon: <Utensils className="w-5 h-5" />,     label: 'Ready to Serve' },
-  { key: 'DELIVERED', icon: <Star className="w-5 h-5" />,         label: 'Served & Completed' },
+  { key: 'PREPARING', icon: <ChefHat className="w-5 h-5" />, label: 'Preparing' },
+  { key: 'READY', icon: <Utensils className="w-5 h-5" />, label: 'Ready to Serve' },
+  { key: 'DELIVERED', icon: <Star className="w-5 h-5" />, label: 'Served & Completed' },
 ];
 
 /**
@@ -358,10 +358,10 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
 
   const themeColor = order.restaurant.themeColor ?? '#E85D04';
   const isCancelled = currentStatus === 'CANCELLED';
-  const isCompleted  = currentStatus === 'DELIVERED';
+  const isCompleted = currentStatus === 'DELIVERED';
 
   const completedLabel = isDeliveryOrder ? '✅ Order Delivered!' : '✅ Enjoy Your Meal!';
-  const trackingLabel  = isDeliveryOrder ? '🛵 Tracking Your Delivery' : '🍽️ Tracking Your Order';
+  const trackingLabel = isDeliveryOrder ? '🛵 Tracking Your Delivery' : '🍽️ Tracking Your Order';
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -498,30 +498,28 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
       <div className="max-w-lg mx-auto px-4 space-y-5">
         {/* Add-on Order Journey Banner */}
         {order.addOnStatus && (
-          <div className={`border-2 rounded-2xl p-5 shadow-lg space-y-3 ${
-            order.addOnStatus === 'CANCELLED'
+          <div className={`border-2 rounded-2xl p-5 shadow-lg space-y-3 ${order.addOnStatus === 'CANCELLED'
               ? 'bg-red-500/10 border-red-500/30'
               : 'bg-gradient-to-r from-blue-500/10 via-amber-500/10 to-emerald-500/10 border-blue-500/30'
-          }`}>
+            }`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 font-display font-bold text-sm text-foreground">
                 <Sparkles className={`w-5 h-5 ${order.addOnStatus === 'CANCELLED' ? 'text-red-500' : 'text-blue-500 animate-pulse'}`} />
                 <span>⚡ Add-on Items Journey</span>
               </div>
-              <span className={`px-3 py-1 rounded-full text-xs font-extrabold text-white shadow-sm ${
-                order.addOnStatus === 'CANCELLED' ? 'bg-red-500' : 'bg-blue-500'
-              }`}>
+              <span className={`px-3 py-1 rounded-full text-xs font-extrabold text-white shadow-sm ${order.addOnStatus === 'CANCELLED' ? 'bg-red-500' : 'bg-blue-500'
+                }`}>
                 {order.addOnStatus === 'CANCELLED' ? '🚫 Add-ons Cancelled' : order.addOnStatus === 'PREPARING' ? '👨‍🍳 Preparing Add-ons' : order.addOnStatus === 'READY' ? '🍽️ Ready to Serve' : '✅ Add-ons Served'}
               </span>
             </div>
             <p className="text-xs text-muted-foreground">
               {order.addOnStatus === 'CANCELLED'
                 ? 'Your add-on items have been cancelled by the restaurant.'
-                : order.addOnStatus === 'PREPARING' 
-                ? 'The kitchen has received your add-on items and is preparing them right now!' 
-                : order.addOnStatus === 'READY' 
-                ? 'Your add-on items are ready and will be served to your table shortly!' 
-                : 'Your add-on items have been served. Enjoy your meal!'}
+                : order.addOnStatus === 'PREPARING'
+                  ? 'The kitchen has received your add-on items and is preparing them right now!'
+                  : order.addOnStatus === 'READY'
+                    ? 'Your add-on items are ready and will be served to your table shortly!'
+                    : 'Your add-on items have been served. Enjoy your meal!'}
             </p>
             {/* Add-on Progress Steps */}
             {order.addOnStatus !== 'CANCELLED' && (
@@ -555,11 +553,10 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
                 return (
                   <div key={step.key} className="flex items-center gap-3">
                     <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
-                        isStepCompleted
+                      className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${isStepCompleted
                           ? 'text-white shadow-lg'
                           : 'bg-muted text-muted-foreground'
-                      }`}
+                        }`}
                       style={isStepCompleted ? { backgroundColor: themeColor } : {}}
                     >
                       {step.icon}
@@ -567,11 +564,10 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
 
                     <div className="flex-1">
                       <p
-                        className={`font-medium text-sm ${
-                          isActive || isStepCompleted
+                        className={`font-medium text-sm ${isActive || isStepCompleted
                             ? 'text-foreground'
                             : 'text-muted-foreground'
-                        }`}
+                          }`}
                       >
                         {step.label}
                       </p>
@@ -607,7 +603,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
               <CreditCard className="w-5 h-5 text-primary" style={{ color: themeColor }} />
               <h3 className="font-display font-semibold text-sm">Direct Payment Details</h3>
             </div>
-            
+
             <p className="text-xs text-muted-foreground leading-relaxed">
               Please transfer the total amount of <strong className="text-foreground">₹{order.total.toFixed(2)}</strong> directly to the restaurant owner using the details below:
             </p>
@@ -669,7 +665,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
               {order.restaurant.bankAccountNumber && (
                 <div className="p-3 bg-muted/20 border border-border/60 rounded-xl space-y-2">
                   <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Bank Account Details</span>
-                  
+
                   <div className="grid grid-cols-2 gap-2 text-[11px]">
                     {order.restaurant.bankAccountHolder && (
                       <div>
@@ -736,214 +732,213 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
         <div className="bg-card border border-border rounded-2xl p-4">
           <h2 className="font-display font-semibold mb-3">Your Order</h2>
           <div className="space-y-2">
-            {order.items.map((item) => {
-              const isAddon = isItemAddon(item, order);
-              return (
-                <div
-                  key={item.id}
-                  className={`space-y-0.5 border-b border-border/50 pb-2 last:border-0 last:pb-0 ${
-                    isAddon ? 'bg-amber-500/5 -mx-2 px-2 py-1.5 rounded-xl border border-amber-500/20' : ''
-                  }`}
-                >
-                  <div className="flex justify-between text-sm items-center gap-2">
-                    <span className="flex items-center gap-1.5 flex-wrap">
-                      <span className={isAddon ? 'font-bold text-foreground' : ''}>{item.menuItem.name}</span>
-                      {isAddon && (
-                        <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/25 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                          ⚡ ADD-ON
-                        </span>
-                      )}
-                      {item.variant && (
-                        <span className="text-muted-foreground"> ({item.variant.name})</span>
-                      )}
-                      <span className="text-muted-foreground"> × {item.quantity}</span>
-                    </span>
-                    <span className={isAddon ? 'font-bold text-amber-600 dark:text-amber-400' : ''}>
-                      ₹{(item.unitPrice * item.quantity).toFixed(0)}
-                    </span>
+                  {order.items.map((item) => {
+                    const isAddon = isItemAddon(item, order);
+                    return (
+                      <div
+                        key={item.id}
+                        className={`space-y-0.5 border-b border-border/50 pb-2 last:border-0 last:pb-0 ${isAddon ? 'bg-amber-500/5 -mx-2 px-2 py-1.5 rounded-xl border border-amber-500/20' : ''
+                          }`}
+                      >
+                        <div className="flex justify-between text-sm items-center gap-2">
+                          <span className="flex items-center gap-1.5 flex-wrap">
+                            <span className={isAddon ? 'font-bold text-foreground' : ''}>{item.menuItem.name}</span>
+                            {isAddon && (
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/25 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                                ⚡ ADD-ON
+                              </span>
+                            )}
+                            {item.variant && (
+                              <span className="text-muted-foreground"> ({item.variant.name})</span>
+                            )}
+                            <span className="text-muted-foreground"> × {item.quantity}</span>
+                          </span>
+                          <span className={isAddon ? 'font-bold text-amber-600 dark:text-amber-400' : ''}>
+                            ₹{(item.unitPrice * item.quantity).toFixed(0)}
+                          </span>
+                        </div>
+                        {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
+                          <div className="text-[11px] text-muted-foreground pl-2">
+                            + {item.addOns.map((ao: any) => ao.name).join(', ')}
+                          </div>
+                        )}
+                      </div>
+                );
+            })}
+                <div className="border-t border-border pt-3 space-y-1.5 text-sm">
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Subtotal</span>
+                    <span>₹{order.subtotal.toFixed(2)}</span>
                   </div>
-                  {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
-                    <div className="text-[11px] text-muted-foreground pl-2">
-                      + {item.addOns.map((ao: any) => ao.name).join(', ')}
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>GST (18%)</span>
+                    <span>₹{order.gstAmount.toFixed(2)}</span>
+                  </div>
+                  {order.deliveryFee > 0 && (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Delivery Fee</span>
+                      <span>₹{order.deliveryFee.toFixed(2)}</span>
                     </div>
                   )}
+                  {order.packagingFee > 0 && (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Packaging Fee</span>
+                      <span>₹{order.packagingFee.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {order.discount > 0 && (
+                    <div className="flex justify-between text-green-600 font-medium">
+                      <span>Discount</span>
+                      <span>-₹{order.discount.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center font-bold text-base border-t border-border pt-2">
+                    <div>
+                      <span className="block">{order.paymentStatus === 'PAID' ? 'Total Paid' : 'Total Amount'}</span>
+                      <span className={`text-xs block font-extrabold ${order.paymentStatus === 'PAID' ? 'text-emerald-600' : 'text-amber-600 dark:text-amber-400 animate-pulse'}`}>
+                        {order.paymentStatus === 'PAID' ? '✅ Payment Confirmed' : '⏳ Payment Pending'}
+                      </span>
+                    </div>
+                    <span className="text-lg">₹{order.total.toFixed(2)}</span>
+                  </div>
                 </div>
-              );
-            })}
-            <div className="border-t border-border pt-3 space-y-1.5 text-sm">
-              <div className="flex justify-between text-muted-foreground">
-                <span>Subtotal</span>
-                <span>₹{order.subtotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-muted-foreground">
-                <span>GST (18%)</span>
-                <span>₹{order.gstAmount.toFixed(2)}</span>
-              </div>
-              {order.deliveryFee > 0 && (
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Delivery Fee</span>
-                  <span>₹{order.deliveryFee.toFixed(2)}</span>
-                </div>
-              )}
-              {order.packagingFee > 0 && (
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Packaging Fee</span>
-                  <span>₹{order.packagingFee.toFixed(2)}</span>
-                </div>
-              )}
-              {order.discount > 0 && (
-                <div className="flex justify-between text-green-600 font-medium">
-                  <span>Discount</span>
-                  <span>-₹{order.discount.toFixed(2)}</span>
-                </div>
-              )}
-              <div className="flex justify-between items-center font-bold text-base border-t border-border pt-2">
-                <div>
-                  <span className="block">{order.paymentStatus === 'PAID' ? 'Total Paid' : 'Total Amount'}</span>
-                  <span className={`text-xs block font-extrabold ${order.paymentStatus === 'PAID' ? 'text-emerald-600' : 'text-amber-600 dark:text-amber-400 animate-pulse'}`}>
-                    {order.paymentStatus === 'PAID' ? '✅ Payment Confirmed' : '⏳ Payment Pending'}
-                  </span>
-                </div>
-                <span className="text-lg">₹{order.total.toFixed(2)}</span>
-              </div>
-            </div>
-            {!['DELIVERED', 'CANCELLED'].includes(order.status) && (
-              <div className="space-y-2 mt-3">
-                {order.paymentStatus !== 'PAID' && order.tableNumber && (
-                  <button
-                    onClick={async () => {
-                      try {
-                        const token = typeof window !== 'undefined' ? localStorage.getItem(`table_token_${restaurantSlug}`) || '' : '';
-                        await api.post(`/menu/${restaurantSlug}/call-waiter`, {
-                          tableNumber: order.tableNumber,
-                          tableToken: token,
-                          type: 'payment',
-                          amount: order.total,
-                          paymentMethod: order.paymentMethod,
-                        });
-                        const isRoomOrder = Boolean(order.tableNumber && (order.tableNumber.toLowerCase().includes('room') || order.tableNumber.toLowerCase().includes('suite')));
-                        const locLabel = isRoomOrder
-                          ? (order.tableNumber?.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`)
-                          : (order.tableNumber?.toLowerCase().startsWith('table') ? order.tableNumber : `Table ${order.tableNumber}`);
-                        toast.success(`${isRoomOrder ? '🛎️ Room service call for payment sent for ' : '🙋 Call Waiter for Payment sent for '}${locLabel}!`);
-                      } catch (err: any) {
-                        const isServerDown = err.code === 'ERR_NETWORK' || !err.response || err.response?.status >= 500;
-                        if (!isServerDown) {
-                          toast.error(err.response?.data?.error || 'Could not call staff for payment.');
-                        }
-                      }
-                    }}
-                    className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center justify-center gap-1.5 shadow-sm"
-                  >
-                    <span>
-                      {order.tableNumber && (order.tableNumber.toLowerCase().includes('room') || order.tableNumber.toLowerCase().includes('suite'))
-                        ? `🛎️ Call Room Service for Payment (${order.tableNumber.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`})`
-                        : `🙋 Call Waiter for Payment (${order.tableNumber?.toLowerCase().startsWith('table') ? order.tableNumber : `Table ${order.tableNumber}`})`}
-                    </span>
-                  </button>
-                )}
-                <button
-                  onClick={handleAddMoreItems}
-                  className="w-full py-2.5 px-4 border border-dashed rounded-xl text-xs font-semibold hover:bg-muted transition-colors flex items-center justify-center gap-1.5"
-                  style={{ color: themeColor, borderColor: themeColor }}
-                >
-                  <span>➕ Add More Items (Roti, Paneer, etc.)</span>
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Rating — shown when order is completed */}
-        {(order.review || (showRating || isCompleted)) && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-card border border-border rounded-2xl p-4 shadow-sm"
-          >
-            {order.review ? (
-              <div className="text-center py-2">
-                <span className="text-emerald-500 font-semibold block mb-1 text-sm">🎉 Thank you for your feedback!</span>
-                <div className="flex gap-1 justify-center mb-2">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <span key={star} className="text-xl">
-                      {star <= order.review!.rating ? '★' : '☆'}
-                    </span>
-                  ))}
-                </div>
-                {order.review.comment && (
-                  <p className="text-xs text-muted-foreground italic bg-muted/40 p-2 rounded-lg max-w-xs mx-auto">
-                    "{order.review.comment}"
-                  </p>
-                )}
-              </div>
-            ) : (
-              <>
-                <h2 className="font-display font-semibold mb-2 text-sm text-center">Rate Your Experience</h2>
-                <div className="flex gap-2 justify-center mb-3">
-                  {[1, 2, 3, 4, 5].map((star) => (
+                {!['DELIVERED', 'CANCELLED'].includes(order.status) && (
+                  <div className="space-y-2 mt-3">
+                    {order.paymentStatus !== 'PAID' && order.tableNumber && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            const token = typeof window !== 'undefined' ? localStorage.getItem(`table_token_${restaurantSlug}`) || '' : '';
+                            await api.post(`/menu/${restaurantSlug}/call-waiter`, {
+                              tableNumber: order.tableNumber,
+                              tableToken: token,
+                              type: 'payment',
+                              amount: order.total,
+                              paymentMethod: order.paymentMethod,
+                            });
+                            const isRoomOrder = Boolean(order.tableNumber && (order.tableNumber.toLowerCase().includes('room') || order.tableNumber.toLowerCase().includes('suite')));
+                            const locLabel = isRoomOrder
+                              ? (order.tableNumber?.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`)
+                              : (order.tableNumber?.toLowerCase().startsWith('table') ? order.tableNumber : `Table ${order.tableNumber}`);
+                            toast.success(`${isRoomOrder ? '🛎️ Room service call for payment sent for ' : '🙋 Call Waiter for Payment sent for '}${locLabel}!`);
+                          } catch (err: any) {
+                            const isServerDown = err.code === 'ERR_NETWORK' || !err.response || err.response?.status >= 500;
+                            if (!isServerDown) {
+                              toast.error(err.response?.data?.error || 'Could not call staff for payment.');
+                            }
+                          }
+                        }}
+                        className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                      >
+                        <span>
+                          {order.tableNumber && (order.tableNumber.toLowerCase().includes('room') || order.tableNumber.toLowerCase().includes('suite'))
+                            ? `🛎️ Call Room Service for Payment (${order.tableNumber.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`})`
+                            : `🙋 Call Waiter for Payment (${order.tableNumber?.toLowerCase().startsWith('table') ? order.tableNumber : `Table ${order.tableNumber}`})`}
+                        </span>
+                      </button>
+                    )}
                     <button
-                      key={star}
-                      onClick={() => setRating(star)}
-                      className="text-3xl transition-transform hover:scale-110 focus:outline-none"
+                      onClick={handleAddMoreItems}
+                      className="w-full py-2.5 px-4 border border-dashed rounded-xl text-xs font-semibold hover:bg-muted transition-colors flex items-center justify-center gap-1.5"
+                      style={{ color: themeColor, borderColor: themeColor }}
                     >
-                      {star <= rating ? '★' : '☆'}
-                    </button>
-                  ))}
-                </div>
-                {rating > 0 && (
-                  <div className="space-y-3">
-                    <textarea
-                      placeholder="Write an optional review message (Max 500 chars)..."
-                      value={comment}
-                      onChange={(e) => setComment(e.target.value)}
-                      className="w-full text-xs p-2.5 rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                      rows={2}
-                      maxLength={500}
-                    />
-                    <button
-                      className="w-full py-2.5 rounded-xl text-white font-semibold text-sm transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
-                      style={{ backgroundColor: themeColor }}
-                      onClick={() => submitReviewMutation.mutate()}
-                      disabled={submitReviewMutation.isPending}
-                    >
-                      {submitReviewMutation.isPending ? 'Submitting...' : 'Submit Rating'}
+                      <span>➕ Add More Items (Roti, Paneer, etc.)</span>
                     </button>
                   </div>
                 )}
-              </>
-            )}
-          </motion.div>
-        )}
-
-        {/* Actions */}
-        <div className="flex flex-col gap-3">
-          <div className="flex gap-3">
-            <Link
-              href={`/r/${restaurantSlug}`}
-              className="flex-1 py-3 rounded-xl border border-border text-center text-sm font-semibold hover:bg-muted transition-colors flex items-center justify-center"
-            >
-              Back to Menu
-            </Link>
-            <button
-              onClick={handleReorder}
-              className="flex-1 py-3 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md"
-              style={{ backgroundColor: themeColor }}
-            >
-              <RotateCcw className="w-4 h-4" />
-              Reorder
-            </button>
-          </div>
-          {['CONFIRMED', 'PREPARING', 'BAKING', 'READY', 'ON_THE_WAY', 'DELIVERED'].includes(currentStatus) && (
-            <InvoiceDownload order={order} themeColor={themeColor} />
-          )}
+              </div>
         </div>
+
+          {/* Rating — shown when order is completed */}
+          {(order.review || (showRating || isCompleted)) && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-card border border-border rounded-2xl p-4 shadow-sm"
+            >
+              {order.review ? (
+                <div className="text-center py-2">
+                  <span className="text-emerald-500 font-semibold block mb-1 text-sm">🎉 Thank you for your feedback!</span>
+                  <div className="flex gap-1 justify-center mb-2">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <span key={star} className="text-xl">
+                        {star <= order.review!.rating ? '★' : '☆'}
+                      </span>
+                    ))}
+                  </div>
+                  {order.review.comment && (
+                    <p className="text-xs text-muted-foreground italic bg-muted/40 p-2 rounded-lg max-w-xs mx-auto">
+                      "{order.review.comment}"
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <h2 className="font-display font-semibold mb-2 text-sm text-center">Rate Your Experience</h2>
+                  <div className="flex gap-2 justify-center mb-3">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        onClick={() => setRating(star)}
+                        className="text-3xl transition-transform hover:scale-110 focus:outline-none"
+                      >
+                        {star <= rating ? '★' : '☆'}
+                      </button>
+                    ))}
+                  </div>
+                  {rating > 0 && (
+                    <div className="space-y-3">
+                      <textarea
+                        placeholder="Write an optional review message (Max 500 chars)..."
+                        value={comment}
+                        onChange={(e) => setComment(e.target.value)}
+                        className="w-full text-xs p-2.5 rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                        rows={2}
+                        maxLength={500}
+                      />
+                      <button
+                        className="w-full py-2.5 rounded-xl text-white font-semibold text-sm transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                        style={{ backgroundColor: themeColor }}
+                        onClick={() => submitReviewMutation.mutate()}
+                        disabled={submitReviewMutation.isPending}
+                      >
+                        {submitReviewMutation.isPending ? 'Submitting...' : 'Submit Rating'}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </motion.div>
+          )}
+
+          {/* Actions */}
+          <div className="flex flex-col gap-3">
+            <div className="flex gap-3">
+              <Link
+                href={`/r/${restaurantSlug}`}
+                className="flex-1 py-3 rounded-xl border border-border text-center text-sm font-semibold hover:bg-muted transition-colors flex items-center justify-center"
+              >
+                Back to Menu
+              </Link>
+              <button
+                onClick={handleReorder}
+                className="flex-1 py-3 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md"
+                style={{ backgroundColor: themeColor }}
+              >
+                <RotateCcw className="w-4 h-4" />
+                Reorder
+              </button>
+            </div>
+            {['CONFIRMED', 'PREPARING', 'BAKING', 'READY', 'ON_THE_WAY', 'DELIVERED'].includes(currentStatus) && (
+              <InvoiceDownload order={order} themeColor={themeColor} />
+            )}
+          </div>
+        </div>
+        {/* Customer Notification Modal */}
+        <CustomerNotificationModal
+          isOpen={showNotifModal}
+          onClose={() => setShowNotifModal(false)}
+        />
       </div>
-      {/* Customer Notification Modal */}
-      <CustomerNotificationModal
-        isOpen={showNotifModal}
-        onClose={() => setShowNotifModal(false)}
-      />
-    </div>
-  );
+      );
 }

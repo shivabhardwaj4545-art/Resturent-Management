@@ -582,7 +582,7 @@ export async function placeOrder(
         order.id,
         restaurant.name,
         finalTotal
-      ).catch(() => {}); // Fire and forget
+      ).catch(() => { }); // Fire and forget
     }
 
     res.status(201).json({

@@ -135,12 +135,12 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     });
 
     // 1. Waiter calls or room service / payment requests
-    const handleWaiterCallEvent = (payload: { 
-      tableNumber: string; 
-      calledAt: string; 
+    const handleWaiterCallEvent = (payload: {
+      tableNumber: string;
+      calledAt: string;
       restaurantId?: string;
-      type?: 'default' | 'payment' | 'addons'; 
-      amount?: number; 
+      type?: 'default' | 'payment' | 'addons';
+      amount?: number;
       paymentMethod?: string;
       itemsSummary?: string;
       purpose?: string;
@@ -168,18 +168,18 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
 
       const isPayOnCounter = payload.paymentMethod === 'COD';
       const isPayToWaiter = payload.paymentMethod === 'PAY_TO_WAITER';
-      
+
       let typeLabel = isRoom ? 'Room Service' : 'Waiter Call';
       let detailLabel = `${roomLabel} requested assistance`;
-      
+
       if (payload.type === 'payment') {
         typeLabel = isPayOnCounter ? 'Counter Cash Checkout' : 'Pay to Waiter';
         detailLabel = `${roomLabel} requests checkout via ${isPayOnCounter ? 'Counter Cash' : 'Waiter'}${payload.amount ? ` (₹${payload.amount})` : ''}`;
       } else if (payload.type === 'addons') {
-        typeLabel = isPayOnCounter 
-          ? 'Add-on Pay on Counter' 
-          : isPayToWaiter 
-            ? 'Add-on Pay to Waiter' 
+        typeLabel = isPayOnCounter
+          ? 'Add-on Pay on Counter'
+          : isPayToWaiter
+            ? 'Add-on Pay to Waiter'
             : 'Add-on Items Added';
         detailLabel = `${roomLabel} added items${payload.amount ? ` (₹${payload.amount})` : ''}${payload.itemsSummary ? `: ${payload.itemsSummary}` : ''}`;
       } else if (payload.purpose) {
@@ -241,7 +241,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
         },
         'owner'
       );
-      
+
       queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
       queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['owner-recent-orders-popover'] });
@@ -383,7 +383,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
             const roomLabel = isRoom
               ? (activeWaiterAlert.tableNumber.toLowerCase().startsWith('room') ? activeWaiterAlert.tableNumber : `Room ${activeWaiterAlert.tableNumber}`)
               : `Table ${activeWaiterAlert.tableNumber}`;
-            
+
             let headerTitle = isRoom ? 'HOTEL ROOM SERVICE' : 'WAITER CALL REQUEST';
             let headerSubtitle = isRoom ? `Guest in ${roomLabel} requested hotel room service` : 'Customer requested staff assistance at table';
             let badgeText = isRoom ? 'ROOM SERVICE' : 'TABLE CALL';
@@ -422,10 +422,10 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
               }
             } else if (isAddons) {
               headerTitle = 'ADD-ON ITEMS ADDED';
-              headerSubtitle = isPayOnCounter 
-                ? 'Add-on order placed (Pay on Counter)' 
-                : isPayToWaiter 
-                  ? 'Add-on order placed (Pay to Waiter)' 
+              headerSubtitle = isPayOnCounter
+                ? 'Add-on order placed (Pay on Counter)'
+                : isPayToWaiter
+                  ? 'Add-on order placed (Pay to Waiter)'
                   : 'Customer added extra items to order';
               badgeText = 'ADD-ON ORDER';
               icon = <ShoppingBag className="w-6 h-6 text-white animate-bounce" />;
@@ -481,7 +481,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                           useWaiterStore.getState().setActiveWaiterAlert(null);
                           api.patch('/profile/notifications/read').then(() => {
                             queryClient.invalidateQueries({ queryKey: ['owner-notifications'] });
-                          }).catch(() => {});
+                          }).catch(() => { });
                         }
                       }}
                       className="p-2 rounded-full hover:bg-white/20 transition-colors text-white cursor-pointer"
@@ -572,7 +572,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                         useWaiterStore.getState().setActiveWaiterAlert(null);
                         api.patch('/profile/notifications/read').then(() => {
                           queryClient.invalidateQueries({ queryKey: ['owner-notifications'] });
-                        }).catch(() => {});
+                        }).catch(() => { });
                       }}
                       className="py-3 px-5 rounded-xl border border-border text-foreground text-sm font-semibold hover:bg-muted transition-colors cursor-pointer"
                     >
@@ -593,7 +593,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                         try {
                           await api.patch('/profile/notifications/read');
                           queryClient.invalidateQueries({ queryKey: ['owner-notifications'] });
-                        } catch {}
+                        } catch { }
                       }}
                       className={`flex-1 py-3 px-5 rounded-xl text-white text-sm font-bold bg-gradient-to-r ${gradientClass} hover:opacity-90 transition-opacity cursor-pointer`}
                     >
@@ -615,133 +615,133 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
             !activeNewOrderAlert.status ||
             !['DELIVERED', 'CANCELLED', 'COMPLETED', 'SERVED'].includes(String(activeNewOrderAlert.status).toUpperCase())
           ) && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs pointer-events-auto"
-            >
               <motion.div
-                initial={{ scale: 0.9, y: 20 }}
-                animate={{ scale: 1, y: 0 }}
-                exit={{ scale: 0.9, y: 20 }}
-                className="bg-card border-2 border-orange-500 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden text-card-foreground"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs pointer-events-auto"
               >
-                {/* Header Banner */}
-                <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 p-5 text-white flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-xs">
-                      <ShoppingBag className="w-5 h-5 text-white animate-bounce" />
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-extrabold uppercase tracking-widest bg-white/20 px-2 py-0.5 rounded-full">
-                        New Order Notification
-                      </span>
-                      <h3 className="font-display font-extrabold text-xl leading-tight">
-                        Order #{activeNewOrderAlert.id ? String(activeNewOrderAlert.id).slice(-8).toUpperCase() : 'NEW'}
-                      </h3>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setActiveNewOrderAlert(null)}
-                    className="p-1.5 rounded-full hover:bg-white/20 transition-colors cursor-pointer"
-                  >
-                    <X className="w-5 h-5 text-white" />
-                  </button>
-                </div>
-
-                {/* Order Info */}
-                <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
-                  <div className="flex items-center justify-between bg-muted/50 p-3 rounded-2xl border border-border/50">
-                    <div>
-                      <p className="text-xs text-muted-foreground font-medium">Order Type / Location</p>
-                      <p className="text-sm font-bold text-foreground">
-                        {activeNewOrderAlert.tableNumber ? `🍽️ Table ${activeNewOrderAlert.tableNumber}` : '🏠 Home Delivery'}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs text-muted-foreground font-medium">Total Amount</p>
-                      <p className="text-lg font-extrabold text-orange-600 dark:text-orange-400">
-                        ₹{Number(activeNewOrderAlert.total || 0).toFixed(2)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Items Summary */}
-                  {activeNewOrderAlert.items && activeNewOrderAlert.items.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Order Items:</p>
-                      <div className="space-y-1.5 bg-background p-3 rounded-2xl border border-border/60">
-                        {activeNewOrderAlert.items.map((item: any, idx: number) => {
-                          const isAddon = isItemAddon(item, activeNewOrderAlert);
-                          return (
-                            <div key={idx} className="flex justify-between items-center text-xs py-1 border-b border-border/30 last:border-0 gap-2">
-                              <span className="font-semibold text-foreground flex items-center gap-1.5 flex-wrap">
-                                {item.menuItem?.name || item.name || 'Item'} × {item.quantity}
-                                {isAddon && (
-                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/25 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                                    ⚡ ADD-ON
-                                  </span>
-                                )}
-                              </span>
-                              <span className={`font-mono ${isAddon ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-muted-foreground'}`}>
-                                ₹{Number(item.subtotal || (item.unitPrice * item.quantity) || 0).toFixed(0)}
-                              </span>
-                            </div>
-                          );
-                        })}
+                <motion.div
+                  initial={{ scale: 0.9, y: 20 }}
+                  animate={{ scale: 1, y: 0 }}
+                  exit={{ scale: 0.9, y: 20 }}
+                  className="bg-card border-2 border-orange-500 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden text-card-foreground"
+                >
+                  {/* Header Banner */}
+                  <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 p-5 text-white flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-xs">
+                        <ShoppingBag className="w-5 h-5 text-white animate-bounce" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-extrabold uppercase tracking-widest bg-white/20 px-2 py-0.5 rounded-full">
+                          New Order Notification
+                        </span>
+                        <h3 className="font-display font-extrabold text-xl leading-tight">
+                          Order #{activeNewOrderAlert.id ? String(activeNewOrderAlert.id).slice(-8).toUpperCase() : 'NEW'}
+                        </h3>
                       </div>
                     </div>
-                  )}
-
-                  {/* Payment Method Badge */}
-                  <div className="flex items-center justify-between text-xs p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/40">
-                    <span className="font-semibold text-blue-700 dark:text-blue-300">Payment Method:</span>
-                    <span className="font-bold text-blue-800 dark:text-blue-200">
-                      {activeNewOrderAlert.paymentMethod === 'RAZORPAY' ? 'Pay Direct (Online)' : activeNewOrderAlert.paymentMethod === 'PAY_TO_WAITER' ? 'Pay to Waiter' : 'Pay on Counter'}
-                    </span>
+                    <button
+                      onClick={() => setActiveNewOrderAlert(null)}
+                      className="p-1.5 rounded-full hover:bg-white/20 transition-colors cursor-pointer"
+                    >
+                      <X className="w-5 h-5 text-white" />
+                    </button>
                   </div>
-                </div>
 
-                {/* Action Buttons */}
-                <div className="p-4 border-t border-border bg-muted/30 flex gap-2 flex-wrap">
-                  <button
-                    onClick={async () => {
-                      const orderId = activeNewOrderAlert.id;
-                      try {
-                        await api.patch(`/owner/orders/${orderId}/status`, { status: 'CONFIRMED' });
-                        useWaiterStore.getState().removeNewOrder(orderId);
-                        queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
-                        queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
-                      } catch {
-                        // Silent fail or handled in order store
-                      } finally {
+                  {/* Order Info */}
+                  <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+                    <div className="flex items-center justify-between bg-muted/50 p-3 rounded-2xl border border-border/50">
+                      <div>
+                        <p className="text-xs text-muted-foreground font-medium">Order Type / Location</p>
+                        <p className="text-sm font-bold text-foreground">
+                          {activeNewOrderAlert.tableNumber ? `🍽️ Table ${activeNewOrderAlert.tableNumber}` : '🏠 Home Delivery'}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-muted-foreground font-medium">Total Amount</p>
+                        <p className="text-lg font-extrabold text-orange-600 dark:text-orange-400">
+                          ₹{Number(activeNewOrderAlert.total || 0).toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Items Summary */}
+                    {activeNewOrderAlert.items && activeNewOrderAlert.items.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Order Items:</p>
+                        <div className="space-y-1.5 bg-background p-3 rounded-2xl border border-border/60">
+                          {activeNewOrderAlert.items.map((item: any, idx: number) => {
+                            const isAddon = isItemAddon(item, activeNewOrderAlert);
+                            return (
+                              <div key={idx} className="flex justify-between items-center text-xs py-1 border-b border-border/30 last:border-0 gap-2">
+                                <span className="font-semibold text-foreground flex items-center gap-1.5 flex-wrap">
+                                  {item.menuItem?.name || item.name || 'Item'} × {item.quantity}
+                                  {isAddon && (
+                                    <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/25 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                                      ⚡ ADD-ON
+                                    </span>
+                                  )}
+                                </span>
+                                <span className={`font-mono ${isAddon ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-muted-foreground'}`}>
+                                  ₹{Number(item.subtotal || (item.unitPrice * item.quantity) || 0).toFixed(0)}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Payment Method Badge */}
+                    <div className="flex items-center justify-between text-xs p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/40">
+                      <span className="font-semibold text-blue-700 dark:text-blue-300">Payment Method:</span>
+                      <span className="font-bold text-blue-800 dark:text-blue-200">
+                        {activeNewOrderAlert.paymentMethod === 'RAZORPAY' ? 'Pay Direct (Online)' : activeNewOrderAlert.paymentMethod === 'PAY_TO_WAITER' ? 'Pay to Waiter' : 'Pay on Counter'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="p-4 border-t border-border bg-muted/30 flex gap-2 flex-wrap">
+                    <button
+                      onClick={async () => {
+                        const orderId = activeNewOrderAlert.id;
+                        try {
+                          await api.patch(`/owner/orders/${orderId}/status`, { status: 'CONFIRMED' });
+                          useWaiterStore.getState().removeNewOrder(orderId);
+                          queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
+                          queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
+                        } catch {
+                          // Silent fail or handled in order store
+                        } finally {
+                          setActiveNewOrderAlert(null);
+                        }
+                      }}
+                      className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Check className="w-4 h-4" /> Confirm Order
+                    </button>
+                    <button
+                      onClick={() => {
                         setActiveNewOrderAlert(null);
-                      }
-                    }}
-                    className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Check className="w-4 h-4" /> Confirm Order
-                  </button>
-                  <button
-                    onClick={() => {
-                      setActiveNewOrderAlert(null);
-                      router.push('/owner/orders');
-                    }}
-                    className="flex-1 py-3 px-4 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold text-xs shadow-md transition-all text-center cursor-pointer"
-                  >
-                    View All Orders
-                  </button>
-                  <button
-                    onClick={() => setActiveNewOrderAlert(null)}
-                    className="py-3 px-4 rounded-xl border border-border text-foreground font-semibold text-xs hover:bg-muted transition-colors cursor-pointer"
-                  >
-                    Dismiss
-                  </button>
-                </div>
+                        router.push('/owner/orders');
+                      }}
+                      className="flex-1 py-3 px-4 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold text-xs shadow-md transition-all text-center cursor-pointer"
+                    >
+                      View All Orders
+                    </button>
+                    <button
+                      onClick={() => setActiveNewOrderAlert(null)}
+                      className="py-3 px-4 rounded-xl border border-border text-foreground font-semibold text-xs hover:bg-muted transition-colors cursor-pointer"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </motion.div>
               </motion.div>
-            </motion.div>
-          )}
+            )}
         </AnimatePresence>,
         document.body
       )}
