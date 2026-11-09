@@ -4,6 +4,10 @@ import { logger } from '../utils/logger';
 
 let io: SocketIOServer;
 
+export function getSocketServer(): SocketIOServer | undefined {
+  return io;
+}
+
 export function initializeSocketService(socketServer: SocketIOServer): void {
   io = socketServer;
 

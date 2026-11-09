@@ -25,6 +25,7 @@ import kitchenRoutes from './routes/kitchen.routes';
 import webhookRoutes from './routes/webhook.routes';
 import chatRoutes from './routes/chat.routes';
 import paymentRoutes from './routes/payment.routes';
+import { getSocketServer } from './services/socket.service';
 
 const app = express();
 
@@ -92,6 +93,19 @@ app.use(
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   })
 );
+
+// ── Socket.io Fallback Interceptor ─────────────────────────────
+// Intercept /socket.io requests that bypassed Engine.io due to proxy trailing slash stripping
+app.use((req, res, next) => {
+  if (req.url && (req.url.startsWith('/socket.io') || req.path === '/socket.io')) {
+    const ioServer = getSocketServer();
+    if (ioServer?.engine) {
+      (ioServer.engine as any).handleRequest(req, res);
+      return;
+    }
+  }
+  next();
+});
 
 // ── Body Parsers ──────────────────────────────────────────────
 app.use(

@@ -3,6 +3,7 @@ import path from 'path';
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  skipTrailingSlashRedirect: true,
   // Explicitly set the monorepo root so Next.js doesn't pick the wrong
   // workspace root when multiple lockfiles exist on the machine.
   outputFileTracingRoot: path.join(__dirname, '../'),
@@ -50,7 +51,7 @@ const nextConfig: NextConfig = {
       },
       {
         source: '/socket.io',
-        destination: `${backendUrl.replace(/\/+$/, '')}/socket.io`,
+        destination: `${backendUrl.replace(/\/+$/, '')}/socket.io/`,
       },
       {
         source: '/socket.io/:path*',
