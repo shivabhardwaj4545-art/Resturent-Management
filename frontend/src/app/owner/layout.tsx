@@ -282,9 +282,17 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     // 4. Broadcast & Direct Chat Notifications
     socket.on('notification:new', (notif: any) => {
       if (notif.type === 'NEW_ORDER') {
-        playNewOrderSound();
+        if (notif.data) {
+          handleNewOrderEvent(notif.data);
+        } else {
+          playNewOrderSound();
+        }
       } else if (notif.type === 'WAITER_CALL') {
-        playWaiterCallSound();
+        if (notif.data) {
+          handleWaiterCallEvent(notif.data);
+        } else {
+          playWaiterCallSound();
+        }
       } else {
         const notifObj = {
           id: notif.id || `notif-${Date.now()}`,
@@ -316,6 +324,19 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       useWaiterStore.getState().setSocket(null);
     };
   }, [restaurantData?.id, user?.id, queryClient]);
+
+  // Ensure socket joins restaurant and user rooms whenever id becomes available
+  useEffect(() => {
+    const currentRestId = restaurantData?.id || (user as any)?.restaurantId;
+    if (socketRef.current) {
+      if (currentRestId) {
+        socketRef.current.emit('join:restaurant', currentRestId);
+      }
+      if (user?.id) {
+        socketRef.current.emit('join:user', user.id);
+      }
+    }
+  }, [restaurantData?.id, user?.id]);
 
   const themeColor = restaurantData?.themeColor ?? '#E85D04';
   const { primary: primaryHsl, foreground: foregroundHsl } = hexToHsl(themeColor);

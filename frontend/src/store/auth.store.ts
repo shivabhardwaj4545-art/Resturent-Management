@@ -11,6 +11,7 @@ export interface User {
   walletBalance: number;
   platformType?: string;
   maxLogins?: number;
+  restaurantId?: string | null;
 }
 
 interface AuthState {

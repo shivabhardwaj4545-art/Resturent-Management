@@ -1,6 +1,7 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { logger } from '../utils/logger';
+import { prisma } from '../lib/prisma';
 
 let io: SocketIOServer;
 
@@ -40,9 +41,24 @@ export function initializeSocketService(socketServer: SocketIOServer): void {
       void socket.join(`user:${userId}`);
     }
 
-    socket.on('join:user', (targetUserId: string) => {
+    socket.on('join:user', async (targetUserId: string) => {
+      if (!targetUserId) return;
       void socket.join(`user:${targetUserId}`);
       logger.debug(`Socket ${socket.id} joined user:${targetUserId}`);
+
+      // Auto-join restaurant room if this user is a restaurant owner
+      try {
+        const ownerRest = await prisma.restaurant.findFirst({
+          where: { ownerId: targetUserId, deletedAt: null },
+          select: { id: true },
+        });
+        if (ownerRest) {
+          void socket.join(`restaurant:${ownerRest.id}`);
+          logger.info(`Socket ${socket.id} auto-joined restaurant:${ownerRest.id} for owner ${targetUserId}`);
+        }
+      } catch (err) {
+        logger.warn('Failed to auto-join restaurant room for user:', err);
+      }
     });
 
     // Join restaurant room (for restaurant owners & customers)
@@ -155,17 +171,43 @@ export function emitOrderStatusUpdate(orderId: string, restaurantId: string, dat
 }
 
 // Emit new order to restaurant
-export function emitNewOrder(restaurantId: string, order: unknown): void {
+export async function emitNewOrder(restaurantId: string, order: unknown, ownerId?: string): Promise<void> {
   if (!io) return;
-  io.to(`restaurant:${restaurantId}`).emit('order:new', order);
-  io.to(`restaurant:${restaurantId}`).emit('new_order', order);
-  io.to(`restaurant:${restaurantId}`).emit('kitchen:new_order', order);
+  const payload = order;
+  io.to(`restaurant:${restaurantId}`).emit('order:new', payload);
+  io.to(`restaurant:${restaurantId}`).emit('new_order', payload);
+  io.to(`restaurant:${restaurantId}`).emit('kitchen:new_order', payload);
   io.to(`restaurant:${restaurantId}`).emit('notification:new', {
     type: 'NEW_ORDER',
     title: '🛍️ New Order Received!',
     message: 'A new order has been placed.',
-    data: order,
+    data: payload,
   });
+
+  let resolvedOwnerId = ownerId || (order as any)?.restaurant?.ownerId;
+  if (!resolvedOwnerId) {
+    try {
+      const rest = await prisma.restaurant.findUnique({
+        where: { id: restaurantId },
+        select: { ownerId: true },
+      });
+      resolvedOwnerId = rest?.ownerId;
+    } catch {
+      // ignore lookup error
+    }
+  }
+
+  if (resolvedOwnerId) {
+    io.to(`user:${resolvedOwnerId}`).emit('order:new', payload);
+    io.to(`user:${resolvedOwnerId}`).emit('new_order', payload);
+    io.to(`user:${resolvedOwnerId}`).emit('kitchen:new_order', payload);
+    io.to(`user:${resolvedOwnerId}`).emit('notification:new', {
+      type: 'NEW_ORDER',
+      title: '🛍️ New Order Received!',
+      message: 'A new order has been placed.',
+      data: payload,
+    });
+  }
 }
 
 // Emit notification to user

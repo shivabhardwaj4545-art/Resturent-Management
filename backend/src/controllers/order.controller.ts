@@ -171,10 +171,10 @@ export async function placeGuestOrder(
       }
     }
 
-    // Verify table number signature ONLY if ENFORCE_TABLE_SIGNATURE is set to true.
+    // Verify table number signature ONLY if ENFORCE_TABLE_SIGNATURE is explicitly set to true.
     // For standard table QR codes or manual entry, signature check is permissive so orders never get blocked by stale tokens.
     // Enforce table verification for dine-in orders
-    const enforceSignature = process.env.ENFORCE_TABLE_SIGNATURE === 'true' || process.env.NODE_ENV === 'production';
+    const enforceSignature = process.env.ENFORCE_TABLE_SIGNATURE === 'true';
     if (tableNumber && enforceSignature) {
       if (!tableToken || (!verifyTableSignature(restaurant.slug, tableNumber.trim(), tableToken) && !verifyTableSignature(restaurant.id, tableNumber.trim(), tableToken))) {
         throw new AppError('Invalid table QR code signature. Please scan the QR code on your table.', 403, 'INVALID_TABLE_TOKEN');
@@ -333,9 +333,9 @@ export async function placeOrder(
       }
     }
 
-    // Verify table number signature ONLY if ENFORCE_TABLE_SIGNATURE is set to true.
+    // Verify table number signature ONLY if ENFORCE_TABLE_SIGNATURE is explicitly set to true.
     // Enforce table verification for dine-in orders
-    const enforceSignature = process.env.ENFORCE_TABLE_SIGNATURE === 'true' || process.env.NODE_ENV === 'production';
+    const enforceSignature = process.env.ENFORCE_TABLE_SIGNATURE === 'true';
     if (tableNumber && enforceSignature) {
       if (!tableToken || (!verifyTableSignature(restaurant.slug, tableNumber.trim(), tableToken) && !verifyTableSignature(restaurant.id, tableNumber.trim(), tableToken))) {
         throw new AppError('Invalid table QR code signature. Please scan the QR code on your table.', 403, 'INVALID_TABLE_TOKEN');

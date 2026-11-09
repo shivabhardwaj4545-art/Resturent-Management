@@ -141,6 +141,7 @@ export async function register(req: Request, res: Response, next: NextFunction):
     const cleanUser = {
       ...user,
       email: user.email.includes(':') ? user.email.split(':')[1] : user.email,
+      restaurantId: (user as any)?.restaurant?.id || null,
     };
 
     const userAgent = req.headers['user-agent'] || 'Web Browser';
@@ -317,6 +318,7 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
           walletBalance: user.walletBalance,
           platformType: (restaurantObj as any)?.platformType || 'RESTAURANT',
           maxLogins: maxAllowed,
+          restaurantId: restaurantObj?.id || null,
         },
       },
       message: 'Login successful',
@@ -585,6 +587,7 @@ export async function getMe(req: AuthenticatedRequest, res: Response, next: Next
     const cleanUser = {
       ...user,
       email: user.email.includes(':') ? user.email.split(':')[1] : user.email,
+      restaurantId: (user as any)?.restaurant?.id || null,
     };
 
     res.json({ success: true, data: { user: cleanUser } });
