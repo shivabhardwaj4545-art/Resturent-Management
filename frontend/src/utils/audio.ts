@@ -108,6 +108,14 @@ export function sendDesktopNotification(
 let sharedAudioCtx: AudioContext | null = null;
 let userHasInteracted = false;
 
+function hasUserGesture(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (typeof navigator !== 'undefined' && (navigator as any).userActivation) {
+    if ((navigator as any).userActivation.hasBeenActive) return true;
+  }
+  return userHasInteracted;
+}
+
 if (typeof window !== 'undefined') {
   const handleUserGesture = () => {
     userHasInteracted = true;
@@ -115,23 +123,22 @@ if (typeof window !== 'undefined') {
       if (!sharedAudioCtx || sharedAudioCtx.state === 'closed') {
         const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
         if (AudioCtx) sharedAudioCtx = new AudioCtx();
-      }
-      if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
+      } else if (sharedAudioCtx.state === 'suspended') {
         sharedAudioCtx.resume().catch(() => {});
       }
       requestDesktopNotificationPermission();
     } catch {}
   };
   
-  // Unlock on real user gestures
-  ['click', 'keydown', 'touchstart', 'pointerdown'].forEach((evt) => {
+  // Unlock on real user gestures (click or touchend)
+  ['click', 'touchend'].forEach((evt) => {
     window.addEventListener(evt, handleUserGesture, { capture: true, passive: true });
   });
 }
 
 function getAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
-  if (!userHasInteracted && !sharedAudioCtx) {
+  if (!hasUserGesture()) {
     return null;
   }
   try {
@@ -140,10 +147,10 @@ function getAudioContext(): AudioContext | null {
       if (!AudioCtx) return null;
       sharedAudioCtx = new AudioCtx();
     }
-    if (sharedAudioCtx && sharedAudioCtx.state === 'suspended' && userHasInteracted) {
+    if (sharedAudioCtx.state === 'suspended') {
       sharedAudioCtx.resume().catch(() => {});
     }
-    return sharedAudioCtx;
+    return sharedAudioCtx.state === 'running' ? sharedAudioCtx : null;
   } catch {
     return null;
   }

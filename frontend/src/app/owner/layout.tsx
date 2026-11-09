@@ -129,6 +129,9 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     }
 
     socket.on('connect', joinRooms);
+    socket.on('connect_error', (err) => {
+      console.warn('Real-time socket notice:', err.message);
+    });
 
     // 1. Waiter calls or room service / payment requests
     const handleWaiterCallEvent = (payload: { 

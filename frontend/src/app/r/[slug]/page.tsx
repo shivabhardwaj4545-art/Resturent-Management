@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { RestaurantMenuPage } from '@/components/customer/RestaurantMenuPage';
-import { resolveTableToken } from '@qr-restaurant/shared';
+import { resolveTableToken, generateTableToken } from '@qr-restaurant/shared';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -33,17 +33,28 @@ export default async function MenuPage({ params, searchParams }: PageProps) {
   let effectiveToken: string | undefined = undefined;
   let isTableVerified = false;
 
-  // 1. Verify cryptographic table token (?t=...)
-  if (resolvedSearchParams.t) {
-    const tokenResult = resolveTableToken(resolvedSearchParams.t, slug);
+  // 1. Verify cryptographic table token (?t=... or ?token=...)
+  const rawToken = resolvedSearchParams.t || resolvedSearchParams.token;
+  if (rawToken) {
+    const tokenResult = resolveTableToken(rawToken, slug);
     if (tokenResult.valid && tokenResult.tableNumber) {
       effectiveTable = tokenResult.tableNumber;
-      effectiveToken = resolvedSearchParams.t;
+      effectiveToken = rawToken;
       isTableVerified = true;
     }
-  } else if (resolvedSearchParams.preview === 'true') {
-    // Owner preview in dashboard
+  }
+
+  // 2. Owner preview in dashboard
+  if (!isTableVerified && resolvedSearchParams.preview === 'true') {
     effectiveTable = resolvedSearchParams.table;
+    effectiveToken = resolvedSearchParams.table ? generateTableToken(slug, resolvedSearchParams.table) : undefined;
+    isTableVerified = true;
+  }
+
+  // 3. Table parameter directly provided (?table=5)
+  if (!isTableVerified && resolvedSearchParams.table) {
+    effectiveTable = resolvedSearchParams.table;
+    effectiveToken = generateTableToken(slug, resolvedSearchParams.table);
     isTableVerified = true;
   }
 

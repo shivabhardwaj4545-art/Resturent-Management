@@ -27,31 +27,6 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { playKitchenOrderSound, processRealTimeEvent, requestDesktopNotificationPermission, sendDesktopNotification } from '@/utils/audio';
 
-// Play sound alert for kitchen when new order arrives
-function playKitchenAlertChime() {
-  try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = ctx.createOscillator();
-    const gain = ctx.createGain();
-    oscillator.connect(gain);
-    gain.connect(ctx.destination);
-    
-    oscillator.type = 'triangle';
-    // Chime sequence: High C -> High E -> High G
-    oscillator.frequency.setValueAtTime(523.25, ctx.currentTime);
-    oscillator.frequency.setValueAtTime(659.25, ctx.currentTime + 0.15);
-    oscillator.frequency.setValueAtTime(783.99, ctx.currentTime + 0.3);
-    
-    gain.gain.setValueAtTime(0.5, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-    
-    oscillator.start(ctx.currentTime);
-    oscillator.stop(ctx.currentTime + 0.6);
-  } catch {
-    /* Silent fallback */
-  }
-}
-
 interface KitchenOrderItem {
   id: string;
   quantity: number;
@@ -97,21 +72,6 @@ export default function KitchenDashboardPage() {
   useEffect(() => {
     setMounted(true);
     requestDesktopNotificationPermission();
-
-    const unlockAudio = () => {
-      try {
-        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        if (ctx.state === 'suspended') {
-          ctx.resume().catch(() => {});
-        }
-      } catch {}
-    };
-    window.addEventListener('click', unlockAudio, { once: true });
-    window.addEventListener('touchstart', unlockAudio, { once: true });
-    return () => {
-      window.removeEventListener('click', unlockAudio);
-      window.removeEventListener('touchstart', unlockAudio);
-    };
   }, []);
 
   useEffect(() => {

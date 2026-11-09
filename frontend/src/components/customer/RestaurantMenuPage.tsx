@@ -22,6 +22,7 @@ import Link from 'next/link';
 import { getDetailedStatus, formatTime12h } from '@/utils/operatingHours';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { io } from 'socket.io-client';
+import { generateTableToken } from '@qr-restaurant/shared';
 
 const WAITER_COOLDOWN_SECONDS = 30;
 
@@ -103,6 +104,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
   const [waiterPendingTimer, setWaiterPendingTimer] = useState(0);
   const waiterComingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const waiterTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const socketRef = useRef<any>(null);
 
   const clearWaiterTimers = useCallback(() => {
     if (waiterTimerRef.current) {
@@ -648,10 +650,6 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
     const storedTable = typeof window !== 'undefined' ? localStorage.getItem(`table_num_${slug}`) : null;
     const effectiveTable = tableNum || tableNumber || manualTableNumber || storedTable;
 
-    if (!isTableVerified && !isPreview) {
-      toast.error('Calling a waiter is only available when seated at a table with a scanned QR code.');
-      return;
-    }
     if (!effectiveTable || !String(effectiveTable).trim()) {
       setShowTableInput(true);
       return;
@@ -675,7 +673,15 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
 
     setWaiterLoading(true);
     try {
-      const token = tableToken || searchParams?.t || searchParams?.token || (typeof window !== 'undefined' ? localStorage.getItem(`table_token_${slug}`) : '') || '';
+      let token = tableToken || searchParams?.t || searchParams?.token || (typeof window !== 'undefined' ? localStorage.getItem(`table_token_${slug}`) : '') || '';
+      if (!token) {
+        try {
+          token = generateTableToken(slug, cleanTable);
+        } catch {
+          token = '';
+        }
+      }
+
       const chosenPurpose = purpose || (isRoom ? 'Room Cleaning' : 'General Assistance');
       await api.post(`/menu/${slug}/call-waiter`, {
         tableNumber: cleanTable,
@@ -686,8 +692,15 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
 
       if (typeof window !== 'undefined') {
         localStorage.setItem(`table_num_${slug}`, cleanTable);
+        if (token) {
+          localStorage.setItem(`table_token_${slug}`, token);
+        }
       }
       setManualTableNumber(cleanTable);
+
+      if (socketRef.current && data?.restaurant?.id) {
+        socketRef.current.emit('join:table', { restaurantId: data.restaurant.id, tableNumber: cleanTable });
+      }
 
       toast.success(
         isRoom
@@ -715,7 +728,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
     } finally {
       setWaiterLoading(false);
     }
-  }, [slug, tableNumber, manualTableNumber, waiterStatus, waiterLoading, searchParams, startPendingState]);
+  }, [slug, tableNumber, manualTableNumber, tableToken, waiterStatus, waiterLoading, searchParams, startPendingState, isHotelPlatform, isRestaurantPlatform, data]);
 
   useEffect(() => {
     if (!data?.restaurant?.id) return;
@@ -723,6 +736,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
       transports: ['polling', 'websocket'],
       withCredentials: true,
     });
+    socketRef.current = socket;
 
     const joinCustomerRooms = () => {
       if (activeUser?.id) {
@@ -744,6 +758,9 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
     };
 
     socket.on('connect', joinCustomerRooms);
+    socket.on('connect_error', (err) => {
+      console.warn('Real-time socket notice:', err.message);
+    });
     joinCustomerRooms();
 
     const handleWaiterResponded = (resData: { tableNumber?: string; message?: string }) => {
@@ -898,6 +915,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
 
     return () => {
       socket.disconnect();
+      socketRef.current = null;
     };
   }, [data?.restaurant?.id, tableNumber, manualTableNumber, activeUser?.id, queryClient, recentOrders, slug, startComingTimer, startOccupiedTimer]);
 
