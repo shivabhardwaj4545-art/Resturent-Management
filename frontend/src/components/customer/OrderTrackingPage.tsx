@@ -28,6 +28,7 @@ import api, { getSocketUrl } from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { isItemAddon } from '@/utils/orderAddon';
 import { toast } from 'sonner';
 import { InvoiceDownload } from './InvoiceDownload';
 import { useCartStore } from '@/store/cart.store';
@@ -116,6 +117,8 @@ interface Order {
     menuItem: { name: string; image: string | null };
     variant: { name: string } | null;
     addOns?: any;
+    isAddon?: boolean;
+    createdAt?: string;
   }>;
   review?: { rating: number; comment?: string | null } | null;
 }
@@ -733,25 +736,40 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
         <div className="bg-card border border-border rounded-2xl p-4">
           <h2 className="font-display font-semibold mb-3">Your Order</h2>
           <div className="space-y-2">
-            {order.items.map((item) => (
-              <div key={item.id} className="space-y-0.5 border-b border-border/50 pb-2 last:border-0 last:pb-0">
-                <div className="flex justify-between text-sm">
-                  <span>
-                    {item.menuItem.name}
-                    {item.variant && (
-                      <span className="text-muted-foreground"> ({item.variant.name})</span>
-                    )}
-                    <span className="text-muted-foreground"> × {item.quantity}</span>
-                  </span>
-                  <span>₹{(item.unitPrice * item.quantity).toFixed(0)}</span>
-                </div>
-                {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
-                  <div className="text-[11px] text-muted-foreground pl-2">
-                    + {item.addOns.map((ao: any) => ao.name).join(', ')}
+            {order.items.map((item) => {
+              const isAddon = isItemAddon(item, order);
+              return (
+                <div
+                  key={item.id}
+                  className={`space-y-0.5 border-b border-border/50 pb-2 last:border-0 last:pb-0 ${
+                    isAddon ? 'bg-amber-500/5 -mx-2 px-2 py-1.5 rounded-xl border border-amber-500/20' : ''
+                  }`}
+                >
+                  <div className="flex justify-between text-sm items-center gap-2">
+                    <span className="flex items-center gap-1.5 flex-wrap">
+                      <span className={isAddon ? 'font-bold text-foreground' : ''}>{item.menuItem.name}</span>
+                      {isAddon && (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/25 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                          ⚡ ADD-ON
+                        </span>
+                      )}
+                      {item.variant && (
+                        <span className="text-muted-foreground"> ({item.variant.name})</span>
+                      )}
+                      <span className="text-muted-foreground"> × {item.quantity}</span>
+                    </span>
+                    <span className={isAddon ? 'font-bold text-amber-600 dark:text-amber-400' : ''}>
+                      ₹{(item.unitPrice * item.quantity).toFixed(0)}
+                    </span>
                   </div>
-                )}
-              </div>
-            ))}
+                  {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
+                    <div className="text-[11px] text-muted-foreground pl-2">
+                      + {item.addOns.map((ao: any) => ao.name).join(', ')}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             <div className="border-t border-border pt-3 space-y-1.5 text-sm">
               <div className="flex justify-between text-muted-foreground">
                 <span>Subtotal</span>

@@ -23,16 +23,21 @@ import {
   ShoppingBag,
   User,
   Phone,
+  Sparkles,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { playKitchenOrderSound, processRealTimeEvent, requestDesktopNotificationPermission, sendDesktopNotification } from '@/utils/audio';
+import { isItemAddon } from '@/utils/orderAddon';
 
 interface KitchenOrderItem {
   id: string;
   quantity: number;
-  price: number;
+  price?: number;
+  unitPrice?: number;
   notes?: string | null;
   customizations?: any;
+  isAddon?: boolean;
+  createdAt?: string;
   menuItem: {
     id: string;
     name: string;
@@ -44,6 +49,8 @@ interface KitchenOrder {
   id: string;
   orderNumber?: number | string;
   status: 'CONFIRMED' | 'PREPARING' | 'BAKING' | 'READY' | 'DELIVERED' | 'CANCELLED';
+  addOnStatus?: string | null;
+  lastAddOnAt?: string | null;
   orderType?: string;
   total: number;
   notes?: string | null;
@@ -473,16 +480,24 @@ export default function KitchenDashboardPage() {
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between gap-2">
-                        {order.table?.tableNumber ? (
-                          <span className="bg-orange-500 text-white font-extrabold text-[10px] sm:text-xs px-2 py-0.5 rounded-md truncate">
-                            🍽️ Table {order.table.tableNumber}
-                          </span>
-                        ) : (
-                          <span className="bg-blue-600 text-white font-extrabold text-[10px] sm:text-xs px-2 py-0.5 rounded-md truncate">
-                            🍽️ Dine-In Order
-                          </span>
-                        )}
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {order.table?.tableNumber ? (
+                            <span className="bg-orange-500 text-white font-extrabold text-[10px] sm:text-xs px-2 py-0.5 rounded-md truncate">
+                              🍽️ Table {order.table.tableNumber}
+                            </span>
+                          ) : (
+                            <span className="bg-blue-600 text-white font-extrabold text-[10px] sm:text-xs px-2 py-0.5 rounded-md truncate">
+                              🍽️ Dine-In Order
+                            </span>
+                          )}
+                          {order.addOnStatus && (
+                            <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 font-extrabold text-[9px] sm:text-[10px] px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs">
+                              <Sparkles className="w-2.5 h-2.5 animate-pulse text-amber-400" />
+                              Add-on: {order.addOnStatus}
+                            </span>
+                          )}
+                        </div>
                         <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
                           <Clock className="w-2.5 h-2.5" />
                           {new Date(order.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}
@@ -508,28 +523,58 @@ export default function KitchenDashboardPage() {
 
                     {/* Items List */}
                     <div className="p-2.5 sm:p-4 flex-1 space-y-2 sm:space-y-3 overflow-y-auto max-h-[260px] sm:max-h-[350px]">
-                      {order.items.map((item, idx) => (
-                        <div
-                          key={item.id || idx}
-                          className="bg-slate-950/80 p-2 sm:p-3 rounded-xl border border-slate-800/80 flex items-start gap-2 min-w-0"
-                        >
-                          <span className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-orange-500/20 text-orange-400 border border-orange-500/30 flex items-center justify-center font-black text-xs sm:text-sm shrink-0">
-                            {item.quantity}x
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-extrabold text-xs sm:text-sm text-slate-100 leading-snug break-words">
-                              {item.menuItem?.name || 'Menu Item'}
-                            </h4>
-                            
-                            {/* Item Notes / Customizations */}
-                            {item.notes && (
-                              <p className="text-[10px] sm:text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 p-1.5 rounded-lg mt-1 break-words">
-                                ⚠️ Note: {item.notes}
-                              </p>
-                            )}
+                      {order.items.map((item, idx) => {
+                        const isAddon = isItemAddon(item, order);
+                        return (
+                          <div
+                            key={item.id || idx}
+                            className={`p-2 sm:p-3 rounded-xl border flex items-start gap-2 min-w-0 transition-all ${
+                              isAddon
+                                ? 'bg-amber-950/40 border-amber-500/50 shadow-xs shadow-amber-500/10 ring-1 ring-amber-500/30'
+                                : 'bg-slate-950/80 border-slate-800/80'
+                            }`}
+                          >
+                            <span
+                              className={`w-6 h-6 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center font-black text-xs sm:text-sm shrink-0 border ${
+                                isAddon
+                                  ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm'
+                                  : 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+                              }`}
+                            >
+                              {item.quantity}x
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <h4
+                                  className={`font-extrabold text-xs sm:text-sm leading-snug break-words ${
+                                    isAddon ? 'text-amber-200 font-black' : 'text-slate-100'
+                                  }`}
+                                >
+                                  {item.menuItem?.name || 'Menu Item'}
+                                </h4>
+                                {isAddon && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500 text-slate-950 flex items-center gap-0.5 shrink-0 shadow-xs">
+                                    <Sparkles className="w-2.5 h-2.5" /> ADD-ON
+                                  </span>
+                                )}
+                              </div>
+
+                              {isAddon && order.addOnStatus && (
+                                <p className="text-[10px] font-extrabold text-amber-400 mt-0.5 flex items-center gap-1">
+                                  ⚡ Status: {order.addOnStatus}
+                                </p>
+                              )}
+                              
+                              {/* Item Notes / Customizations */}
+                              {item.notes && (
+                                <p className="text-[10px] sm:text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 p-1.5 rounded-lg mt-1 break-words">
+                                  ⚠️ Note: {item.notes}
+                                </p>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
 
                     {/* Action Button Footer */}

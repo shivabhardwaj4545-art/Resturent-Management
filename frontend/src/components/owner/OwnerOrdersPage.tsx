@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import {
   ShoppingBag, UtensilsCrossed, LayoutDashboard, Tag, BarChart3, Settings, LogOut,
   Menu, Search, Clock, ChevronDown, RefreshCw, User, MapPin, Palette,
-  Mail, Phone, CreditCard, Receipt, Check, Wallet, Banknote, Sparkles, Star, AlertTriangle, ChefHat, Trash2
+  Mail, Phone, CreditCard, Receipt, Check, Wallet, Banknote, Sparkles, Star, AlertTriangle, ChefHat, Trash2, Utensils
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api, { getSocketUrl } from '@/services/api';
@@ -16,6 +16,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
 import { WaiterBell } from '@/components/owner/WaiterBell';
 import { OwnerSidebar } from '@/components/owner/OwnerSidebar';
+import { isItemAddon } from '@/utils/orderAddon';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
@@ -52,6 +53,8 @@ const NEXT_STATUS: Record<string, string[]> = {
 type Order = {
   id: string;
   status: string;
+  addOnStatus?: string | null;
+  lastAddOnAt?: string | null;
   paymentMethod: string;
   paymentStatus: string;
   subtotal: number;
@@ -75,7 +78,16 @@ type Order = {
   cancelledAt: string | null;
   user: { name: string; phone: string | null; email: string | null } | null;
   address: { flat: string; street: string; area: string; city: string; pincode: string } | null;
-  items: Array<{ quantity: number; menuItem: { name: string }; subtotal: number; unitPrice: number; addOns?: any }>;
+  items: Array<{
+    id?: string;
+    quantity: number;
+    menuItem: { name: string; image?: string | null };
+    subtotal: number;
+    unitPrice: number;
+    addOns?: any;
+    isAddon?: boolean;
+    createdAt?: string;
+  }>;
 };
 
 const formatTime = (timeStr: string | null | undefined) => {
@@ -317,6 +329,12 @@ export function OwnerOrdersPage() {
                         }`}>
                           {order.paymentMethod === 'RAZORPAY' ? 'Online' : order.paymentMethod === 'WALLET' ? 'Wallet' : order.paymentMethod === 'PAY_TO_WAITER' ? 'Pay to Waiter' : 'Pay on Counter'}
                         </span>
+                        {order.addOnStatus && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                            <Sparkles className="w-2.5 h-2.5 animate-pulse text-amber-500" />
+                            Add-on: {order.addOnStatus}
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                         <User className="w-3 h-3" />
@@ -355,28 +373,103 @@ export function OwnerOrdersPage() {
                         {/* Left Pane - Items and Billing Details (spans 2 columns on large screens) */}
                         <div className="lg:col-span-2 space-y-5">
                           
-                          {/* Order Items Table */}
-                          <div className="space-y-2">
-                            <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Order Items</p>
-                            <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border">
-                              {order.items.map((item, idx) => (
-                                <div key={idx} className="flex items-center justify-between p-3 text-sm">
-                                  <div className="flex-1">
-                                    <span className="font-medium text-foreground">{item.menuItem.name}</span>
-                                    <span className="text-xs text-muted-foreground ml-2">
-                                      ({item.quantity} × ₹{formatAmount(item.unitPrice || (item.subtotal / item.quantity))})
-                                    </span>
-                                    {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
-                                      <div className="text-[11px] text-muted-foreground mt-0.5 ml-2">
-                                        + {item.addOns.map((ao: any) => ao.name).join(', ')}
-                                      </div>
+                          {/* Order Items Section - Clearly Differentiates Initial Items vs Add-on Items */}
+                          {(() => {
+                            const initialItems = order.items.filter((item) => !isItemAddon(item, order));
+                            const addonItems = order.items.filter((item) => isItemAddon(item, order));
+                            const hasAddons = addonItems.length > 0;
+
+                            return (
+                              <div className="space-y-4">
+                                {/* 1. Initial Order Items */}
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center justify-between">
+                                    <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                                      <Utensils className="w-3.5 h-3.5" />
+                                      {hasAddons ? `Initial Order Items (${initialItems.length})` : 'Order Items'}
+                                    </p>
+                                    {hasAddons && (
+                                      <span className="text-[11px] font-medium text-muted-foreground">
+                                        Ordered {formatTime(order.createdAt)}
+                                      </span>
                                     )}
                                   </div>
-                                  <span className="font-semibold text-foreground">₹{formatAmount(item.subtotal)}</span>
+                                  <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border shadow-2xs">
+                                    {initialItems.map((item, idx) => (
+                                      <div key={idx} className="flex items-center justify-between p-3 text-sm">
+                                        <div className="flex-1">
+                                          <span className="font-medium text-foreground">{item.menuItem.name}</span>
+                                          <span className="text-xs text-muted-foreground ml-2">
+                                            ({item.quantity} × ₹{formatAmount(item.unitPrice || (item.subtotal / item.quantity))})
+                                          </span>
+                                          {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
+                                            <div className="text-[11px] text-muted-foreground mt-0.5 ml-2">
+                                              + {item.addOns.map((ao: any) => ao.name).join(', ')}
+                                            </div>
+                                          )}
+                                        </div>
+                                        <span className="font-semibold text-foreground">₹{formatAmount(item.subtotal)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
-                              ))}
-                            </div>
-                          </div>
+
+                                {/* 2. Add-on Items Section (Distinctive highlighted styling) */}
+                                {hasAddons && (
+                                  <div className="space-y-2 p-3.5 rounded-2xl bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-transparent border-2 border-amber-500/30 dark:border-amber-500/25 shadow-xs">
+                                    <div className="flex items-center justify-between flex-wrap gap-2">
+                                      <div className="flex items-center gap-2">
+                                        <span className="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
+                                          <Sparkles className="w-3.5 h-3.5" />
+                                        </span>
+                                        <div>
+                                          <p className="font-black text-xs text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                                            ⚡ Add-on Items ({addonItems.length})
+                                          </p>
+                                          {order.lastAddOnAt && (
+                                            <p className="text-[10px] text-muted-foreground font-medium">
+                                              Added {formatTime(order.lastAddOnAt)}
+                                            </p>
+                                          )}
+                                        </div>
+                                      </div>
+                                      {order.addOnStatus && (
+                                        <span className="text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider bg-amber-500 text-slate-950 shadow-xs">
+                                          {order.addOnStatus}
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div className="bg-card/90 border border-amber-500/30 rounded-xl overflow-hidden divide-y divide-amber-500/15">
+                                      {addonItems.map((item, idx) => (
+                                        <div key={idx} className="flex items-center justify-between p-3 text-sm bg-amber-500/5">
+                                          <div className="flex-1">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                              <span className="font-bold text-foreground">{item.menuItem.name}</span>
+                                              <span className="px-1.5 py-0.5 rounded text-[9px] font-black tracking-wider uppercase bg-amber-500/25 text-amber-600 dark:text-amber-300 border border-amber-500/40">
+                                                ⚡ ADD-ON
+                                              </span>
+                                            </div>
+                                            <span className="text-xs text-muted-foreground">
+                                              ({item.quantity} × ₹{formatAmount(item.unitPrice || (item.subtotal / item.quantity))})
+                                            </span>
+                                            {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
+                                              <div className="text-[11px] text-muted-foreground mt-0.5 ml-2">
+                                                + {item.addOns.map((ao: any) => ao.name).join(', ')}
+                                              </div>
+                                            )}
+                                          </div>
+                                          <span className="font-bold text-amber-600 dark:text-amber-400">
+                                            ₹{formatAmount(item.subtotal)}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
 
                           {/* Sub-grid: Customer info and Receipt Billing */}
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">

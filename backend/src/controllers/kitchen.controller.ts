@@ -60,6 +60,8 @@ export async function getKitchenOrders(
             quantity: true,
             unitPrice: true,
             addOns: true,
+            isAddon: true,
+            createdAt: true,
             menuItem: {
               select: {
                 id: true,

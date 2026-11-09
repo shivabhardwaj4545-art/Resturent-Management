@@ -406,6 +406,7 @@ model OrderItem {
   unitPrice  Float
   addOns     Json     @default("[]")
   subtotal   Float
+  isAddon    Boolean  @default(false)
   createdAt  DateTime @default(now())
 
   // Relations

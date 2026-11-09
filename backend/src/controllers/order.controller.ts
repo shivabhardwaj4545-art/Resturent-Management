@@ -894,6 +894,7 @@ export async function addItemsToOrder(
         unitPrice: unitPrice + addOnsTotal,
         subtotal: itemSubtotal,
         addOns: item.addOns ? item.addOns : undefined,
+        isAddon: true,
       });
     }
 

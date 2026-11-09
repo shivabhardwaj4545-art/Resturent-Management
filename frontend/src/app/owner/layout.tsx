@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useAuthStore } from '@/store/auth.store';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, DollarSign, BellRing, Banknote, ShoppingBag, Check, X, Bed, Lock } from 'lucide-react';
+import { Loader2, DollarSign, BellRing, Banknote, ShoppingBag, Check, X, Bed, Lock, Sparkles } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getSocketUrl } from '@/services/api';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -13,6 +13,7 @@ import { io, Socket } from 'socket.io-client';
 import { useWaiterStore, WaiterCall } from '@/store/waiter.store';
 import { playNewOrderSound, playWaiterCallSound, playOrderStatusSound, processRealTimeEvent, requestDesktopNotificationPermission, sendDesktopNotification } from '@/utils/audio';
 import { OwnerSidebar, OWNER_NAV_ITEMS } from '@/components/owner/OwnerSidebar';
+import { isItemAddon } from '@/utils/orderAddon';
 
 // Safe alert sound for generic alerts
 function playAlertBeep() {
@@ -671,16 +672,24 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                     <div className="space-y-2">
                       <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Order Items:</p>
                       <div className="space-y-1.5 bg-background p-3 rounded-2xl border border-border/60">
-                        {activeNewOrderAlert.items.map((item: any, idx: number) => (
-                          <div key={idx} className="flex justify-between items-center text-xs py-1 border-b border-border/30 last:border-0">
-                            <span className="font-semibold text-foreground">
-                              {item.menuItem?.name || item.name || 'Item'} × {item.quantity}
-                            </span>
-                            <span className="font-mono text-muted-foreground">
-                              ₹{Number(item.subtotal || (item.unitPrice * item.quantity) || 0).toFixed(0)}
-                            </span>
-                          </div>
-                        ))}
+                        {activeNewOrderAlert.items.map((item: any, idx: number) => {
+                          const isAddon = isItemAddon(item, activeNewOrderAlert);
+                          return (
+                            <div key={idx} className="flex justify-between items-center text-xs py-1 border-b border-border/30 last:border-0 gap-2">
+                              <span className="font-semibold text-foreground flex items-center gap-1.5 flex-wrap">
+                                {item.menuItem?.name || item.name || 'Item'} × {item.quantity}
+                                {isAddon && (
+                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/25 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                                    ⚡ ADD-ON
+                                  </span>
+                                )}
+                              </span>
+                              <span className={`font-mono ${isAddon ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-muted-foreground'}`}>
+                                ₹{Number(item.subtotal || (item.unitPrice * item.quantity) || 0).toFixed(0)}
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
