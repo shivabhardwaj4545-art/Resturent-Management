@@ -264,6 +264,93 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
     defaultValues: { paymentMethod: 'RAZORPAY' },
   });
 
+  const loadRazorpay = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      if (typeof window !== 'undefined' && window.Razorpay) {
+        resolve(true);
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  const handleRazorpayPayment = async (
+    orderId: string,
+    razorpayOrderId: string | null,
+    amount: number,
+    customerName: string,
+    customerPhone: string
+  ) => {
+    const key = razorpayKeyRef.current || razorpayKeyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_TAVv5bDEV3HwgB';
+
+    if (!key) {
+      await handleUpiIntentPayment(orderId);
+      return;
+    }
+
+    const loaded = await loadRazorpay();
+    if (!loaded) {
+      toast.error('Payment gateway unavailable. Launching direct UPI fallback.');
+      await handleUpiIntentPayment(orderId);
+      return;
+    }
+
+    const options: RazorpayOptions = {
+      key,
+      amount: Math.round(amount * 100),
+      currency: 'INR',
+      name: restaurant?.merchantName || restaurant?.name || 'EZ- Restaurant',
+      description: `Order #${orderId.slice(-8).toUpperCase()}`,
+      ...(razorpayOrderId ? { order_id: razorpayOrderId } : {}),
+      prefill: {
+        name: customerName,
+        email: activeUser?.email || '',
+        contact: customerPhone,
+      },
+      theme: { color: restaurant?.themeColor || '#E85D04' },
+      handler: async (response) => {
+        try {
+          setLoading(true);
+          await api.post('/orders/verify-payment', {
+            orderId,
+            razorpayOrderId: response.razorpay_order_id || razorpayOrderId || '',
+            razorpayPaymentId: response.razorpay_payment_id || `pay_${Date.now()}`,
+            razorpaySignature: response.razorpay_signature || 'direct_signature',
+          });
+          if (activeUser) {
+            queryClient.invalidateQueries({ queryKey: ['user-profile'] });
+            queryClient.invalidateQueries({ queryKey: ['user-profile-loyalty'] });
+          }
+          saveOrderToRecent(orderId, restaurantSlug);
+          clearCart();
+          toast.success('Payment verified & order confirmed! 🎉');
+          // Automatically redirect straight to order tracking status page
+          router.push(`/r/${restaurantSlug}/order/${orderId}`);
+        } catch (err: any) {
+          toast.error(err.response?.data?.error || 'Payment verification failed. Check order status.');
+          router.push(`/r/${restaurantSlug}/order/${orderId}`);
+        } finally {
+          setLoading(false);
+        }
+      },
+      modal: {
+        ondismiss: () => {
+          toast.info('Payment window closed. You can complete payment on the order page.');
+          saveOrderToRecent(orderId, restaurantSlug);
+          clearCart();
+          router.push(`/r/${restaurantSlug}/order/${orderId}`);
+        },
+      },
+    };
+
+    const rzp = new window.Razorpay(options);
+    rzp.open();
+  };
+
   const handleUpiIntentPayment = async (orderId: string) => {
     try {
       const res = await api.post('/payments/create-upi-intent', { orderId });
@@ -431,7 +518,17 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
       };
 
       if (selectedPayment === 'RAZORPAY') {
-        await handleUpiIntentPayment(order.id);
+        if (order.razorpayOrderId) {
+          await handleRazorpayPayment(
+            order.id,
+            order.razorpayOrderId,
+            order.total,
+            formData.guestName?.trim() || 'Guest',
+            formData.guestPhone?.trim() || ''
+          );
+        } else {
+          await handleUpiIntentPayment(order.id);
+        }
       } else {
         saveOrderToRecent(order.id, restaurantSlug);
         clearCart();
@@ -487,7 +584,17 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
       };
 
       if (selectedPayment === 'RAZORPAY') {
-        await handleUpiIntentPayment(order.id);
+        if (order.razorpayOrderId) {
+          await handleRazorpayPayment(
+            order.id,
+            order.razorpayOrderId,
+            order.total,
+            activeUser?.name || 'Customer',
+            activeUser?.phone || ''
+          );
+        } else {
+          await handleUpiIntentPayment(order.id);
+        }
       } else {
         queryClient.invalidateQueries({ queryKey: ['user-profile'] });
         queryClient.invalidateQueries({ queryKey: ['user-profile-loyalty'] });

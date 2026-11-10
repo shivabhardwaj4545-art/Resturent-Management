@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { isRestaurantOpen } from '../utils/operatingHours';
 import { AppError } from '../utils/AppError';
-// Razorpay disabled – stubs retained for legacy endpoints; both throw RAZORPAY_DISABLED errors
+import { logger } from '../utils/logger';
 import { createRazorpayOrder, verifyRazorpaySignature } from '../services/payment.razorpay.service';
 import { emitNewOrder, emitNotification, emitWaiterCall, emitOrderStatusUpdate, emitUserLoyaltyUpdate } from '../services/socket.service';
 import { sendOrderConfirmationEmail } from '../services/email.service';
@@ -263,6 +263,24 @@ export async function placeGuestOrder(
       });
     }
 
+    let razorpayOrderId: string | null = null;
+    if (paymentMethod === 'RAZORPAY') {
+      try {
+        const rzOrder = await createRazorpayOrder(total, 'INR', `rcpt_${order.id.slice(-8)}`);
+        razorpayOrderId = rzOrder.id;
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { razorpayOrderId },
+        });
+        await prisma.payment.updateMany({
+          where: { orderId: order.id },
+          data: { txnRef: razorpayOrderId },
+        });
+      } catch (err: any) {
+        logger.warn('Could not generate Razorpay order ID, will fall back to UPI:', err?.message);
+      }
+    }
+
     res.status(201).json({
       success: true,
       data: {
@@ -270,7 +288,7 @@ export async function placeGuestOrder(
           id: order.id,
           status: order.status,
           total: order.total,
-          // razorpayOrderId: null — Razorpay disabled, use UPI Intent
+          razorpayOrderId,
         },
       },
       message: 'Order placed successfully!',
@@ -585,6 +603,24 @@ export async function placeOrder(
       ).catch(() => { }); // Fire and forget
     }
 
+    let razorpayOrderId: string | null = null;
+    if (paymentMethod === 'RAZORPAY') {
+      try {
+        const rzOrder = await createRazorpayOrder(finalTotal, 'INR', `rcpt_${order.id.slice(-8)}`);
+        razorpayOrderId = rzOrder.id;
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { razorpayOrderId },
+        });
+        await prisma.payment.updateMany({
+          where: { orderId: order.id },
+          data: { txnRef: razorpayOrderId },
+        });
+      } catch (err: any) {
+        logger.warn('Could not generate Razorpay order ID, will fall back to UPI:', err?.message);
+      }
+    }
+
     res.status(201).json({
       success: true,
       data: {
@@ -592,7 +628,7 @@ export async function placeOrder(
           id: order.id,
           status: order.status,
           total: finalTotal,
-          // razorpayOrderId: null — Razorpay disabled, use UPI Intent
+          razorpayOrderId,
           walletDeducted: walletDeduction,
         },
       },
@@ -722,21 +758,33 @@ export async function verifyPayment(
       where: { id: orderId },
       data: {
         paymentStatus: 'PAID',
+        status: 'CONFIRMED',
         razorpayPaymentId,
         payment: {
           update: { status: 'PAID', razorpayPaymentId },
         },
       },
-      include: { restaurant: true },
+      include: { restaurant: true, items: { include: { menuItem: true } } },
     });
 
     // Notify restaurant owner and update order status in real-time
     emitOrderStatusUpdate(orderId, order.restaurantId, {
       orderId,
+      status: 'CONFIRMED',
       paymentStatus: 'PAID',
       updatedAt: new Date().toISOString(),
+      items: order.items,
     });
     emitNewOrder(order.restaurantId, order);
+
+    await prisma.notification.create({
+      data: {
+        restaurantId: order.restaurantId,
+        type: 'NEW_ORDER',
+        title: 'New Paid Order Confirmed! 🎉',
+        message: `Order #${order.id.slice(-8).toUpperCase()} paid online via UPI (₹${order.total.toFixed(2)})!`,
+      },
+    }).catch(() => {});
 
     res.json({
       success: true,
