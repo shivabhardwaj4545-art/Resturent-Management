@@ -25,6 +25,14 @@ export default async function Checkout({ params, searchParams }: PageProps) {
     }
   }
 
+  // Also support table passed directly in searchParams (e.g. from cart or manual table entry)
+  if (!effectiveTable && resolvedSearchParams.table) {
+    effectiveTable = resolvedSearchParams.table;
+  }
+  if (!effectiveToken && rawToken) {
+    effectiveToken = rawToken;
+  }
+
   return (
     <CheckoutPage
       restaurantSlug={slug}

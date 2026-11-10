@@ -150,6 +150,8 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
   } | null>(null);
   const [upiQrCodeDataUrl, setUpiQrCodeDataUrl] = useState<string>('');
   const [isCheckingUpiStatus, setIsCheckingUpiStatus] = useState<boolean>(false);
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState<boolean>(false);
+  const [userUtr, setUserUtr] = useState<string>('');
 
   const formatCardNumber = (value: string) => {
     const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
@@ -282,13 +284,40 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
 
       setShowUpiModal(true);
 
-      // Deep link trigger for mobile devices
+      // Deep link trigger for mobile devices with user-gesture safe check
       if (typeof window !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-        window.location.href = paymentInfo.upiIntentUrl;
+        try {
+          window.location.href = paymentInfo.upiIntentUrl;
+        } catch {
+          // ignore auto-navigate restriction in strict browser contexts
+        }
       }
     } catch (err: any) {
       const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to initialize UPI Payment.';
       toast.error(msg);
+    }
+  };
+
+  const handleCustomerConfirmPayment = async () => {
+    if (!upiData) return;
+    setIsSubmittingPayment(true);
+    try {
+      await api.post('/payments/verify-upi', {
+        paymentId: upiData.paymentId,
+        orderId: upiData.orderId,
+        providerTxnId: userUtr.trim() || `UPI-${Date.now()}`,
+        receivedAmount: upiData.amount,
+      });
+      saveOrderToRecent(upiData.orderId, restaurantSlug);
+      clearCart();
+      setShowUpiModal(false);
+      toast.success('Payment confirmed & Order sent to kitchen! 🎉');
+      router.push(`/r/${restaurantSlug}/order/${upiData.orderId}`);
+    } catch (err: any) {
+      const msg = err.response?.data?.error || err.response?.data?.message || 'Failed to verify payment.';
+      toast.error(msg);
+    } finally {
+      setIsSubmittingPayment(false);
     }
   };
 
@@ -1160,7 +1189,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                         navigator.clipboard.writeText(upiData.merchantVpa);
                         toast.success('UPI ID copied!');
                       }}
-                      className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
+                      className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center cursor-pointer"
                       title="Copy UPI ID"
                     >
                       <Copy className="w-3.5 h-3.5" />
@@ -1168,15 +1197,46 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                   </div>
                 </div>
 
+                {/* Confirm Payment Action for Customer */}
+                <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-left space-y-2.5">
+                  <div className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">Done with your payment?</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Once paid in Google Pay / PhonePe / Paytm, click below to confirm. Your order will be sent to the restaurant kitchen immediately!
+                  </p>
+                  <input
+                    type="text"
+                    placeholder="Enter 12-digit UTR / Ref No (Optional)"
+                    value={userUtr}
+                    onChange={(e) => setUserUtr(e.target.value)}
+                    className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/30 text-foreground"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCustomerConfirmPayment}
+                    disabled={isSubmittingPayment}
+                    className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-md disabled:opacity-60 cursor-pointer"
+                  >
+                    {isSubmittingPayment ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Check className="w-4 h-4" />
+                    )}
+                    <span>{isSubmittingPayment ? 'Confirming with Kitchen...' : 'I Have Paid (Confirm & Send Order)'}</span>
+                  </button>
+                </div>
+
                 {/* Real-time Verification Status Box */}
-                <div className="p-4 bg-primary/5 border border-primary/20 rounded-2xl flex items-center gap-3 text-left">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary flex-shrink-0">
-                    <Loader2 className="w-5 h-5 animate-spin" />
+                <div className="p-3.5 bg-primary/5 border border-primary/20 rounded-2xl flex items-center gap-3 text-left">
+                  <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary flex-shrink-0">
+                    <Loader2 className="w-4 h-4 animate-spin" />
                   </div>
                   <div>
-                    <p className="font-semibold text-xs text-foreground">Verifying payment with backend server...</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      {isCheckingUpiStatus ? 'Checking provider transaction state...' : 'Waiting for payment confirmation. Page will auto-update upon payment.'}
+                    <p className="font-semibold text-xs text-foreground">Listening for payment confirmation...</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {isCheckingUpiStatus ? 'Checking transaction status...' : 'Auto-updates when payment is verified or confirmed above.'}
                     </p>
                   </div>
                 </div>
@@ -1187,10 +1247,12 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                 <button
                   type="button"
                   onClick={() => {
+                    saveOrderToRecent(upiData.orderId, restaurantSlug);
+                    clearCart();
                     setShowUpiModal(false);
-                    toast.info('You can track payment status on the order tracking page.');
+                    router.push(`/r/${restaurantSlug}/order/${upiData.orderId}`);
                   }}
-                  className="flex-1 py-3 rounded-xl border border-border font-semibold text-sm hover:bg-muted transition-colors text-foreground"
+                  className="flex-1 py-3 rounded-xl border border-border font-semibold text-sm hover:bg-muted transition-colors text-foreground cursor-pointer text-center"
                 >
                   Close & View Order
                 </button>

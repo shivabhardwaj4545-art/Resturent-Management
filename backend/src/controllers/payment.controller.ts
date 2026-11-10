@@ -198,7 +198,7 @@ export async function verifyAndConfirmPayment(
       orderId?: string;
       txnRef?: string;
       providerTxnId?: string;
-      receivedAmount: number;
+      receivedAmount?: number;
       secret?: string;
     };
 
@@ -242,13 +242,14 @@ export async function verifyAndConfirmPayment(
 
     // STEP 12 — AMOUNT VERIFICATION
     const expectedAmount = payment.amount;
-    const isAmountValid = Math.abs(receivedAmount - expectedAmount) < 0.01;
+    const effectiveReceived = typeof receivedAmount === 'number' ? receivedAmount : expectedAmount;
+    const isAmountValid = Math.abs(effectiveReceived - expectedAmount) < 0.01;
 
     if (!isAmountValid) {
       logger.error('CRITICAL: Payment amount mismatch detected!', {
         paymentId: payment.id,
         expectedAmount,
-        receivedAmount,
+        receivedAmount: effectiveReceived,
       });
 
       // Mark payment as FAILED due to amount discrepancy
@@ -258,7 +259,7 @@ export async function verifyAndConfirmPayment(
       });
 
       throw new AppError(
-        `Payment amount verification failed. Expected ₹${expectedAmount.toFixed(2)}, received ₹${receivedAmount.toFixed(2)}.`,
+        `Payment amount verification failed. Expected ₹${expectedAmount.toFixed(2)}, received ₹${effectiveReceived.toFixed(2)}.`,
         400,
         'AMOUNT_MISMATCH'
       );

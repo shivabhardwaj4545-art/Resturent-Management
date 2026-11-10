@@ -21,6 +21,7 @@ import { Bell } from 'lucide-react';
 import Link from 'next/link';
 import { getDetailedStatus, formatTime12h } from '@/utils/operatingHours';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { useRouter } from 'next/navigation';
 import { io } from 'socket.io-client';
 import { generateTableToken } from '@qr-restaurant/shared';
 
@@ -71,13 +72,17 @@ interface RestaurantMenuPageProps {
 }
 
 export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerified, searchParams }: RestaurantMenuPageProps) {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const isPreview = searchParams?.preview === 'true';
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-  }, []);
+    if (slug) {
+      router.prefetch(`/r/${slug}/checkout`);
+    }
+  }, [slug, router]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'VEG' | 'NON_VEG' | 'VEGAN'>('ALL');
@@ -1244,17 +1249,23 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
             const isServiceDisabled =
               (isHotelRoom && isRoomQrDisabledByAdmin) ||
               (!isHotelRoom && isTableQrDisabledByAdmin);
+            const isTimerActive = waiterStatus !== 'IDLE';
+            const isButtonDisabled = waiterLoading || isServiceDisabled || isTimerActive;
+
             return (
               <div className="shrink-0 w-full sm:w-auto flex flex-col gap-2">
                 <motion.button
                   type="button"
-                  whileHover={{ scale: isServiceDisabled ? 1 : 1.02 }}
-                  whileTap={{ scale: isServiceDisabled ? 1 : 0.98 }}
+                  whileHover={{ scale: isButtonDisabled ? 1 : 1.02 }}
+                  whileTap={{ scale: isButtonDisabled ? 1 : 0.98 }}
                   onClick={(e) => {
                     e.preventDefault();
                     if (isServiceDisabled) {
                       toast.error(isHotelRoom ? 'Hotel room service is currently disabled by administration.' : 'Waiter calling is currently disabled by administration.');
                       return;
+                    }
+                    if (isTimerActive) {
+                      return; // Completely non-clickable while countdown / active timer is running
                     }
                     if (!displayTableNumber && !manualTableNumber) {
                       setShowTableInput(true);
@@ -1262,7 +1273,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                     }
                     handleCallWaiter(displayTableNumber || manualTableNumber, undefined, customServiceNote);
                   }}
-                  disabled={waiterLoading || isServiceDisabled}
+                  disabled={isButtonDisabled}
                   style={{
                     backgroundColor:
                       isServiceDisabled
@@ -1286,7 +1297,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                         : 'transparent',
                     opacity: isServiceDisabled ? 0.65 : 1,
                   }}
-                  className={`w-full sm:w-auto px-5 py-3 rounded-2xl sm:rounded-full text-white font-extrabold text-sm sm:text-base shadow-xl flex items-center justify-center gap-2 transition-all border whitespace-nowrap hover:opacity-95 ${isServiceDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                  className={`w-full sm:w-auto px-5 py-3 rounded-2xl sm:rounded-full text-white font-extrabold text-sm sm:text-base shadow-xl flex items-center justify-center gap-2 transition-all border whitespace-nowrap ${isButtonDisabled ? 'cursor-not-allowed opacity-90 select-none' : 'cursor-pointer hover:opacity-95'}`}
                 >
                   <BellRing className={`w-4 h-4 sm:w-5 sm:h-5 shrink-0 ${!isServiceDisabled && (waiterStatus === 'COMING' || waiterStatus === 'PENDING') ? 'animate-pulse' : waiterStatus === 'OCCUPIED' || isServiceDisabled ? '' : 'animate-bounce'}`} />
                   <span className="tracking-wide font-bold whitespace-nowrap">

@@ -954,7 +954,11 @@ export async function addItemsToOrder(
       lastAddOnAt: updatedOrder.lastAddOnAt,
       paymentStatus: updatedOrder.paymentStatus,
       updatedAt: updatedOrder.updatedAt.toISOString(),
+      items: updatedOrder.items,
     });
+
+    // Also broadcast order update so kitchen display system (KDS) and owner see new items instantly
+    void emitNewOrder(order.restaurantId, updatedOrder, order.restaurant?.ownerId);
 
     // Build items summary for only the newly added items
     const itemsSummary = itemsToCreate.map((item: any) => {
@@ -972,7 +976,10 @@ export async function addItemsToOrder(
       'addons',
       addedTotal,
       paymentMethod,
-      itemsSummary
+      itemsSummary,
+      undefined,
+      undefined,
+      order.restaurant?.ownerId
     );
 
     res.json({

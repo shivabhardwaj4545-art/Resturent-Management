@@ -152,6 +152,7 @@ export function emitOrderStatusUpdate(orderId: string, restaurantId: string, dat
   driverId?: string;
   driverName?: string;
   paidAt?: string;
+  items?: any;
 }): void {
   if (!io) return;
   io.to(`order:${orderId}`).emit('order:status_updated', data);
@@ -279,6 +280,23 @@ export function emitWaiterCall(
       message: displayMessage,
       data: payload,
     });
+  } else {
+    // Resolve ownerId asynchronously so user room gets real-time notification even if ownerId wasn't passed directly
+    void prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: { ownerId: true },
+    }).then((rest) => {
+      if (rest?.ownerId && io) {
+        io.to(`user:${rest.ownerId}`).emit('waiter:called', payload);
+        io.to(`user:${rest.ownerId}`).emit('waiter_called', payload);
+        io.to(`user:${rest.ownerId}`).emit('notification:new', {
+          type: 'WAITER_CALL',
+          title: displayTitle,
+          message: displayMessage,
+          data: payload,
+        });
+      }
+    }).catch(() => {});
   }
 }
 

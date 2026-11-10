@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ShoppingBag, Minus, Plus, Trash2, Tag, ChevronRight, Sparkles } from 'lucide-react';
+import { X, ShoppingBag, Minus, Plus, Trash2, Tag, ChevronRight, Sparkles, Loader2 } from 'lucide-react';
 import { useCartStore } from '@/store/cart.store';
 import { useAuthStore } from '@/store/auth.store';
 import { useRouter } from 'next/navigation';
@@ -113,15 +113,39 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, tableTo
     handleApplyCouponDirectly(couponInput);
   };
 
+  const [navigating, setNavigating] = useState(false);
+
+  // Prefetch the checkout route immediately so navigating to checkout is instant
+  useEffect(() => {
+    if (restaurantSlug) {
+      router.prefetch(`/r/${restaurantSlug}/checkout`);
+    }
+  }, [restaurantSlug, router]);
+
   const handleCheckout = () => {
-    onClose();
+    if (navigating) return;
+    setNavigating(true);
+
     const params = new URLSearchParams();
-    const activeTable = isTableVerified ? tableNumber : null;
-    const activeToken = isTableVerified ? tableToken : null;
+    const storedTable = typeof window !== 'undefined' ? localStorage.getItem(`table_num_${restaurantSlug}`) : null;
+    const storedToken = typeof window !== 'undefined' ? localStorage.getItem(`table_token_${restaurantSlug}`) : null;
+
+    const activeTable = tableNumber || storedTable;
+    const activeToken = tableToken || storedToken;
 
     if (activeTable) params.set('table', activeTable);
     if (activeToken) params.set('t', activeToken);
-    router.push(`/r/${restaurantSlug}/checkout?${params.toString()}`);
+
+    const queryString = params.toString();
+    const targetUrl = `/r/${restaurantSlug}/checkout${queryString ? `?${queryString}` : ''}`;
+
+    router.push(targetUrl);
+
+    // Keep drawer open briefly during transition so the user doesn't see a momentary flash back to the menu screen
+    setTimeout(() => {
+      onClose();
+      setNavigating(false);
+    }, 120);
   };
 
   return (
@@ -375,10 +399,14 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, tableTo
 
                 <button
                   onClick={handleCheckout}
-                  className="w-full py-4 rounded-2xl text-white font-bold text-base flex items-center justify-between px-5 shadow-lg active:scale-98 transition-all hover:opacity-95"
+                  disabled={navigating}
+                  className="w-full py-4 rounded-2xl text-white font-bold text-base flex items-center justify-between px-5 shadow-lg active:scale-98 transition-all hover:opacity-95 disabled:opacity-90 cursor-pointer"
                   style={{ background: `linear-gradient(135deg, ${themeColor}, #F48C06)` }}
                 >
-                  <span>Proceed to Checkout</span>
+                  <div className="flex items-center gap-2">
+                    {navigating && <Loader2 className="w-4 h-4 animate-spin text-white" />}
+                    <span>{navigating ? 'Opening Checkout...' : 'Proceed to Checkout'}</span>
+                  </div>
                   <div className="flex items-center gap-2">
                     <span>₹{grandTotal.toFixed(0)}</span>
                     <ChevronRight className="w-5 h-5" />
