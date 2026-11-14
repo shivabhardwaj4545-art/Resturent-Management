@@ -138,6 +138,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
   const { user, accessToken } = useAuthStore();
   const [mounted, setMounted] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<string>('PENDING');
+  const [currentPaymentStatus, setCurrentPaymentStatus] = useState<string>('PENDING');
   const [showRating, setShowRating] = useState(false);
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
@@ -238,6 +239,17 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
     }
   }, [order?.status]);
 
+  useEffect(() => {
+    if (order?.paymentStatus) {
+      setCurrentPaymentStatus(order.paymentStatus);
+    }
+  }, [order?.paymentStatus]);
+
+  const isPaymentConfirmed =
+    currentPaymentStatus === 'PAID' ||
+    order?.paymentStatus === 'PAID' ||
+    Boolean(order?.paymentConfirmedAt);
+
   // ── Socket.io real-time tracking ──────────────────────────────────────────
   useEffect(() => {
     const socket: Socket = io(
@@ -276,6 +288,10 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
             if (data.status === 'DELIVERED') {
               setShowRating(true);
             }
+          }
+
+          if (data.paymentStatus) {
+            setCurrentPaymentStatus(data.paymentStatus);
           }
 
           if (data.paymentStatus === 'PAID') {
@@ -485,7 +501,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
               )}
             </span>
 
-            {order.paymentStatus === 'PAID' ? (
+            {isPaymentConfirmed ? (
               <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
                 ✅ Payment Confirmed
               </span>
@@ -518,18 +534,29 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
               </div>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-muted/40 border border-border/80 text-xs text-muted-foreground leading-relaxed space-y-1 text-center">
-              <p className="font-semibold text-foreground">
-                Please show this code to the restaurant counter staff or waiter to identify your order and confirm your payment.
-              </p>
-              <p className="text-[11px]">
-                Your order has been placed successfully. Please complete your payment at the restaurant counter.
-              </p>
-            </div>
+            {isPaymentConfirmed ? (
+              <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-700 dark:text-emerald-400 leading-relaxed space-y-1 text-center">
+                <p className="font-semibold text-emerald-800 dark:text-emerald-300">
+                  🎉 Payment Confirmed by Restaurant Counter!
+                </p>
+                <p className="text-[11px]">
+                  Thank you! Your payment has been received and verified. Your bill invoice is now available for download below.
+                </p>
+              </div>
+            ) : (
+              <div className="p-3.5 rounded-2xl bg-muted/40 border border-border/80 text-xs text-muted-foreground leading-relaxed space-y-1 text-center">
+                <p className="font-semibold text-foreground">
+                  Please show this code to the restaurant counter staff or waiter to identify your order and confirm your payment.
+                </p>
+                <p className="text-[11px]">
+                  Your order has been placed successfully. Please complete your payment at the restaurant counter.
+                </p>
+              </div>
+            )}
 
             <div className="pt-2 border-t border-border/60 flex items-center justify-between text-xs">
               <span className="text-muted-foreground font-medium">Payment Status:</span>
-              {order.paymentStatus === 'PAID' ? (
+              {isPaymentConfirmed ? (
                 <span className="font-extrabold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                   ✅ Paid {order.counterPaymentMethod ? `(${order.counterPaymentMethod})` : ''}
                 </span>
@@ -838,9 +865,9 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
                 )}
                 <div className="flex justify-between items-center font-bold text-base border-t border-border pt-2">
                   <div>
-                    <span className="block">{order.paymentStatus === 'PAID' ? 'Total Paid' : 'Total Amount'}</span>
-                    <span className={`text-xs block font-extrabold ${order.paymentStatus === 'PAID' ? 'text-emerald-600' : 'text-amber-600 dark:text-amber-400 animate-pulse'}`}>
-                      {order.paymentStatus === 'PAID' ? '✅ Payment Confirmed' : '⏳ Payment Pending'}
+                    <span className="block">{isPaymentConfirmed ? 'Total Paid' : 'Total Amount'}</span>
+                    <span className={`text-xs block font-extrabold ${isPaymentConfirmed ? 'text-emerald-600' : 'text-amber-600 dark:text-amber-400 animate-pulse'}`}>
+                      {isPaymentConfirmed ? '✅ Payment Confirmed' : '⏳ Payment Pending'}
                     </span>
                   </div>
                   <span className="text-lg">₹{order.total.toFixed(2)}</span>
@@ -848,7 +875,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
               </div>
               {!['DELIVERED', 'CANCELLED'].includes(order.status) && (
                 <div className="space-y-2 mt-3">
-                  {order.paymentStatus !== 'PAID' && order.tableNumber && (
+                  {!isPaymentConfirmed && order.tableNumber && (
                     <button
                       onClick={async () => {
                         try {
@@ -973,7 +1000,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
                 Reorder
               </button>
             </div>
-            {['CONFIRMED', 'PREPARING', 'BAKING', 'READY', 'ON_THE_WAY', 'DELIVERED'].includes(currentStatus) && (
+            {isPaymentConfirmed && ['CONFIRMED', 'PREPARING', 'BAKING', 'READY', 'ON_THE_WAY', 'DELIVERED'].includes(currentStatus) && (
               <InvoiceDownload order={order} themeColor={themeColor} />
             )}
           </div>

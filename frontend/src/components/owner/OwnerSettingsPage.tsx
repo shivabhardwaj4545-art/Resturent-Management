@@ -970,6 +970,8 @@ export function OwnerSettingsPage() {
                         className="w-full px-3 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                     </div>
                   </div>
+                  {/* =========================================================================
+                      TEMPORARILY COMMENTED OUT: Operating Hours (Weekly Schedule)
                   <div>
                     <label className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
                       <Clock className="w-4 h-4 text-primary" />
@@ -987,7 +989,7 @@ export function OwnerSettingsPage() {
                             <div className="flex items-center justify-between sm:justify-start gap-3 sm:w-36 shrink-0">
                               <span className="capitalize font-semibold text-xs text-foreground">{day}</span>
 
-                              {/* Toggle switch for Open/Closed */}
+                              // Toggle switch for Open/Closed
                               <label className="relative inline-flex items-center cursor-pointer shrink-0">
                                 <input
                                   type="checkbox"
@@ -1008,7 +1010,7 @@ export function OwnerSettingsPage() {
                               </label>
                             </div>
 
-                            {/* Open and Close Time Pickers */}
+                            // Open and Close Time Pickers
                             {isOpen ? (
                               <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap justify-start sm:justify-end shrink-0">
                                 <span className="text-[11px] text-muted-foreground sm:hidden font-medium">Hours:</span>
@@ -1044,6 +1046,7 @@ export function OwnerSettingsPage() {
                       })}
                     </div>
                   </div>
+                  ========================================================================= */}
                   <div>
                     <label className="text-sm font-medium text-muted-foreground mb-1.5 block flex items-center gap-1.5"><Palette className="w-3.5 h-3.5" />Theme Color</label>
                     <div className="flex items-center gap-3">
@@ -1091,7 +1094,9 @@ export function OwnerSettingsPage() {
                 </div>
               </motion.div>
 
-              {/* Direct & UPI Payment Setup */}
+              {/* =========================================================================
+                  TEMPORARILY COMMENTED OUT: Restaurant Payment & UPI Settings
+                  Online payments disabled in favor of offline counter verification flow.
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="bg-card border border-border rounded-2xl p-6">
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="font-display font-semibold flex items-center gap-2">
@@ -1105,7 +1110,7 @@ export function OwnerSettingsPage() {
                 </p>
 
                 <div className="space-y-5">
-                  {/* Status Toggles */}
+                  // Status Toggles
                   <div className="grid sm:grid-cols-2 gap-4 p-4 bg-muted/20 border border-border/80 rounded-xl">
                     <div className="flex items-center justify-between">
                       <div>
@@ -1138,7 +1143,7 @@ export function OwnerSettingsPage() {
                     </div>
                   </div>
 
-                  {/* UPI Account Type & Compliance Notice */}
+                  // UPI Account Type & Compliance Notice
                   <div className="p-4 bg-muted/40 border border-border rounded-2xl space-y-3">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div>
@@ -1169,7 +1174,7 @@ export function OwnerSettingsPage() {
                       </div>
                     </div>
 
-                    {/* Status Alert Banner */}
+                    // Status Alert Banner
                     {upiAccountData?.upiAccount?.merchantEligibilityStatus === 'MERCHANT_APPROVED' || isUpiVerified ? (
                       <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-start gap-2.5 text-xs text-emerald-700 dark:text-emerald-400">
                         <Check className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
@@ -1187,7 +1192,7 @@ export function OwnerSettingsPage() {
                     )}
                   </div>
 
-                  {/* UPI ID & Merchant Info */}
+                  // UPI ID & Merchant Info
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
                       <label className="text-xs font-semibold text-muted-foreground mb-1.5 flex items-center justify-between">
@@ -1271,7 +1276,7 @@ export function OwnerSettingsPage() {
                     />
                   </div>
 
-                  {/* Auto-Generated Dynamic QR Code */}
+                  // Auto-Generated Dynamic QR Code
                   <div className="space-y-3 pt-2 border-t border-border/50">
                     <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
                       <QrCode className="w-4 h-4 text-primary" /> Live Payment QR Code Preview
@@ -1305,7 +1310,7 @@ export function OwnerSettingsPage() {
                     </div>
                   </div>
 
-                  {/* Bank Details */}
+                  // Bank Details
                   <div>
                     <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5"><Building2 className="w-3.5 h-3.5" /> Bank Account Details (Optional)</p>
                     <div className="grid sm:grid-cols-2 gap-4">
@@ -1362,6 +1367,7 @@ export function OwnerSettingsPage() {
                   </button>
                 </div>
               </motion.div>
+              ========================================================================= */}
 
               {/* QR Code Builder & Room Service Generator */}
               {data && (
