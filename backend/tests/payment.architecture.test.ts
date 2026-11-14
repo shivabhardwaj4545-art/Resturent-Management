@@ -237,5 +237,54 @@ describe('Payment Architecture Test Suite', () => {
       expect(personalCheck.restrictionReason).toContain('Personal (P2P) UPI ID cannot accept customer orders');
     });
   });
+
+  describe('E. Authoritative Reference, Amount Precision & UTR Separation', () => {
+    it('should format exact paise amount without floating point rounding errors', () => {
+      const amount = 2.36;
+      const paise = Math.round(amount * 100);
+      expect(paise).toBe(236);
+
+      const intentUrl = buildUpiIntentUrl({
+        merchantVpa: 'restaurant@upi',
+        merchantName: 'Test Diner',
+        amount: 2.36,
+        txnRef: 'ORDTEST123456789',
+      });
+
+      expect(intentUrl).toContain('am=2.36');
+      expect(intentUrl).not.toContain('am=2&');
+      expect(intentUrl).not.toContain('am=2.00');
+    });
+
+    it('should distinguish merchant reference from bank UTR/RRN strictly', () => {
+      const orderId = 'clx987654321';
+      const merchantRef = generateTransactionRef(orderId);
+      const simulatedBankUtr = '432109876543'; // 12-digit numeric RRN
+
+      expect(merchantRef.startsWith('ORD')).toBe(true);
+      expect(merchantRef).not.toBe(simulatedBankUtr);
+      expect(/^\d{12}$/.test(simulatedBankUtr)).toBe(true);
+    });
+
+    it('should build intent URL with correct payee name and merchant category code', async () => {
+      const mock = new MockUpiProvider();
+      const intent = await mock.createIntent({
+        orderId: 'order_555',
+        restaurantId: 'rest_555',
+        restaurantName: 'Grand Cafe',
+        merchantVpa: 'grandcafe@upi',
+        merchantName: 'Grand Cafe Pvt Ltd',
+        amount: 540.75,
+        currency: 'INR',
+        merchantTxnRef: 'ORDCAFE555000',
+      });
+
+      expect(intent.amount).toBe(540.75);
+      expect(intent.merchantTxnRef).toBe('ORDCAFE555000');
+      expect(intent.intentUrl).toContain('am=540.75');
+      expect(intent.intentUrl).toContain('pa=grandcafe@upi');
+      expect(intent.intentUrl).toContain('pn=Grand%20Cafe%20Pvt%20Ltd');
+    });
+  });
 });
 

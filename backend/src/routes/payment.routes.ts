@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   createUpiIntent,
   getPaymentStatus,
+  getOrderPaymentDetails,
   verifyAndConfirmPayment,
   handleUpiWebhook,
   reconcilePayment,
@@ -16,6 +17,10 @@ router.post('/orders/:orderId/payment-attempts', createUpiIntent);
 
 // Read-only endpoint to check server-side payment status
 router.get('/:paymentId/status', getPaymentStatus);
+
+// Fetch order payment details & attempts for existing order
+router.get('/orders/:orderId', getOrderPaymentDetails);
+router.get('/orders/:orderId/payment', getOrderPaymentDetails);
 
 // Server-side verification & webhook endpoint
 router.post('/verify-upi', verifyAndConfirmPayment);

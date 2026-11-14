@@ -407,6 +407,9 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
     try {
       const res = await api.get(`/payments/${upiData.paymentId}/status`, { skipToast: true } as any);
       const data = res.data?.data;
+      if (data?.utr) {
+        setLatestUtr(data.utr);
+      }
       const status = data?.status || data?.orderPaymentStatus;
       if (status === 'PAID') {
         saveOrderToRecent(upiData.orderId, restaurantSlug);
@@ -426,54 +429,31 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
     }
   };
 
-  const [utrInput, setUtrInput] = useState('');
-  const [isSubmittingUtr, setIsSubmittingUtr] = useState(false);
+  const [latestUtr, setLatestUtr] = useState<string | null>(null);
+  const [showCancelConfirmModal, setShowCancelConfirmModal] = useState(false);
+  const [isCancellingOrder, setIsCancellingOrder] = useState(false);
 
-  const handleSubmitUtr = async () => {
-    if (!upiData?.paymentId || !utrInput.trim()) {
-      toast.error('Please enter the 12-digit UPI Reference / UTR Number from your payment receipt.');
+  const confirmCancelOrder = async () => {
+    if (!upiData?.orderId) {
+      setShowCancelConfirmModal(false);
+      setShowUpiModal(false);
       return;
     }
-    const cleanUtr = utrInput.trim();
-    if (!/^\d{12}$/.test(cleanUtr) && cleanUtr.length < 8) {
-      toast.error('Please enter a valid 12-digit UTR / Bank Reference Number.');
-      return;
-    }
-
-    setIsSubmittingUtr(true);
+    setIsCancellingOrder(true);
     try {
-      const res = await api.post('/payments/verify-upi', {
-        paymentId: upiData.paymentId,
-        orderId: upiData.orderId,
-        providerTxnId: cleanUtr,
-      });
-
-      if (res.data?.success) {
-        saveOrderToRecent(upiData.orderId, restaurantSlug);
-        clearCart();
-        setShowUpiModal(false);
-        toast.success('Payment Verified & Order Confirmed! 🎉');
-        router.push(`/r/${restaurantSlug}/order/${upiData.orderId}`);
-      }
+      await api.post(`/payments/orders/${upiData.orderId}/cancel`);
+      setShowCancelConfirmModal(false);
+      setShowUpiModal(false);
+      toast.info('Order payment attempt cancelled.');
     } catch (err: any) {
-      toast.error(err.response?.data?.error || err.message || 'Payment verification failed with the provided UTR.');
+      toast.error(err.response?.data?.error || 'Could not cancel order.');
     } finally {
-      setIsSubmittingUtr(false);
+      setIsCancellingOrder(false);
     }
   };
 
   const handleCancelOrder = async () => {
-    if (!upiData?.orderId) {
-      setShowUpiModal(false);
-      return;
-    }
-    try {
-      await api.post(`/payments/orders/${upiData.orderId}/cancel`);
-      setShowUpiModal(false);
-      toast.info('Order payment attempt cancelled.');
-    } catch {
-      setShowUpiModal(false);
-    }
+    setShowCancelConfirmModal(true);
   };
 
   // QR Tab state inside UPI Modal
@@ -945,7 +925,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
               className="w-full py-4 rounded-2xl text-white font-bold text-base bg-gradient-to-r from-orange-500 to-amber-500 disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20"
             >
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              {loading ? 'Adding Items...' : `Confirm & Add Items · ₹${grandTotal.toFixed(0)}`}
+              {loading ? 'Adding Items...' : `Confirm & Add Items · ₹${grandTotal.toFixed(2)}`}
             </button>
           </div>
         ) : activeUser ? (
@@ -992,7 +972,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
               className="w-full mt-4 py-4 rounded-2xl text-white font-bold text-base bg-gradient-to-r from-orange-500 to-amber-500 disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20"
             >
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              {loading ? 'Placing Order...' : `Place Order · ₹${grandTotal.toFixed(0)}`}
+              {loading ? 'Placing Order...' : `Place Order · ₹${grandTotal.toFixed(2)}`}
             </button>
           </div>
         ) : (
@@ -1065,7 +1045,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
               className="w-full py-4 rounded-2xl text-white font-bold text-base bg-gradient-to-r from-orange-500 to-amber-500 disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20"
             >
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              {loading ? 'Placing Order...' : `Place Order · ₹${grandTotal.toFixed(0)}`}
+              {loading ? 'Placing Order...' : `Place Order · ₹${grandTotal.toFixed(2)}`}
             </button>
           </form>
         )}
@@ -1212,7 +1192,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                   className="flex-[1.5] py-3 px-4 rounded-xl font-bold text-xs text-white bg-gradient-to-r from-orange-500 to-amber-500 shadow-md shadow-orange-500/20 hover:opacity-95 disabled:opacity-60 flex items-center justify-center gap-1.5"
                 >
                   {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  {loading ? 'Sending to Kitchen...' : `Confirm & Place Order · ₹${grandTotal.toFixed(0)}`}
+                  {loading ? 'Sending to Kitchen...' : `Confirm & Place Order · ₹${grandTotal.toFixed(2)}`}
                 </button>
               </div>
             </motion.div>
@@ -1290,7 +1270,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                       selectedQrTab === 'dynamic' ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:bg-muted/50'
                     }`}
                   >
-                    Auto Dynamic QR (₹{upiData.amount.toFixed(0)})
+                    Auto Dynamic QR (₹{upiData.amount.toFixed(2)})
                   </button>
                   <button
                     type="button"
@@ -1362,13 +1342,13 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                   </a>
                 </div>
 
-                {/* Primary Launch Button */}
+                {/* Primary Launch Button with Exact Authoritative Amount */}
                 <a
                   href={upiData.upiIntentUrl}
                   className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20"
                 >
                   <Smartphone className="w-4 h-4" />
-                  Open Default UPI App to Pay ₹{upiData.amount.toFixed(0)}
+                  Open Default UPI App to Pay ₹{upiData.amount.toFixed(2)}
                 </a>
 
                 {/* Details Copy Bar */}
@@ -1392,7 +1372,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                   </div>
                 </div>
 
-                {/* Real-time Verification Status & UTR Submission Box */}
+                {/* Real-time Verification Status Box (Authoritative, Automatic) */}
                 <div className="p-4 bg-primary/5 border border-primary/20 rounded-2xl text-left space-y-3">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary flex-shrink-0">
@@ -1415,30 +1395,23 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                     {isCheckingUpiStatus ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5 text-primary" />}
                     <span>I Have Paid (Refresh Status)</span>
                   </button>
+                </div>
 
-                  <div className="pt-2 border-t border-border/60">
-                    <label className="block text-[11px] font-semibold text-foreground mb-1.5">
-                      Paid via App? Enter 12-digit UTR / Ref No. for Instant Confirmation
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={utrInput}
-                        onChange={(e) => setUtrInput(e.target.value)}
-                        placeholder="e.g. 431289123456"
-                        maxLength={18}
-                        className="flex-1 px-3 py-2 text-xs rounded-xl border border-border bg-card text-foreground font-mono placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleSubmitUtr}
-                        disabled={isSubmittingUtr || !utrInput.trim()}
-                        className="px-3.5 py-2 text-xs font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-all flex items-center gap-1.5 cursor-pointer"
-                      >
-                        {isSubmittingUtr ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                        <span>Verify UTR</span>
-                      </button>
-                    </div>
+                {/* Authoritative Transaction Proof Display */}
+                <div className="bg-muted/40 border border-border/80 rounded-2xl p-3.5 text-xs font-mono text-left space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground font-sans">Merchant Order Ref:</span>
+                    <span className="font-bold text-foreground">{upiData.txnRef || (upiData as any).merchantRef}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground font-sans">Bank Reference / UTR:</span>
+                    <span className="text-muted-foreground font-sans italic">
+                      {latestUtr || 'Awaiting bank confirmation'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground font-sans">Payable Amount:</span>
+                    <span className="font-bold text-foreground">₹{upiData.amount.toFixed(2)}</span>
                   </div>
                 </div>
               </div>
@@ -1458,11 +1431,66 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                     saveOrderToRecent(upiData.orderId, restaurantSlug);
                     clearCart();
                     setShowUpiModal(false);
-                    router.push(`/r/${restaurantSlug}/order/${upiData.orderId}`);
+                    // Critical navigation requirement #5: navigate to payment page, NOT order-status page!
+                    router.push(`/r/${restaurantSlug}/order/${upiData.orderId}/payment`);
                   }}
                   className="flex-1 py-3 rounded-xl border border-border font-semibold text-xs hover:bg-muted transition-colors text-foreground cursor-pointer text-center"
                 >
                   Close & View Order
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Explicit Order Cancellation Confirmation Dialog */}
+      <AnimatePresence>
+        {showCancelConfirmModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowCancelConfirmModal(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-xs"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-card border border-border rounded-2xl p-5 max-w-sm w-full relative z-10 shadow-2xl space-y-4"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center shrink-0">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-foreground">Cancel Order Attempt?</h3>
+                  <p className="text-xs text-muted-foreground">Are you sure you want to cancel this order?</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-muted-foreground leading-relaxed bg-muted/30 p-3 rounded-xl border border-border">
+                Cancelling will permanently cancel order <strong>#{upiData?.orderId?.slice(-6)?.toUpperCase()}</strong> and expire your active payment session.
+              </p>
+
+              <div className="flex gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowCancelConfirmModal(false)}
+                  className="flex-1 py-2.5 px-3 rounded-xl border border-border font-semibold text-xs hover:bg-muted text-foreground transition-colors cursor-pointer"
+                >
+                  Keep Order
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmCancelOrder}
+                  disabled={isCancellingOrder}
+                  className="flex-1 py-2.5 px-3 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {isCancellingOrder ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                  <span>Yes, Cancel Order</span>
                 </button>
               </div>
             </motion.div>

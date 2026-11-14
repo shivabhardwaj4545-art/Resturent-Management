@@ -14,6 +14,7 @@ import {
   claimGuestOrders,
   submitOrderReview,
 } from '../controllers/order.controller';
+import { getOrderPaymentDetails } from '../controllers/payment.controller';
 
 const router = Router();
 
@@ -26,6 +27,7 @@ router.post('/claim-guest-orders', authenticate, claimGuestOrders);
 router.post('/', authenticate, validate(userCheckoutSchema), placeOrder);
 router.get('/', authenticate, getUserOrders);
 router.get('/:orderId', optionalAuth, getOrderById);
+router.get('/:orderId/payment', optionalAuth, getOrderPaymentDetails);
 router.post('/:orderId/add-items', optionalAuth, addItemsToOrder);
 router.post('/verify-payment', optionalAuth, validate(razorpayVerifySchema), verifyPayment);
 router.post('/create-order', optionalAuth, createDirectOrder);

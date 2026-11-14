@@ -408,7 +408,7 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, tableTo
                     <span>{navigating ? 'Opening Checkout...' : 'Proceed to Checkout'}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span>₹{grandTotal.toFixed(0)}</span>
+                    <span>₹{grandTotal.toFixed(2)}</span>
                     <ChevronRight className="w-5 h-5" />
                   </div>
                 </button>

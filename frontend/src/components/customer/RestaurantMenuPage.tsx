@@ -1448,7 +1448,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                             }).join(', ')}
                           </p>
                           <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                            <span>₹{order.total.toFixed(0)}</span>
+                            <span>₹{Number(order.total).toFixed(2)}</span>
                             <span>•</span>
                             <span>
                               {order.paymentStatus === 'PAID' ? (
@@ -1544,7 +1544,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                             }).join(', ')}
                           </p>
                           <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                            <span>₹{order.total.toFixed(0)}</span>
+                            <span>₹{Number(order.total).toFixed(2)}</span>
                             <span>•</span>
                             <span>
                               {order.paymentMethod === 'RAZORPAY' ? 'Paid Online' : order.paymentMethod === 'COD' ? 'Pay on Counter' : order.paymentMethod === 'PAY_TO_WAITER' ? 'Pay to Waiter' : 'Wallet'}
@@ -1840,7 +1840,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
               </div>
               <div className="flex items-center gap-2.5">
                 <ShoppingCart className="w-5 h-5" />
-                <span className="font-bold text-base sm:text-lg">₹{getCartTotal().toFixed(0)}</span>
+                <span className="font-bold text-base sm:text-lg">₹{getCartTotal().toFixed(2)}</span>
               </div>
             </button>
           </motion.div>

@@ -82,11 +82,58 @@ export async function createUpiIntent(
 
     // Authoritative amount comes directly from DB Order record
     const authoritativeAmount = order.total;
+    const amountPaise = Math.round(authoritativeAmount * 100);
     const merchantName = restaurant.merchantName || restaurant.name;
-    const merchantTxnRef = generateTransactionRef(order.id);
+    const forceNew = Boolean(req.body.forceNew);
 
     // Resolve active acquiring bank/UPI PSP provider adapter
     const provider = UpiProviderRegistry.getProvider(restaurant.paymentProvider || undefined);
+
+    // Idempotency check: Reuse existing active pending attempt if not expired and not forcing new
+    const existingPayment = await prisma.payment.findUnique({
+      where: { orderId: order.id },
+      include: {
+        attempts: {
+          where: { status: 'PENDING' },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+    });
+
+    const activeAttempt = existingPayment?.attempts?.[0];
+    const isAttemptValid = activeAttempt && activeAttempt.expiresAt > new Date();
+
+    if (existingPayment && activeAttempt && isAttemptValid && !forceNew) {
+      res.json({
+        success: true,
+        data: {
+          paymentId: existingPayment.id,
+          attemptId: activeAttempt.id,
+          orderId: order.id,
+          restaurantId: restaurant.id,
+          txnRef: activeAttempt.merchantRef,
+          merchantRef: activeAttempt.merchantRef,
+          amount: activeAttempt.amount,
+          amountPaise: activeAttempt.amountPaise || amountPaise,
+          currency: activeAttempt.currency || 'INR',
+          merchantVpa,
+          merchantName,
+          status: 'PENDING',
+          paymentStatus: existingPayment.status,
+          upiIntentUrl: activeAttempt.intentUrl,
+          qrPayload: activeAttempt.qrPayload || activeAttempt.intentUrl,
+          expiresAt: activeAttempt.expiresAt,
+          utr: existingPayment.providerTxnId || null,
+          utrStatus: existingPayment.providerTxnId ? 'CONFIRMED' : 'AWAITING_BANK_REFERENCE',
+          createdAt: activeAttempt.createdAt,
+          reused: true,
+        },
+      });
+      return;
+    }
+
+    const merchantTxnRef = generateTransactionRef(order.id);
 
     const intentResult = await provider.createIntent({
       orderId: order.id,
@@ -107,15 +154,18 @@ export async function createUpiIntent(
       where: { orderId: order.id },
       create: {
         orderId: order.id,
+        restaurantId: restaurant.id,
         method: 'UPI_INTENT',
         status: 'PENDING',
         amount: authoritativeAmount,
+        amountPaise,
         txnRef: merchantTxnRef,
       },
       update: {
         method: 'UPI_INTENT',
         status: 'PENDING',
         amount: authoritativeAmount,
+        amountPaise,
         txnRef: merchantTxnRef,
       },
     });
@@ -130,6 +180,7 @@ export async function createUpiIntent(
         providerRef: intentResult.providerTxnRef || null,
         provider: provider.providerName,
         amount: authoritativeAmount,
+        amountPaise,
         currency: 'INR',
         status: 'PENDING',
         intentUrl: intentResult.intentUrl,
@@ -149,6 +200,7 @@ export async function createUpiIntent(
         details: {
           merchantTxnRef,
           amount: authoritativeAmount,
+          amountPaise,
           provider: provider.providerName,
         },
       },
@@ -238,13 +290,14 @@ export async function getPaymentStatus(
         if (statusResult.status === 'SUCCESS') {
           // Confirm payment atomically
           const now = new Date();
+          const verifiedUtr = statusResult.providerTxnRef || null;
           const [updatedPayment, updatedOrder] = await prisma.$transaction(async (tx) => {
             const p = await tx.payment.update({
               where: { id: payment.id },
               data: {
                 status: 'PAID',
                 paidAt: statusResult.paidAt || now,
-                providerTxnId: statusResult.providerTxnRef || `BNK-${Date.now()}`,
+                providerTxnId: verifiedUtr,
               },
             });
             const o = await tx.order.update({
@@ -286,13 +339,17 @@ export async function getPaymentStatus(
             data: {
               paymentId: updatedPayment.id,
               orderId: updatedOrder.id,
-              txnRef: updatedPayment.txnRef,
+              merchantRef: latestAttempt.merchantRef,
+              txnRef: updatedPayment.txnRef || latestAttempt.merchantRef,
               status: 'PAID',
               orderStatus: 'CONFIRMED',
               orderPaymentStatus: 'PAID',
               amount: updatedPayment.amount,
+              amountPaise: updatedPayment.amountPaise || Math.round(updatedPayment.amount * 100),
               paidAt: updatedPayment.paidAt,
-              providerTxnId: updatedPayment.providerTxnId,
+              providerTxnId: updatedPayment.providerTxnId || null,
+              utr: updatedPayment.providerTxnId || null,
+              utrStatus: updatedPayment.providerTxnId ? 'CONFIRMED' : 'AWAITING_BANK_REFERENCE',
             },
           });
           return;
@@ -307,13 +364,111 @@ export async function getPaymentStatus(
       data: {
         paymentId: payment.id,
         orderId: payment.orderId,
-        txnRef: payment.txnRef,
+        merchantRef: latestAttempt?.merchantRef || payment.txnRef,
+        txnRef: payment.txnRef || latestAttempt?.merchantRef,
+        attemptId: latestAttempt?.id || null,
         status: payment.status,
         orderStatus: payment.order.status,
         orderPaymentStatus: payment.order.paymentStatus,
         amount: payment.amount,
+        amountPaise: payment.amountPaise || Math.round(payment.amount * 100),
         paidAt: payment.paidAt,
-        providerTxnId: payment.providerTxnId,
+        providerTxnId: payment.providerTxnId || null,
+        utr: payment.providerTxnId || null,
+        utrStatus: payment.providerTxnId ? 'CONFIRMED' : 'AWAITING_BANK_REFERENCE',
+        upiIntentUrl: latestAttempt?.intentUrl || null,
+        qrPayload: latestAttempt?.qrPayload || latestAttempt?.intentUrl || null,
+        expiresAt: latestAttempt?.expiresAt || null,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET ORDER PAYMENT DETAILS & RECENT ATTEMPTS
+ * GET /api/v1/payments/orders/:orderId
+ * GET /api/v1/orders/:orderId/payment
+ */
+export async function getOrderPaymentDetails(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const orderId = req.params.orderId as string;
+    if (!orderId) {
+      throw new AppError('Order ID is required.', 400, 'ORDER_ID_REQUIRED');
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId, deletedAt: null },
+      include: {
+        restaurant: true,
+        payment: {
+          include: {
+            attempts: {
+              orderBy: { createdAt: 'desc' },
+              take: 5,
+            },
+          },
+        },
+        items: {
+          include: { menuItem: true },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new AppError('Order not found.', 404, 'ORDER_NOT_FOUND');
+    }
+
+    const payment = order.payment;
+    const latestAttempt = payment?.attempts?.[0];
+
+    res.json({
+      success: true,
+      data: {
+        orderId: order.id,
+        restaurantId: order.restaurantId,
+        restaurantSlug: order.restaurant.slug,
+        restaurantName: order.restaurant.name,
+        merchantName: order.restaurant.merchantName || order.restaurant.name,
+        merchantVpa: order.restaurant.paymentUpiId,
+        orderStatus: order.status,
+        paymentStatus: order.paymentStatus,
+        total: order.total,
+        amountPaise: payment?.amountPaise || Math.round(order.total * 100),
+        payment: payment
+          ? {
+              id: payment.id,
+              method: payment.method,
+              status: payment.status,
+              amount: payment.amount,
+              amountPaise: payment.amountPaise || Math.round(payment.amount * 100),
+              merchantRef: latestAttempt?.merchantRef || payment.txnRef,
+              txnRef: payment.txnRef || latestAttempt?.merchantRef,
+              providerTxnId: payment.providerTxnId || null,
+              utr: payment.providerTxnId || null,
+              utrStatus: payment.providerTxnId ? 'CONFIRMED' : 'AWAITING_BANK_REFERENCE',
+              paidAt: payment.paidAt,
+            }
+          : null,
+        activeAttempt: latestAttempt
+          ? {
+              id: latestAttempt.id,
+              merchantRef: latestAttempt.merchantRef,
+              amount: latestAttempt.amount,
+              amountPaise: latestAttempt.amountPaise || Math.round(latestAttempt.amount * 100),
+              currency: latestAttempt.currency,
+              status: latestAttempt.status,
+              intentUrl: latestAttempt.intentUrl,
+              qrPayload: latestAttempt.qrPayload,
+              expiresAt: latestAttempt.expiresAt,
+              isExpired: new Date() > latestAttempt.expiresAt,
+            }
+          : null,
       },
     });
   } catch (error) {
