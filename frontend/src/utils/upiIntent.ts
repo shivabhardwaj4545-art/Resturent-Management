@@ -57,3 +57,4 @@ export function triggerUpiLaunch(app: UpiAppType, upiUrl: string) {
     window.location.href = upiUrl;
   }
 }
+
