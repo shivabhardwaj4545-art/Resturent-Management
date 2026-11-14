@@ -707,8 +707,8 @@ export function OwnerSettingsPage() {
     const defaults = data?.platformType === 'HOTEL'
       ? ['Room 101', 'Room 102', 'Room 103', 'Room 104', 'Room 201', 'Room 202']
       : data?.platformType === 'RESTAURANT'
-      ? ['Table 1', 'Table 2', 'Table 3', 'Table 4', 'Table 5', 'Table 10']
-      : [
+        ? ['Table 1', 'Table 2', 'Table 3', 'Table 4', 'Table 5', 'Table 10']
+        : [
           'Table 1', 'Table 2', 'Table 3', 'Table 4', 'Table 5', 'Table 10',
           'Room 101', 'Room 102', 'Room 103', 'Room 104', 'Room 201', 'Room 202'
         ];
@@ -716,8 +716,8 @@ export function OwnerSettingsPage() {
     const customs = qrSettings.customLocations || [];
     const activeFormatted = activeLocationStr
       ? (qrMode === 'ROOM'
-          ? (activeLocationStr.toLowerCase().startsWith('room') ? activeLocationStr : `Room ${activeLocationStr}`)
-          : (activeLocationStr.toLowerCase().startsWith('table') ? activeLocationStr : `Table ${activeLocationStr}`))
+        ? (activeLocationStr.toLowerCase().startsWith('room') ? activeLocationStr : `Room ${activeLocationStr}`)
+        : (activeLocationStr.toLowerCase().startsWith('table') ? activeLocationStr : `Table ${activeLocationStr}`))
       : '';
 
     const deleted = (qrSettings.deletedLocations || []).map((d) => d.trim().toLowerCase());
@@ -770,11 +770,11 @@ export function OwnerSettingsPage() {
 
   const iframeUrl = data?.slug
     ? `/r/${data.slug}?preview=true` +
-      `&themeColor=${encodeURIComponent(form.themeColor ?? '#E85D04')}` +
-      `&name=${encodeURIComponent((form.name ?? '').slice(0, 80))}` +
-      `&description=${encodeURIComponent((form.description ?? '').slice(0, 150))}` +
-      (logoParam ? `&logo=${encodeURIComponent(logoParam)}` : '') +
-      (bannerParam ? `&banner=${encodeURIComponent(bannerParam)}` : '')
+    `&themeColor=${encodeURIComponent(form.themeColor ?? '#E85D04')}` +
+    `&name=${encodeURIComponent((form.name ?? '').slice(0, 80))}` +
+    `&description=${encodeURIComponent((form.description ?? '').slice(0, 150))}` +
+    (logoParam ? `&logo=${encodeURIComponent(logoParam)}` : '') +
+    (bannerParam ? `&banner=${encodeURIComponent(bannerParam)}` : '')
     : '';
 
   return (
@@ -924,7 +924,7 @@ export function OwnerSettingsPage() {
                           >
                             <div className="flex items-center justify-between sm:justify-start gap-3 sm:w-36 shrink-0">
                               <span className="capitalize font-semibold text-xs text-foreground">{day}</span>
-                              
+
                               {/* Toggle switch for Open/Closed */}
                               <label className="relative inline-flex items-center cursor-pointer shrink-0">
                                 <input
@@ -1053,9 +1053,8 @@ export function OwnerSettingsPage() {
                       <button
                         type="button"
                         onClick={() => setForm(f => ({ ...f, paymentEnabled: !(f.paymentEnabled ?? true) }))}
-                        className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors ${
-                          (form.paymentEnabled ?? true) ? 'bg-green-500 justify-end' : 'bg-muted-foreground/30 justify-start'
-                        }`}
+                        className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors ${(form.paymentEnabled ?? true) ? 'bg-green-500 justify-end' : 'bg-muted-foreground/30 justify-start'
+                          }`}
                       >
                         <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
                       </button>
@@ -1069,9 +1068,8 @@ export function OwnerSettingsPage() {
                       <button
                         type="button"
                         onClick={() => setForm(f => ({ ...f, upiEnabled: !(f.upiEnabled ?? true) }))}
-                        className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors ${
-                          (form.upiEnabled ?? true) ? 'bg-primary justify-end' : 'bg-muted-foreground/30 justify-start'
-                        }`}
+                        className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors ${(form.upiEnabled ?? true) ? 'bg-primary justify-end' : 'bg-muted-foreground/30 justify-start'
+                          }`}
                       >
                         <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
                       </button>
@@ -1089,22 +1087,20 @@ export function OwnerSettingsPage() {
                         <button
                           type="button"
                           onClick={() => setAccountType('MERCHANT')}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                            accountType === 'MERCHANT'
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${accountType === 'MERCHANT'
                               ? 'bg-card text-primary shadow-xs font-bold'
                               : 'text-muted-foreground hover:text-foreground'
-                          }`}
+                            }`}
                         >
                           Merchant VPA (Business)
                         </button>
                         <button
                           type="button"
                           onClick={() => setAccountType('PERSONAL')}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                            accountType === 'PERSONAL'
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${accountType === 'PERSONAL'
                               ? 'bg-card text-amber-600 dark:text-amber-400 shadow-xs font-bold'
                               : 'text-muted-foreground hover:text-foreground'
-                          }`}
+                            }`}
                         >
                           Personal VPA (P2P)
                         </button>
@@ -1155,13 +1151,12 @@ export function OwnerSettingsPage() {
                           placeholder="restaurant@okaxis"
                           value={form.paymentUpiId ?? ''}
                           onChange={(e) => setForm(f => ({ ...f, paymentUpiId: e.target.value || null }))}
-                          className={`flex-1 px-3 py-2.5 bg-muted/30 border rounded-xl text-sm font-mono focus:outline-none focus:ring-2 ${
-                            isUpiVerified
+                          className={`flex-1 px-3 py-2.5 bg-muted/30 border rounded-xl text-sm font-mono focus:outline-none focus:ring-2 ${isUpiVerified
                               ? 'border-emerald-500/60 focus:ring-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-semibold'
                               : form.paymentUpiId && !/^[\w.-]+@[\w.-]+$/.test(form.paymentUpiId.trim())
-                              ? 'border-red-500 focus:ring-red-500/30'
-                              : 'border-border focus:ring-primary/30'
-                          }`}
+                                ? 'border-red-500 focus:ring-red-500/30'
+                                : 'border-border focus:ring-primary/30'
+                            }`}
                         />
                         {isUpiVerified ? (
                           <button
@@ -1269,11 +1264,10 @@ export function OwnerSettingsPage() {
                     {/* Stage Indicator Cards Grid */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-left">
                       {/* Stage 1: Syntax */}
-                      <div className={`p-2.5 rounded-xl border ${
-                        stagesData?.stages?.isValidSyntax
+                      <div className={`p-2.5 rounded-xl border ${stagesData?.stages?.isValidSyntax
                           ? 'bg-emerald-500/5 border-emerald-500/25 text-emerald-700 dark:text-emerald-300'
                           : 'bg-muted/30 border-border text-muted-foreground'
-                      }`}>
+                        }`}>
                         <div className="flex items-center justify-between text-[10px] font-bold uppercase">
                           <span>1. Format Check</span>
                           {stagesData?.stages?.isValidSyntax ? <Check className="w-3 h-3 text-emerald-500" /> : <Clock className="w-3 h-3 opacity-60" />}
@@ -1284,13 +1278,12 @@ export function OwnerSettingsPage() {
                       </div>
 
                       {/* Stage 2: Resolution */}
-                      <div className={`p-2.5 rounded-xl border ${
-                        stagesData?.stages?.vpaStatus === 'VALID'
+                      <div className={`p-2.5 rounded-xl border ${stagesData?.stages?.vpaStatus === 'VALID'
                           ? 'bg-emerald-500/5 border-emerald-500/25 text-emerald-700 dark:text-emerald-300'
                           : stagesData?.stages?.vpaStatus === 'INVALID'
-                          ? 'bg-rose-500/5 border-rose-500/25 text-rose-700 dark:text-rose-300'
-                          : 'bg-muted/30 border-border text-muted-foreground'
-                      }`}>
+                            ? 'bg-rose-500/5 border-rose-500/25 text-rose-700 dark:text-rose-300'
+                            : 'bg-muted/30 border-border text-muted-foreground'
+                        }`}>
                         <div className="flex items-center justify-between text-[10px] font-bold uppercase">
                           <span>2. VPA Resolution</span>
                           {stagesData?.stages?.vpaStatus === 'VALID' ? <Check className="w-3 h-3 text-emerald-500" /> : <Clock className="w-3 h-3 opacity-60" />}
@@ -1301,11 +1294,10 @@ export function OwnerSettingsPage() {
                       </div>
 
                       {/* Stage 3: Payee Name */}
-                      <div className={`p-2.5 rounded-xl border ${
-                        stagesData?.stages?.payeeNameMatched
+                      <div className={`p-2.5 rounded-xl border ${stagesData?.stages?.payeeNameMatched
                           ? 'bg-emerald-500/5 border-emerald-500/25 text-emerald-700 dark:text-emerald-300'
                           : 'bg-muted/30 border-border text-muted-foreground'
-                      }`}>
+                        }`}>
                         <div className="flex items-center justify-between text-[10px] font-bold uppercase">
                           <span>3. Payee Match</span>
                           {stagesData?.stages?.payeeNameMatched ? <Check className="w-3 h-3 text-emerald-500" /> : <Clock className="w-3 h-3 opacity-60" />}
@@ -1316,11 +1308,10 @@ export function OwnerSettingsPage() {
                       </div>
 
                       {/* Stage 4: Onboarding */}
-                      <div className={`p-2.5 rounded-xl border ${
-                        stagesData?.stages?.merchantStatus === 'ACTIVE' || stagesData?.stages?.merchantStatus === 'MERCHANT_APPROVED'
+                      <div className={`p-2.5 rounded-xl border ${stagesData?.stages?.merchantStatus === 'ACTIVE' || stagesData?.stages?.merchantStatus === 'MERCHANT_APPROVED'
                           ? 'bg-emerald-500/5 border-emerald-500/25 text-emerald-700 dark:text-emerald-300'
                           : 'bg-muted/30 border-border text-muted-foreground'
-                      }`}>
+                        }`}>
                         <div className="flex items-center justify-between text-[10px] font-bold uppercase">
                           <span>4. Merchant KYC</span>
                           {stagesData?.stages?.merchantStatus === 'ACTIVE' || stagesData?.stages?.merchantStatus === 'MERCHANT_APPROVED' ? (
@@ -1335,11 +1326,10 @@ export function OwnerSettingsPage() {
                       </div>
 
                       {/* Stage 5: Merchant ID */}
-                      <div className={`p-2.5 rounded-xl border ${
-                        stagesData?.stages?.providerMerchantId
+                      <div className={`p-2.5 rounded-xl border ${stagesData?.stages?.providerMerchantId
                           ? 'bg-emerald-500/5 border-emerald-500/25 text-emerald-700 dark:text-emerald-300'
                           : 'bg-muted/30 border-border text-muted-foreground'
-                      }`}>
+                        }`}>
                         <div className="flex items-center justify-between text-[10px] font-bold uppercase">
                           <span>5. Acquiring MID</span>
                           {stagesData?.stages?.providerMerchantId ? <Check className="w-3 h-3 text-emerald-500" /> : <Clock className="w-3 h-3 opacity-60" />}
@@ -1361,11 +1351,10 @@ export function OwnerSettingsPage() {
                       </div>
 
                       {/* Stage 7: Settlement */}
-                      <div className={`p-2.5 rounded-xl border ${
-                        stagesData?.stages?.settlementStatus === 'APPROVED'
+                      <div className={`p-2.5 rounded-xl border ${stagesData?.stages?.settlementStatus === 'APPROVED'
                           ? 'bg-emerald-500/5 border-emerald-500/25 text-emerald-700 dark:text-emerald-300'
                           : 'bg-muted/30 border-border text-muted-foreground'
-                      }`}>
+                        }`}>
                         <div className="flex items-center justify-between text-[10px] font-bold uppercase">
                           <span>7. Settlement</span>
                           {stagesData?.stages?.settlementStatus === 'APPROVED' ? <Check className="w-3 h-3 text-emerald-500" /> : <Clock className="w-3 h-3 opacity-60" />}
@@ -1376,11 +1365,10 @@ export function OwnerSettingsPage() {
                       </div>
 
                       {/* Stage 8: Enablement */}
-                      <div className={`p-2.5 rounded-xl border ${
-                        stagesData?.stages?.paymentEnabled
+                      <div className={`p-2.5 rounded-xl border ${stagesData?.stages?.paymentEnabled
                           ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
                           : 'bg-muted/30 border-border text-muted-foreground'
-                      }`}>
+                        }`}>
                         <div className="flex items-center justify-between text-[10px] font-bold uppercase">
                           <span>8. Online Pay</span>
                           {stagesData?.stages?.paymentEnabled ? <CheckCheck className="w-3.5 h-3.5 text-emerald-500" /> : <Clock className="w-3 h-3 opacity-60" />}
@@ -1499,15 +1487,15 @@ export function OwnerSettingsPage() {
                         {data.platformType === 'HOTEL'
                           ? 'QR Code Generator (Hotel Rooms)'
                           : data.platformType === 'RESTAURANT'
-                          ? 'QR Code Generator (Dine-In Tables)'
-                          : 'QR Code Generator (Tables & Hotel Rooms)'}
+                            ? 'QR Code Generator (Dine-In Tables)'
+                            : 'QR Code Generator (Tables & Hotel Rooms)'}
                       </h2>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {data.platformType === 'HOTEL'
                           ? 'Generate location-specific QR codes for Hotel Room Service.'
                           : data.platformType === 'RESTAURANT'
-                          ? 'Generate location-specific QR codes for Dine-In Tables.'
-                          : 'Generate location-specific QR codes for Dine-In Tables or Hotel Room Service.'}
+                            ? 'Generate location-specific QR codes for Dine-In Tables.'
+                            : 'Generate location-specific QR codes for Dine-In Tables or Hotel Room Service.'}
                       </p>
                     </div>
                     <span className="text-xs font-semibold text-emerald-500 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
@@ -1528,13 +1516,12 @@ export function OwnerSettingsPage() {
                             }
                             setQrMode('TABLE');
                           }}
-                          className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-bold rounded-lg transition-all ${
-                            !isTableQrAllowed
+                          className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-bold rounded-lg transition-all ${!isTableQrAllowed
                               ? 'opacity-40 cursor-not-allowed bg-muted/20 text-muted-foreground'
                               : qrMode === 'TABLE'
-                              ? 'bg-primary text-white shadow-sm cursor-pointer'
-                              : 'text-muted-foreground hover:text-foreground cursor-pointer'
-                          }`}
+                                ? 'bg-primary text-white shadow-sm cursor-pointer'
+                                : 'text-muted-foreground hover:text-foreground cursor-pointer'
+                            }`}
                           title={!isTableQrAllowed ? 'Dine-In Table QR is disabled by Admin' : 'Switch to Dine-In Table QR'}
                         >
                           {!isTableQrAllowed ? (
@@ -1558,13 +1545,12 @@ export function OwnerSettingsPage() {
                             }
                             setQrMode('ROOM');
                           }}
-                          className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-bold rounded-lg transition-all ${
-                            !isRoomQrAllowed
+                          className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-bold rounded-lg transition-all ${!isRoomQrAllowed
                               ? 'opacity-40 cursor-not-allowed bg-muted/20 text-muted-foreground'
                               : qrMode === 'ROOM'
-                              ? 'bg-primary text-white shadow-sm cursor-pointer'
-                              : 'text-muted-foreground hover:text-foreground cursor-pointer'
-                          }`}
+                                ? 'bg-primary text-white shadow-sm cursor-pointer'
+                                : 'text-muted-foreground hover:text-foreground cursor-pointer'
+                            }`}
                           title={!isRoomQrAllowed ? 'Hotel Room QR is disabled by Admin' : 'Switch to Hotel Room QR'}
                         >
                           {!isRoomQrAllowed ? (
@@ -1677,11 +1663,10 @@ export function OwnerSettingsPage() {
                             <div className="flex flex-wrap gap-2">
                               <button
                                 onClick={() => setTableNumber('')}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                                  tableNumber === ''
+                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${tableNumber === ''
                                     ? 'bg-primary border-primary text-white shadow-sm'
                                     : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
-                                }`}
+                                  }`}
                               >
                                 General Menu
                               </button>
@@ -1689,11 +1674,10 @@ export function OwnerSettingsPage() {
                                 <button
                                   key={num}
                                   onClick={() => setTableNumber(num)}
-                                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                                    tableNumber === num
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${tableNumber === num
                                       ? 'bg-primary border-primary text-white shadow-sm'
                                       : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
-                                  }`}
+                                    }`}
                                 >
                                   Table {num}
                                 </button>
@@ -1704,11 +1688,10 @@ export function OwnerSettingsPage() {
                                   <button
                                     key={loc}
                                     onClick={() => setTableNumber(loc)}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                                      tableNumber === loc
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${tableNumber === loc
                                         ? 'bg-primary border-primary text-white shadow-sm'
                                         : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
-                                    }`}
+                                      }`}
                                   >
                                     {loc}
                                   </button>
@@ -1771,11 +1754,10 @@ export function OwnerSettingsPage() {
                                 <button
                                   key={rm}
                                   onClick={() => setRoomNumber(rm)}
-                                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                                    roomNumber === rm || roomNumber === `Room ${rm}`
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${roomNumber === rm || roomNumber === `Room ${rm}`
                                       ? 'bg-primary border-primary text-white shadow-sm'
                                       : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
-                                  }`}
+                                    }`}
                                 >
                                   Room {rm}
                                 </button>
@@ -1786,11 +1768,10 @@ export function OwnerSettingsPage() {
                                   <button
                                     key={loc}
                                     onClick={() => setRoomNumber(loc)}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                                      roomNumber === loc
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${roomNumber === loc
                                         ? 'bg-primary border-primary text-white shadow-sm'
                                         : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
-                                    }`}
+                                      }`}
                                   >
                                     {loc}
                                   </button>
@@ -1840,11 +1821,10 @@ export function OwnerSettingsPage() {
                                 toast.success(`${qrMode === 'ROOM' ? 'Room' : 'Table'} QR Placard downloaded successfully!`);
                               }}
                               disabled={(qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed)}
-                              className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-colors ${
-                                (qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed)
+                              className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-colors ${(qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed)
                                   ? 'bg-muted text-muted-foreground opacity-50 cursor-not-allowed'
                                   : 'bg-primary text-white hover:bg-primary/95 cursor-pointer'
-                              }`}
+                                }`}
                             >
                               <Download className="w-4 h-4" /> Download Placard (PNG)
                             </button>
@@ -1865,11 +1845,10 @@ export function OwnerSettingsPage() {
                                 });
                               }}
                               disabled={(qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed)}
-                              className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
-                                (qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed)
+                              className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${(qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed)
                                   ? 'bg-muted border-border text-muted-foreground opacity-50 cursor-not-allowed'
                                   : 'bg-secondary text-secondary-foreground hover:bg-secondary/80 border-border cursor-pointer'
-                              }`}
+                                }`}
                             >
                               <Printer className="w-4 h-4" /> Print Placard
                             </button>
@@ -1883,11 +1862,10 @@ export function OwnerSettingsPage() {
                                 }
                               }}
                               download={`${data.slug}${activeLocationStr ? `-${activeLocationStr.toLowerCase().replace(/[^a-z0-9]/g, '-')}` : ''}-qr.png`}
-                              className={`inline-flex items-center justify-center gap-2 px-3.5 py-2.5 text-xs rounded-xl font-medium transition-colors ${
-                                (qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed)
+                              className={`inline-flex items-center justify-center gap-2 px-3.5 py-2.5 text-xs rounded-xl font-medium transition-colors ${(qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed)
                                   ? 'text-muted-foreground opacity-40 cursor-not-allowed'
                                   : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 cursor-pointer'
-                              }`}
+                                }`}
                             >
                               <Download className="w-3.5 h-3.5" /> QR Code Image Only
                             </a>
@@ -1900,7 +1878,7 @@ export function OwnerSettingsPage() {
                     <div className="md:col-span-2 flex flex-col items-center justify-center">
                       <div className="flex flex-col items-center p-5 bg-zinc-950 dark:bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-[240px] shadow-2xl text-center text-white relative overflow-hidden">
                         <div className="absolute inset-0 bg-gradient-to-b from-orange-500/10 via-transparent to-transparent pointer-events-none" />
-                        
+
                         <span className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 mb-1">
                           Welcome To
                         </span>
@@ -2012,11 +1990,10 @@ export function OwnerSettingsPage() {
                     <button
                       type="button"
                       onClick={() => setQrSettings(s => ({ ...s, enabled: !s.enabled }))}
-                      className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold text-xs border transition-all ${
-                        qrSettings.enabled
+                      className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold text-xs border transition-all ${qrSettings.enabled
                           ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
                           : 'bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400'
-                      }`}
+                        }`}
                     >
                       <Power className="w-4 h-4" />
                       Global QR System: {qrSettings.enabled ? 'ENABLED' : 'DISABLED'}
@@ -2047,13 +2024,12 @@ export function OwnerSettingsPage() {
                         return (
                           <div
                             key={loc}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-                              isAdminLocked
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${isAdminLocked
                                 ? 'bg-red-500/15 border-red-500/30 text-red-500 opacity-75'
                                 : isDisabled
-                                ? 'bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400'
-                                : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
-                            }`}
+                                  ? 'bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400'
+                                  : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                              }`}
                           >
                             <button
                               type="button"
@@ -2120,8 +2096,8 @@ export function OwnerSettingsPage() {
                         data?.platformType === 'HOTEL'
                           ? 'Add custom room (e.g. Room 305, Suite 4)'
                           : data?.platformType === 'RESTAURANT'
-                          ? 'Add custom table location (e.g. Table 8, Rooftop 2)'
-                          : 'Add custom location (e.g. Room 305, Table 8, Pool Bar)'
+                            ? 'Add custom table location (e.g. Table 8, Rooftop 2)'
+                            : 'Add custom location (e.g. Room 305, Table 8, Pool Bar)'
                       }
                       value={newCustomLocation}
                       onChange={(e) => setNewCustomLocation(e.target.value)}
@@ -2163,13 +2139,13 @@ export function OwnerSettingsPage() {
                     Real-time Preview
                   </span>
                 </div>
-                
+
                 <div className="relative mx-auto w-[335px] sm:w-[365px] h-[650px] max-w-full rounded-[2.8rem] border-[8px] border-zinc-950 bg-zinc-950 shadow-2xl overflow-hidden ring-1 ring-white/10">
                   {/* Speaker Notch */}
                   <div className="absolute top-0 left-1/2 -translate-x-1/2 h-4 w-32 bg-zinc-950 rounded-b-2xl z-45 flex items-center justify-center">
                     <div className="w-10 h-1 bg-zinc-800 rounded-full" />
                   </div>
-                  
+
                   {/* Dynamic Iframe */}
                   {data?.slug && (
                     <iframe
