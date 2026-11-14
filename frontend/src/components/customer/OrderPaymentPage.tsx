@@ -12,6 +12,7 @@ import QRCode from 'qrcode';
 import { toast } from 'sonner';
 import api from '@/services/api';
 import { saveOrderToRecent } from '@/utils/recentOrders';
+import { buildAppUpiUrl, triggerUpiLaunch } from '@/utils/upiIntent';
 
 interface OrderPaymentPageProps {
   restaurantSlug: string;
@@ -241,12 +242,9 @@ export function OrderPaymentPage({ restaurantSlug, orderId }: OrderPaymentPagePr
     }
   };
 
-  const getDeepLink = (app: 'gpay' | 'phonepe' | 'paytm' | 'all', url?: string | null) => {
+  const getDeepLink = (app: 'gpay' | 'phonepe' | 'paytm' | 'bhim' | 'all', url?: string | null) => {
     if (!url) return '';
-    if (app === 'gpay') return url.replace(/^upi:\/\/pay/, 'tez://upi/pay');
-    if (app === 'phonepe') return url.replace(/^upi:\/\/pay/, 'phonepe://pay');
-    if (app === 'paytm') return url.replace(/^upi:\/\/pay/, 'paytmmp://pay');
-    return url;
+    return buildAppUpiUrl(app === 'all' ? 'generic' : app, url);
   };
 
   const totalAmount = data?.total ? data.total.toFixed(2) : '0.00';
@@ -453,34 +451,54 @@ export function OrderPaymentPage({ restaurantSlug, orderId }: OrderPaymentPagePr
               <div className="space-y-2 pt-1">
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <a
-                    href={getDeepLink('gpay', intentUrl)}
-                    className="py-2.5 px-3 rounded-xl bg-muted/60 hover:bg-muted border border-border/80 text-foreground font-semibold transition-all flex items-center justify-center gap-1.5"
+                    href={buildAppUpiUrl('gpay', intentUrl)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      triggerUpiLaunch('gpay', intentUrl);
+                    }}
+                    className="py-2.5 px-3 rounded-xl bg-muted/60 hover:bg-muted border border-border/80 text-foreground font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
                   >
                     <span>Google Pay</span>
                   </a>
                   <a
-                    href={getDeepLink('phonepe', intentUrl)}
-                    className="py-2.5 px-3 rounded-xl bg-muted/60 hover:bg-muted border border-border/80 text-foreground font-semibold transition-all flex items-center justify-center gap-1.5"
+                    href={buildAppUpiUrl('phonepe', intentUrl)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      triggerUpiLaunch('phonepe', intentUrl);
+                    }}
+                    className="py-2.5 px-3 rounded-xl bg-muted/60 hover:bg-muted border border-border/80 text-foreground font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
                   >
                     <span>PhonePe</span>
                   </a>
                   <a
-                    href={getDeepLink('paytm', intentUrl)}
-                    className="py-2.5 px-3 rounded-xl bg-muted/60 hover:bg-muted border border-border/80 text-foreground font-semibold transition-all flex items-center justify-center gap-1.5"
+                    href={buildAppUpiUrl('paytm', intentUrl)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      triggerUpiLaunch('paytm', intentUrl);
+                    }}
+                    className="py-2.5 px-3 rounded-xl bg-muted/60 hover:bg-muted border border-border/80 text-foreground font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
                   >
                     <span>Paytm</span>
                   </a>
                   <a
-                    href={intentUrl}
-                    className="py-2.5 px-3 rounded-xl bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary font-bold transition-all flex items-center justify-center gap-1.5"
+                    href={buildAppUpiUrl('bhim', intentUrl)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      triggerUpiLaunch('bhim', intentUrl);
+                    }}
+                    className="py-2.5 px-3 rounded-xl bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
                   >
-                    <span>Other UPI</span>
+                    <span>BHIM / Other</span>
                   </a>
                 </div>
 
                 <a
-                  href={intentUrl}
-                  className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm shadow-md shadow-orange-500/20 flex items-center justify-center gap-2 active:scale-98 transition-all"
+                  href={buildAppUpiUrl('generic', intentUrl)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    triggerUpiLaunch('generic', intentUrl);
+                  }}
+                  className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm shadow-md shadow-orange-500/20 flex items-center justify-center gap-2 active:scale-98 transition-all cursor-pointer"
                 >
                   <Smartphone className="w-4 h-4" />
                   <span>Open Default UPI App to Pay ₹{totalAmount}</span>

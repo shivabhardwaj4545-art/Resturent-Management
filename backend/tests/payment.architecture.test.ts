@@ -38,7 +38,8 @@ describe('Payment Architecture Test Suite', () => {
       expect(intentUrl).toContain('am=566.40');
       expect(intentUrl).toContain('cu=INR');
       expect(intentUrl).toContain('tr=ORDABC123456789');
-      expect(intentUrl).toContain('mode=02');
+      // Standard unsigned UPI intent must omit mode=02 to prevent Google Pay / PhonePe security blocks
+      expect(intentUrl).not.toContain('mode=02');
     });
 
     it('should reject invalid payment amounts', () => {

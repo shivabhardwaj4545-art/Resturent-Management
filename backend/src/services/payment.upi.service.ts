@@ -4,6 +4,7 @@ export interface UpiIntentParams {
   amount: number;
   txnRef: string;
   orderNote?: string;
+  mode?: string;
 }
 
 export function isValidUpiId(upiId: string): boolean {
@@ -41,5 +42,9 @@ export function buildUpiIntentUrl(params: UpiIntentParams): string {
   const cleanTr = txnRef.replace(/[^a-zA-Z0-9]/g, '').slice(0, 35);
   const cleanTn = encodeURIComponent((orderNote || `Order ${cleanTr}`).trim().replace(/[^a-zA-Z0-9 ]/g, ''));
 
-  return `upi://pay?pa=${cleanVpa}&pn=${cleanPn}&am=${am}&cu=${cu}&tr=${cleanTr}&tn=${cleanTn}&mode=02`;
+  let url = `upi://pay?pa=${cleanVpa}&pn=${cleanPn}&am=${am}&cu=${cu}&tr=${cleanTr}&tn=${cleanTn}`;
+  if (params.mode) {
+    url += `&mode=${params.mode}`;
+  }
+  return url;
 }

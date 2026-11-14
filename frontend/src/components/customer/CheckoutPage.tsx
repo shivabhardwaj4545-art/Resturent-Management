@@ -16,6 +16,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getImageUrl } from '@/lib/image';
 import { generateUniqueTableCode } from '@/utils/tableCode';
 import QRCode from 'qrcode';
+import { buildAppUpiUrl, triggerUpiLaunch } from '@/utils/upiIntent';
 
 declare global {
   interface Window {
@@ -393,12 +394,9 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
     }
   };
 
-  const getAppDeepLink = (app: 'gpay' | 'phonepe' | 'paytm' | 'all', url: string) => {
+  const getAppDeepLink = (app: 'gpay' | 'phonepe' | 'paytm' | 'bhim' | 'all', url: string) => {
     if (!url) return '';
-    if (app === 'gpay') return url.replace(/^upi:\/\/pay/, 'tez://upi/pay');
-    if (app === 'phonepe') return url.replace(/^upi:\/\/pay/, 'phonepe://pay');
-    if (app === 'paytm') return url.replace(/^upi:\/\/pay/, 'paytmmp://pay');
-    return url;
+    return buildAppUpiUrl(app === 'all' ? 'generic' : app, url);
   };
 
   const handleCheckPaymentStatus = async (manual = false) => {
@@ -1317,35 +1315,55 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                 {/* Quick App Launch Buttons for Mobile */}
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   <a
-                    href={getAppDeepLink('gpay', upiData.upiIntentUrl)}
-                    className="py-2.5 px-3 rounded-xl bg-muted/60 hover:bg-muted border border-border/80 text-foreground font-semibold text-xs transition-all flex items-center justify-center gap-2"
+                    href={buildAppUpiUrl('gpay', upiData.upiIntentUrl)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      triggerUpiLaunch('gpay', upiData.upiIntentUrl);
+                    }}
+                    className="py-2.5 px-3 rounded-xl bg-muted/60 hover:bg-muted border border-border/80 text-foreground font-semibold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                   >
                     <span>Google Pay</span>
                   </a>
                   <a
-                    href={getAppDeepLink('phonepe', upiData.upiIntentUrl)}
-                    className="py-2.5 px-3 rounded-xl bg-muted/60 hover:bg-muted border border-border/80 text-foreground font-semibold text-xs transition-all flex items-center justify-center gap-2"
+                    href={buildAppUpiUrl('phonepe', upiData.upiIntentUrl)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      triggerUpiLaunch('phonepe', upiData.upiIntentUrl);
+                    }}
+                    className="py-2.5 px-3 rounded-xl bg-muted/60 hover:bg-muted border border-border/80 text-foreground font-semibold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                   >
                     <span>PhonePe</span>
                   </a>
                   <a
-                    href={getAppDeepLink('paytm', upiData.upiIntentUrl)}
-                    className="py-2.5 px-3 rounded-xl bg-muted/60 hover:bg-muted border border-border/80 text-foreground font-semibold text-xs transition-all flex items-center justify-center gap-2"
+                    href={buildAppUpiUrl('paytm', upiData.upiIntentUrl)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      triggerUpiLaunch('paytm', upiData.upiIntentUrl);
+                    }}
+                    className="py-2.5 px-3 rounded-xl bg-muted/60 hover:bg-muted border border-border/80 text-foreground font-semibold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                   >
                     <span>Paytm</span>
                   </a>
                   <a
-                    href={upiData.upiIntentUrl}
-                    className="py-2.5 px-3 rounded-xl bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary font-bold text-xs transition-all flex items-center justify-center gap-2"
+                    href={buildAppUpiUrl('bhim', upiData.upiIntentUrl)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      triggerUpiLaunch('bhim', upiData.upiIntentUrl);
+                    }}
+                    className="py-2.5 px-3 rounded-xl bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                   >
-                    <span>Other UPI App</span>
+                    <span>BHIM / Other</span>
                   </a>
                 </div>
 
                 {/* Primary Launch Button with Exact Authoritative Amount */}
                 <a
-                  href={upiData.upiIntentUrl}
-                  className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20"
+                  href={buildAppUpiUrl('generic', upiData.upiIntentUrl)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    triggerUpiLaunch('generic', upiData.upiIntentUrl);
+                  }}
+                  className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20 cursor-pointer"
                 >
                   <Smartphone className="w-4 h-4" />
                   Open Default UPI App to Pay ₹{upiData.amount.toFixed(2)}
@@ -1417,26 +1435,13 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
               </div>
 
               {/* Footer */}
-              <div className="p-4 border-t border-border flex gap-3 bg-muted/10 flex-shrink-0">
+              <div className="p-4 border-t border-border bg-muted/10 flex-shrink-0">
                 <button
                   type="button"
                   onClick={handleCancelOrder}
-                  className="py-3 px-4 rounded-xl border border-rose-500/30 text-rose-500 font-semibold text-xs hover:bg-rose-500/10 transition-colors cursor-pointer text-center"
+                  className="w-full py-3 px-4 rounded-xl border border-rose-500/30 text-rose-500 font-semibold text-xs hover:bg-rose-500/10 transition-colors cursor-pointer text-center"
                 >
-                  Cancel Order
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    saveOrderToRecent(upiData.orderId, restaurantSlug);
-                    clearCart();
-                    setShowUpiModal(false);
-                    // Critical navigation requirement #5: navigate to payment page, NOT order-status page!
-                    router.push(`/r/${restaurantSlug}/order/${upiData.orderId}/payment`);
-                  }}
-                  className="flex-1 py-3 rounded-xl border border-border font-semibold text-xs hover:bg-muted transition-colors text-foreground cursor-pointer text-center"
-                >
-                  Close & View Order
+                  Cancel Order Attempt
                 </button>
               </div>
             </motion.div>
