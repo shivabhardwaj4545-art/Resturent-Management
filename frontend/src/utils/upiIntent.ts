@@ -25,14 +25,19 @@ export function buildAppUpiUrl(app: UpiAppType, upiUrl: string): string {
   const isAndroid = isBrowser && /Android/i.test(navigator.userAgent);
   const isIOS = isBrowser && /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-  // Android Chrome Intent Protocol
+  if (app === 'generic') {
+    // Pure standard NPCI URI invokes native Android/iOS system UPI chooser
+    return `upi://pay?${params}`;
+  }
+
+  // Android Chrome Intent Protocol for specific apps
   if (isAndroid) {
     if (app in ANDROID_PACKAGES) {
       const pkg = ANDROID_PACKAGES[app as keyof typeof ANDROID_PACKAGES];
+      // Intent URL allows directly targeting the installed UPI app on Android
       return `intent://pay?${params}#Intent;scheme=upi;package=${pkg};end`;
     }
-    // Generic UPI intent chooser on Android
-    return `intent://pay?${params}#Intent;scheme=upi;end`;
+    return `upi://pay?${params}`;
   }
 
   // iOS App-specific URI schemes
@@ -44,17 +49,26 @@ export function buildAppUpiUrl(app: UpiAppType, upiUrl: string): string {
     return `upi://pay?${params}`;
   }
 
-  // Desktop or fallback
-  return upiUrl;
+  // Default / fallback
+  return `upi://pay?${params}`;
 }
 
 export function triggerUpiLaunch(app: UpiAppType, upiUrl: string) {
   if (!upiUrl || typeof window === 'undefined') return;
   const targetUrl = buildAppUpiUrl(app, upiUrl);
+  const fallbackUrl = `upi://pay?${getCleanUpiParams(upiUrl)}`;
+
   try {
     window.location.href = targetUrl;
+    // Fallback to standard UPI link if package-specific intent fails after 1.5 seconds
+    if (app !== 'generic') {
+      setTimeout(() => {
+        if (document.hasFocus()) {
+          window.location.href = fallbackUrl;
+        }
+      }, 1500);
+    }
   } catch {
-    window.location.href = upiUrl;
+    window.location.href = fallbackUrl;
   }
 }
-

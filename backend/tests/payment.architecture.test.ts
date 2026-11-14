@@ -55,7 +55,10 @@ describe('Payment Architecture Test Suite', () => {
   });
 
   describe('B. UPI Provider Adapter & Registry', () => {
-    it('should resolve registered providers and fallback to mock gracefully', () => {
+    it('should resolve registered providers and fallback to direct_upi gracefully', () => {
+      const directProvider = UpiProviderRegistry.getProvider('direct_upi');
+      expect(directProvider.providerName).toBe('DIRECT_UPI');
+
       const mockProvider = UpiProviderRegistry.getProvider('mock');
       expect(mockProvider.providerName).toBe('MOCK_UPI');
 
@@ -63,7 +66,39 @@ describe('Payment Architecture Test Suite', () => {
       expect(bankProvider.providerName).toBe('BANK_UPI');
 
       const fallbackProvider = UpiProviderRegistry.getProvider('unknown_provider');
-      expect(fallbackProvider.providerName).toBe('MOCK_UPI');
+      expect(fallbackProvider.providerName).toBe('DIRECT_UPI');
+    });
+
+    it('DirectVpaProvider should verify VPA format, generate direct intent, and support direct settlement without bank gateway credentials', async () => {
+      const directProvider = UpiProviderRegistry.getProvider('direct_upi');
+      const accountResult = await directProvider.verifyUpiAccount({
+        upiId: 'kartiksharma2007k@oksbi',
+        accountType: 'MERCHANT',
+        businessName: 'Upstates Restaurant',
+      });
+
+      expect(accountResult.isValidSyntax).toBe(true);
+      expect(accountResult.verificationStatus).toBe('VERIFIED');
+      expect(accountResult.merchantEligibilityStatus).toBe('MERCHANT_APPROVED');
+      expect(accountResult.intentEnabled).toBe(true);
+      expect(accountResult.bankName).toBe('State Bank of India');
+
+      const intent = await directProvider.createIntent({
+        orderId: 'order_789',
+        restaurantId: 'rest_789',
+        restaurantName: 'Upstates Restaurant',
+        merchantVpa: 'kartiksharma2007k@oksbi',
+        merchantName: 'Upstates Restaurant',
+        amount: 350.5,
+        currency: 'INR',
+        merchantTxnRef: 'ORD789012',
+      });
+
+      expect(intent.merchantTxnRef).toBe('ORD789012');
+      expect(intent.amount).toBe(350.5);
+      expect(intent.intentUrl).toContain('pa=kartiksharma2007k@oksbi');
+      expect(intent.intentUrl).toContain('am=350.50');
+      expect(intent.metadata?.mode).toBe('DIRECT_VPA_WITHOUT_AUTOMATIC_PROVIDER_VERIFICATION');
     });
 
     it('MockUpiProvider should generate valid intent result and verify payment successfully', async () => {

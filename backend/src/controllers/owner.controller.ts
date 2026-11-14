@@ -394,6 +394,30 @@ export async function updateRestaurant(req: AuthenticatedRequest, res: Response,
       data: body,
     });
 
+    if (body.paymentUpiId && typeof body.paymentUpiId === 'string' && isValidUpiId(body.paymentUpiId)) {
+      const cleanUpi = body.paymentUpiId.trim().toLowerCase();
+      await prisma.restaurantUpiAccount.upsert({
+        where: { restaurantId: restaurant.id },
+        create: {
+          restaurantId: restaurant.id,
+          upiId: cleanUpi,
+          accountType: 'MERCHANT',
+          businessName: body.merchantName || updated.merchantName || updated.name,
+          providerId: 'DIRECT_UPI',
+          verificationStatus: 'VERIFIED',
+          merchantEligibilityStatus: 'MERCHANT_APPROVED',
+          verifiedAt: new Date(),
+          approvedAt: new Date(),
+        },
+        update: {
+          upiId: cleanUpi,
+          businessName: body.merchantName || updated.merchantName || updated.name,
+          verificationStatus: 'VERIFIED',
+          merchantEligibilityStatus: 'MERCHANT_APPROVED',
+        },
+      }).catch((e) => logger.warn('[updateRestaurant] Failed to sync upiAccount:', e));
+    }
+
     if (updated.operatingHours) {
       updated.operatingHours = sortOperatingHours(updated.operatingHours);
     }

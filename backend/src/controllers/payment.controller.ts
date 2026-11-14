@@ -44,9 +44,32 @@ export async function createUpiIntent(
     const restaurant = order.restaurant;
 
     // Check restaurant UPI account eligibility (personal P2P vs commercial merchant)
-    const upiAccount = await prisma.restaurantUpiAccount.findUnique({
+    let upiAccount = await prisma.restaurantUpiAccount.findUnique({
       where: { restaurantId: restaurant.id },
     });
+
+    if (!upiAccount && restaurant.paymentUpiId && isValidUpiId(restaurant.paymentUpiId)) {
+      const cleanUpi = restaurant.paymentUpiId.toLowerCase().trim();
+      upiAccount = await prisma.restaurantUpiAccount.upsert({
+        where: { restaurantId: restaurant.id },
+        create: {
+          restaurantId: restaurant.id,
+          upiId: cleanUpi,
+          accountType: 'MERCHANT',
+          businessName: restaurant.merchantName || restaurant.name,
+          providerId: 'DIRECT_UPI',
+          verificationStatus: 'VERIFIED',
+          merchantEligibilityStatus: 'MERCHANT_APPROVED',
+          verifiedAt: new Date(),
+          approvedAt: new Date(),
+        },
+        update: {
+          upiId: cleanUpi,
+          verificationStatus: 'VERIFIED',
+          merchantEligibilityStatus: 'MERCHANT_APPROVED',
+        },
+      }).catch(() => null);
+    }
 
     if (upiAccount) {
       if (upiAccount.merchantEligibilityStatus === 'RESTRICTED') {

@@ -1316,40 +1316,28 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   <a
                     href={buildAppUpiUrl('gpay', upiData.upiIntentUrl)}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      triggerUpiLaunch('gpay', upiData.upiIntentUrl);
-                    }}
+                    onClick={() => triggerUpiLaunch('gpay', upiData.upiIntentUrl)}
                     className="py-2.5 px-3 rounded-xl bg-muted/60 hover:bg-muted border border-border/80 text-foreground font-semibold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                   >
                     <span>Google Pay</span>
                   </a>
                   <a
                     href={buildAppUpiUrl('phonepe', upiData.upiIntentUrl)}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      triggerUpiLaunch('phonepe', upiData.upiIntentUrl);
-                    }}
+                    onClick={() => triggerUpiLaunch('phonepe', upiData.upiIntentUrl)}
                     className="py-2.5 px-3 rounded-xl bg-muted/60 hover:bg-muted border border-border/80 text-foreground font-semibold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                   >
                     <span>PhonePe</span>
                   </a>
                   <a
                     href={buildAppUpiUrl('paytm', upiData.upiIntentUrl)}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      triggerUpiLaunch('paytm', upiData.upiIntentUrl);
-                    }}
+                    onClick={() => triggerUpiLaunch('paytm', upiData.upiIntentUrl)}
                     className="py-2.5 px-3 rounded-xl bg-muted/60 hover:bg-muted border border-border/80 text-foreground font-semibold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                   >
                     <span>Paytm</span>
                   </a>
                   <a
                     href={buildAppUpiUrl('bhim', upiData.upiIntentUrl)}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      triggerUpiLaunch('bhim', upiData.upiIntentUrl);
-                    }}
+                    onClick={() => triggerUpiLaunch('bhim', upiData.upiIntentUrl)}
                     className="py-2.5 px-3 rounded-xl bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                   >
                     <span>BHIM / Other</span>
@@ -1359,10 +1347,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                 {/* Primary Launch Button with Exact Authoritative Amount */}
                 <a
                   href={buildAppUpiUrl('generic', upiData.upiIntentUrl)}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    triggerUpiLaunch('generic', upiData.upiIntentUrl);
-                  }}
+                  onClick={() => triggerUpiLaunch('generic', upiData.upiIntentUrl)}
                   className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20 cursor-pointer"
                 >
                   <Smartphone className="w-4 h-4" />
@@ -1432,17 +1417,6 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                     <span className="font-bold text-foreground">₹{upiData.amount.toFixed(2)}</span>
                   </div>
                 </div>
-              </div>
-
-              {/* Footer */}
-              <div className="p-4 border-t border-border bg-muted/10 flex-shrink-0">
-                <button
-                  type="button"
-                  onClick={handleCancelOrder}
-                  className="w-full py-3 px-4 rounded-xl border border-rose-500/30 text-rose-500 font-semibold text-xs hover:bg-rose-500/10 transition-colors cursor-pointer text-center"
-                >
-                  Cancel Order Attempt
-                </button>
               </div>
             </motion.div>
           </div>
