@@ -18,7 +18,7 @@ import {
 const router = Router();
 
 router.get('/razorpay-key', (req, res) => {
-  res.json({ success: true, data: { keyId: process.env.RAZORPAY_KEY_ID ?? '' } });
+  res.json({ success: true, data: { keyId: process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '' } });
 });
 
 router.post('/guest', validate(guestCheckoutSchema), placeGuestOrder);

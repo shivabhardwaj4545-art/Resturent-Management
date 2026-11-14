@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { verifyRazorpayWebhookSignature } from '../services/payment.razorpay.service';
 import { AppError } from '../utils/AppError';
-import { emitNewOrder, emitNotification } from '../services/socket.service';
+import { emitNewOrder, emitNotification, emitOrderStatusUpdate } from '../services/socket.service';
 
 interface CustomRequest extends Request {
   rawBody?: Buffer;
@@ -86,6 +86,7 @@ export async function handleRazorpayWebhook(
           where: { id: order.id },
           data: {
             paymentStatus: 'PAID',
+            status: 'CONFIRMED',
             razorpayPaymentId,
           },
         });
@@ -99,12 +100,19 @@ export async function handleRazorpayWebhook(
         });
       });
 
-      // Emit new order socket notification to the restaurant
+      // Emit new order and status updates to restaurant and order tracking
       const updatedOrder = await prisma.order.findUnique({
         where: { id: order.id },
         include: { items: { include: { menuItem: true } }, restaurant: true },
       });
       if (updatedOrder) {
+        emitOrderStatusUpdate(order.id, order.restaurantId, {
+          orderId: order.id,
+          status: 'CONFIRMED',
+          paymentStatus: 'PAID',
+          updatedAt: new Date().toISOString(),
+          items: updatedOrder.items,
+        });
         emitNewOrder(order.restaurantId, updatedOrder);
       }
 
