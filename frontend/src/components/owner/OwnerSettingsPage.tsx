@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import {
   Settings, UtensilsCrossed, LayoutDashboard, ShoppingBag, Tag, BarChart3, LogOut,
   Menu, Save, Globe, Phone, MapPin, Clock, Palette, QrCode, Download, CreditCard, Banknote, Building2, Smartphone, Star, Printer,
-  Upload, Trash2, CheckCircle2, Sparkles, RefreshCw, FileImage, Info, Bed, Power, Ban, Plus, Check, Lock, X, Loader2
+  Upload, Trash2, CheckCircle2, Sparkles, RefreshCw, FileImage, Info, Bed, Power, Ban, Plus, Check, CheckCheck, Lock, X, Loader2
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/services/api';
@@ -347,6 +347,27 @@ export function OwnerSettingsPage() {
 
   const [accountType, setAccountType] = useState<'MERCHANT' | 'PERSONAL'>('MERCHANT');
   const [isVerifyingUpi, setIsVerifyingUpi] = useState(false);
+  const [lastVerifiedUpi, setLastVerifiedUpi] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (upiAccountData?.upiAccount?.verificationStatus === 'VERIFIED' && upiAccountData.upiAccount.upiId) {
+      setLastVerifiedUpi(upiAccountData.upiAccount.upiId.toLowerCase().trim());
+    } else if (data?.paymentUpiId) {
+      setLastVerifiedUpi(data.paymentUpiId.toLowerCase().trim());
+    }
+  }, [upiAccountData, data]);
+
+  const isUpiVerified = Boolean(
+    form.paymentUpiId &&
+    form.paymentUpiId.trim().length > 0 &&
+    (
+      (lastVerifiedUpi && lastVerifiedUpi === form.paymentUpiId.trim().toLowerCase()) ||
+      (upiAccountData?.upiAccount?.verificationStatus === 'VERIFIED' &&
+        upiAccountData?.upiAccount?.upiId?.toLowerCase().trim() === form.paymentUpiId.trim().toLowerCase()) ||
+      (data?.paymentUpiId &&
+        data.paymentUpiId.toLowerCase().trim() === form.paymentUpiId.trim().toLowerCase())
+    )
+  );
 
   useEffect(() => {
     if (upiAccountData?.upiAccount?.accountType) {
@@ -360,18 +381,27 @@ export function OwnerSettingsPage() {
       return;
     }
     setIsVerifyingUpi(true);
+    const cleanUpi = form.paymentUpiId.trim();
     try {
       const res = await api.post('/owner/upi-account', {
-        upiId: form.paymentUpiId.trim(),
-        accountType,
+        upiId: cleanUpi,
+        accountType: accountType || 'MERCHANT',
         accountHolderName: form.bankAccountHolder || undefined,
         businessName: form.merchantName || form.name || undefined,
         bankName: form.bankName || undefined,
       });
 
-      toast.success(res.data?.message || 'UPI Account submitted successfully!');
-      refetchUpiAccount();
-      queryClient.invalidateQueries({ queryKey: ['owner-restaurant'] });
+      setLastVerifiedUpi(cleanUpi.toLowerCase());
+      setForm((prev) => ({
+        ...prev,
+        paymentUpiId: cleanUpi,
+        upiEnabled: true,
+      }));
+
+      toast.success(res.data?.message || '🎉 UPI ID verified and activated for payments!');
+      await refetchUpiAccount();
+      await qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
+      await qc.invalidateQueries({ queryKey: ['owner-upi-account'] });
     } catch (err: any) {
       toast.error(err.response?.data?.error || err.message || 'Failed to verify UPI account.');
     } finally {
@@ -1037,8 +1067,15 @@ export function OwnerSettingsPage() {
                   {/* UPI ID & Merchant Info */}
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="text-xs font-semibold text-muted-foreground mb-1.5 block flex items-center gap-1">
-                        <Smartphone className="w-3.5 h-3.5 text-primary" /> UPI ID (VPA) <span className="text-red-500">*</span>
+                      <label className="text-xs font-semibold text-muted-foreground mb-1.5 flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <Smartphone className="w-3.5 h-3.5 text-primary" /> UPI ID (VPA) <span className="text-red-500">*</span>
+                        </span>
+                        {isUpiVerified && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+                            <CheckCheck className="w-3 h-3 text-emerald-500" /> Verified & Active
+                          </span>
+                        )}
                       </label>
                       <div className="flex gap-2">
                         <input
@@ -1047,25 +1084,40 @@ export function OwnerSettingsPage() {
                           value={form.paymentUpiId ?? ''}
                           onChange={(e) => setForm(f => ({ ...f, paymentUpiId: e.target.value || null }))}
                           className={`flex-1 px-3 py-2.5 bg-muted/30 border rounded-xl text-sm font-mono focus:outline-none focus:ring-2 ${
-                            form.paymentUpiId && !/^[\w.-]+@[\w.-]+$/.test(form.paymentUpiId.trim())
+                            isUpiVerified
+                              ? 'border-emerald-500/60 focus:ring-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-semibold'
+                              : form.paymentUpiId && !/^[\w.-]+@[\w.-]+$/.test(form.paymentUpiId.trim())
                               ? 'border-red-500 focus:ring-red-500/30'
                               : 'border-border focus:ring-primary/30'
                           }`}
                         />
-                        <button
-                          type="button"
-                          onClick={handleVerifyAndRegisterUpi}
-                          disabled={isVerifyingUpi || !form.paymentUpiId}
-                          className="px-3.5 py-2.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1 cursor-pointer flex-shrink-0"
-                        >
-                          {isVerifyingUpi ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                          <span>Verify</span>
-                        </button>
+                        {isUpiVerified ? (
+                          <button
+                            type="button"
+                            disabled
+                            className="px-3.5 py-2.5 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-default flex-shrink-0 shadow-xs"
+                          >
+                            <CheckCheck className="w-3.5 h-3.5 text-emerald-500" />
+                            <span>Verified</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleVerifyAndRegisterUpi}
+                            disabled={isVerifyingUpi || !form.paymentUpiId}
+                            className="px-3.5 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground border border-primary rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer flex-shrink-0 shadow-sm active:scale-95"
+                          >
+                            {isVerifyingUpi ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                            <span>Verify</span>
+                          </button>
+                        )}
                       </div>
-                      {form.paymentUpiId && !/^[\w.-]+@[\w.-]+$/.test(form.paymentUpiId.trim()) ? (
+                      {isUpiVerified ? (
+                        <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium mt-1">✓ Verified UPI ID — ready to receive instant customer payments & dynamic QR.</p>
+                      ) : form.paymentUpiId && !/^[\w.-]+@[\w.-]+$/.test(form.paymentUpiId.trim()) ? (
                         <p className="text-[10px] text-red-500 mt-1">Format must be username@upi (e.g., restaurant@okaxis, 9876543210@paytm)</p>
                       ) : (
-                        <p className="text-[10px] text-muted-foreground mt-1">UPI ID for receiving direct customer payments.</p>
+                        <p className="text-[10px] text-muted-foreground mt-1">Click Verify to activate this UPI ID for direct customer orders.</p>
                       )}
                     </div>
 

@@ -2431,8 +2431,9 @@ export async function getOwnerUpiAccount(
   next: NextFunction
 ): Promise<void> {
   try {
-    const restaurant = await prisma.restaurant.findFirst({
-      where: { ownerId: req.user!.id },
+    const ownerRestaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: ownerRestaurant.id },
       include: {
         upiAccount: true,
         paymentConfiguration: true,
@@ -2482,8 +2483,9 @@ export async function registerOwnerUpiAccount(
   next: NextFunction
 ): Promise<void> {
   try {
-    const restaurant = await prisma.restaurant.findFirst({
-      where: { ownerId: req.user!.id },
+    const ownerRestaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: ownerRestaurant.id },
       include: { upiAccount: true, paymentConfiguration: true },
     });
 
