@@ -287,5 +287,48 @@ describe('Payment Architecture Test Suite', () => {
       expect(intent.intentUrl).toContain('pn=Grand%20Cafe%20Pvt%20Ltd');
     });
   });
+
+  describe('F. Direct Settlement Architecture, Reconciliations & Production Security', () => {
+    it('should reject mock payment verification when NODE_ENV is production', async () => {
+      const prevEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      try {
+        const mock = new MockUpiProvider();
+        await expect(
+          mock.verifyPayment({
+            merchantTxnRef: 'ORDTEST123',
+            expectedAmount: 500,
+          })
+        ).rejects.toThrow('Production environment cannot verify payments with MOCK_UPI');
+      } finally {
+        process.env.NODE_ENV = prevEnv;
+      }
+    });
+
+    it('should process refunds and payment reversals via adapter', async () => {
+      const mock = new MockUpiProvider();
+      const refund = await mock.refundPayment({
+        merchantTxnRef: 'ORDCAFE555000',
+        amount: 540.75,
+        reason: 'Customer cancelled order before food preparation',
+      });
+
+      expect(refund.isSuccess).toBe(true);
+      expect(refund.status).toBe('SUCCESS');
+      expect(refund.refundId).toMatch(/^MOCK-RFD-/);
+      expect(refund.amount).toBe(540.75);
+    });
+
+    it('should provide settlement reconciliation records across date range', async () => {
+      const mock = new MockUpiProvider();
+      const reconcile = await mock.reconcilePayments({
+        startDate: new Date(Date.now() - 86400000),
+        endDate: new Date(),
+      });
+
+      expect(reconcile).toHaveProperty('totalRecords');
+      expect(Array.isArray(reconcile.records)).toBe(true);
+    });
+  });
 });
 

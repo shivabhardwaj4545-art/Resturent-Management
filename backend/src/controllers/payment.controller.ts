@@ -66,6 +66,18 @@ export async function createUpiIntent(
       }
     }
 
+    // Requirement 5: A restaurant must not become production payment-enabled until its merchant account
+    // and direct-settlement eligibility are approved by the acquiring provider.
+    if (process.env.NODE_ENV === 'production') {
+      if (!upiAccount || upiAccount.merchantEligibilityStatus !== 'MERCHANT_APPROVED') {
+        throw new AppError(
+          'Production UPI payments are unavailable for this restaurant until its merchant acquiring account and direct-settlement eligibility are approved by the provider.',
+          400,
+          'MERCHANT_APPROVAL_REQUIRED'
+        );
+      }
+    }
+
     if (restaurant.paymentEnabled === false) {
       throw new AppError('Online payments are currently disabled for this restaurant.', 400, 'PAYMENTS_DISABLED');
     }

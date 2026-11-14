@@ -11,6 +11,10 @@ import {
   VerifyUpiAccountResult,
   CheckMerchantEligibilityParams,
   CheckMerchantEligibilityResult,
+  UpiRefundParams,
+  UpiRefundResult,
+  UpiReconcileParams,
+  UpiReconcileResult,
 } from '../types';
 import { buildUpiIntentUrl, isValidUpiId } from '../../payment.upi.service';
 
@@ -196,6 +200,10 @@ export class MockUpiProvider implements IUpiPaymentProvider {
   }
 
   public async verifyPayment(params: VerifyPaymentParams): Promise<UpiVerificationResult> {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Production environment cannot verify payments with MOCK_UPI. Please configure a live acquiring bank or UPI PSP integration.');
+    }
+
     const { merchantTxnRef, expectedAmount, receivedAmount, providerTxnRef } = params;
 
     const record = MockUpiProvider.mockStore.get(merchantTxnRef);
@@ -266,6 +274,39 @@ export class MockUpiProvider implements IUpiPaymentProvider {
       status,
       paidAt: new Date(),
       rawPayload: parsed,
+    };
+  }
+
+  public async refundPayment(params: UpiRefundParams): Promise<UpiRefundResult> {
+    const { merchantTxnRef, amount, reason } = params;
+    const record = MockUpiProvider.mockStore.get(merchantTxnRef);
+    const refundId = `MOCK-RFD-${Date.now()}`;
+    if (record) {
+      record.status = 'FAILED';
+    }
+    return {
+      isSuccess: true,
+      refundId,
+      merchantTxnRef,
+      amount,
+      status: 'SUCCESS',
+      rawResponse: { refundId, reason: reason || 'Customer requested refund' },
+    };
+  }
+
+  public async reconcilePayments(params: UpiReconcileParams): Promise<UpiReconcileResult> {
+    const records = Array.from(MockUpiProvider.mockStore.values()).map((r) => ({
+      merchantTxnRef: r.merchantTxnRef,
+      providerTxnRef: r.providerTxnRef,
+      amount: r.amount,
+      status: r.status as any,
+      settledAt: r.paidAt || new Date(),
+      utr: r.providerTxnRef,
+    }));
+    return {
+      totalRecords: records.length,
+      records,
+      rawResponse: { simulated: true },
     };
   }
 

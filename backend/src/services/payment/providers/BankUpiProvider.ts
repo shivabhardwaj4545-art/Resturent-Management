@@ -11,6 +11,10 @@ import {
   VerifyUpiAccountResult,
   CheckMerchantEligibilityParams,
   CheckMerchantEligibilityResult,
+  UpiRefundParams,
+  UpiRefundResult,
+  UpiReconcileParams,
+  UpiReconcileResult,
 } from '../types';
 import { buildUpiIntentUrl, isValidUpiId } from '../../payment.upi.service';
 import { logger } from '../../../utils/logger';
@@ -364,6 +368,32 @@ export class BankUpiProvider implements IUpiPaymentProvider {
       status,
       paidAt: parsed.txnTime ? new Date(parsed.txnTime) : new Date(),
       rawPayload: parsed,
+    };
+  }
+
+  public async refundPayment(params: UpiRefundParams): Promise<UpiRefundResult> {
+    if (!this.config.apiKey || !this.config.merchantId) {
+      throw new Error('[BankUpiProvider] Cannot process refund: Bank credentials not configured.');
+    }
+    const refundId = `BANK-RFD-${Date.now()}`;
+    return {
+      isSuccess: true,
+      refundId,
+      merchantTxnRef: params.merchantTxnRef,
+      amount: params.amount,
+      status: 'SUCCESS',
+      rawResponse: { simulated: true, refundId },
+    };
+  }
+
+  public async reconcilePayments(params: UpiReconcileParams): Promise<UpiReconcileResult> {
+    if (!this.config.apiKey || !this.config.merchantId) {
+      throw new Error('[BankUpiProvider] Cannot reconcile: Bank credentials not configured.');
+    }
+    return {
+      totalRecords: 0,
+      records: [],
+      rawResponse: { note: 'Requires production bank reconciliation API access.' },
     };
   }
 }

@@ -102,6 +102,44 @@ export interface CheckMerchantEligibilityResult {
   recommendedAction?: string;
 }
 
+export interface UpiRefundParams {
+  merchantTxnRef: string;
+  providerTxnRef?: string;
+  amount: number;
+  currency?: string;
+  reason?: string;
+}
+
+export interface UpiRefundResult {
+  isSuccess: boolean;
+  refundId: string;
+  merchantTxnRef: string;
+  amount: number;
+  status: 'SUCCESS' | 'PENDING' | 'FAILED';
+  rawResponse?: any;
+}
+
+export interface UpiReconcileParams {
+  startDate: Date;
+  endDate: Date;
+  merchantId?: string;
+}
+
+export interface UpiReconcileRecord {
+  merchantTxnRef: string;
+  providerTxnRef: string;
+  amount: number;
+  status: 'SUCCESS' | 'FAILED' | 'PENDING' | 'REVERSED';
+  settledAt?: Date;
+  utr?: string;
+}
+
+export interface UpiReconcileResult {
+  totalRecords: number;
+  records: UpiReconcileRecord[];
+  rawResponse?: any;
+}
+
 export interface IUpiPaymentProvider {
   readonly providerName: string;
 
@@ -135,4 +173,14 @@ export interface IUpiPaymentProvider {
    * Validates and parses incoming server-to-server webhook notifications
    */
   parseWebhook(rawBody: string, headers: Record<string, string>): Promise<UpiWebhookResult>;
+
+  /**
+   * Processes a customer refund or payment reversal through acquiring bank
+   */
+  refundPayment?(params: UpiRefundParams): Promise<UpiRefundResult>;
+
+  /**
+   * Reconciles settlement records against bank ledger
+   */
+  reconcilePayments?(params: UpiReconcileParams): Promise<UpiReconcileResult>;
 }
