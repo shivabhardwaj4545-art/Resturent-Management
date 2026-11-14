@@ -77,7 +77,7 @@ export function isOriginAllowed(origin?: string): boolean {
     if (configuredHosts.includes(currentHost)) {
       return true;
     }
-  } catch {}
+  } catch { }
   if (process.env.NODE_ENV !== 'production') {
     if (normalized.startsWith('http://localhost:') || normalized.startsWith('http://127.0.0.1:')) {
       return true;

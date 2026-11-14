@@ -208,8 +208,8 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
     // 1. Try scoped email first if restaurantSlug is provided
     let user = restaurantSlug
       ? await prisma.user.findFirst({
-          where: { email: `${restaurantSlug}:${normalizedEmail}`, deletedAt: null },
-        })
+        where: { email: `${restaurantSlug}:${normalizedEmail}`, deletedAt: null },
+      })
       : null;
 
     // 2. Fallback to exact raw email (Super Admin, Restaurant Owner, Global Customer)
@@ -610,7 +610,7 @@ export async function logout(req: Request, res: Response, next: NextFunction): P
             where: { sessionToken: decoded.sessionId },
           });
         }
-      } catch {}
+      } catch { }
     }
 
     clearRefreshTokenCookie(res);
@@ -705,7 +705,7 @@ export async function googleAuth(req: Request, res: Response, next: NextFunction
     const scope = 'openid email profile';
     const state = restaurantSlug ? encodeURIComponent(restaurantSlug) : '';
     const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&prompt=select_account${state ? `&state=${state}` : ''}`;
-    
+
     res.redirect(authUrl);
   } catch (error) {
     next(error);

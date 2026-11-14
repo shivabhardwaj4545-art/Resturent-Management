@@ -56,3 +56,4 @@ export function logAuthAudit(event: AuthAuditEvent): void {
     logger.info(`[SECURITY AUDIT] ${event.event}: userId=${event.userId ?? 'anonymous'}, email=${sanitizedEmail ?? 'unknown'}, ip=${ip}`);
   }
 }
+
