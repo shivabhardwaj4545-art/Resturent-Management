@@ -572,11 +572,34 @@ export function OwnerSettingsPage() {
         },
       };
       const res = await api.put('/owner/restaurant', payload);
+
+      if (form.paymentUpiId && /^[\w.-]+@[\w.-]+$/.test(form.paymentUpiId.trim())) {
+        const cleanUpi = form.paymentUpiId.trim();
+        await api.post('/owner/upi-account', {
+          upiId: cleanUpi,
+          accountType: 'MERCHANT',
+          accountHolderName: form.bankAccountHolder || undefined,
+          businessName: form.merchantName || form.name || undefined,
+          bankName: form.bankName || undefined,
+        }).catch(() => null);
+      }
+
       return res.data.data.restaurant;
     },
     onSuccess: (updatedRestaurant) => {
       if (updatedRestaurant) {
-        setForm(updatedRestaurant);
+        setForm(prev => ({
+          ...prev,
+          ...updatedRestaurant,
+          paymentUpiId: updatedRestaurant.paymentUpiId || form.paymentUpiId,
+          merchantName: updatedRestaurant.merchantName || form.merchantName,
+          upiEnabled: true,
+          paymentEnabled: true,
+        }));
+        if (updatedRestaurant.paymentUpiId || form.paymentUpiId) {
+          const upi = (updatedRestaurant.paymentUpiId || form.paymentUpiId || '').toLowerCase().trim();
+          setLastVerifiedUpi(upi);
+        }
         if (updatedRestaurant.operatingHours) {
           setOperatingHours(updatedRestaurant.operatingHours);
         }
@@ -600,6 +623,7 @@ export function OwnerSettingsPage() {
         toast.success('Settings saved!');
       }
       qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
+      qc.invalidateQueries({ queryKey: ['owner-upi-account'] });
     },
     onError: (err: any) => {
       const msg = err?.response?.data?.error || 'Failed to save settings';
@@ -663,28 +687,59 @@ export function OwnerSettingsPage() {
 
   const savePaymentDetailsMutation = useMutation({
     mutationFn: async (overrideQrCode?: string) => {
+      const cleanUpi = form.paymentUpiId ? form.paymentUpiId.trim() : null;
+      const cleanMerchantName = form.merchantName ? form.merchantName.trim() : null;
       const qrCodeToSave = overrideQrCode !== undefined ? overrideQrCode : (form.paymentQrCode ?? null);
+
       const res = await api.put('/owner/restaurant', {
-        name: form.name ?? '',
+        ...(form.name ? { name: form.name.trim() } : {}),
         paymentEnabled: form.paymentEnabled ?? true,
-        upiEnabled: form.paymentUpiId ? true : (form.upiEnabled ?? true),
-        merchantName: form.merchantName ?? null,
+        upiEnabled: cleanUpi ? true : (form.upiEnabled ?? true),
+        merchantName: cleanMerchantName,
         paymentQrCode: qrCodeToSave,
-        paymentUpiId: form.paymentUpiId ?? null,
-        paymentPhone: form.paymentPhone ?? null,
-        bankName: form.bankName ?? null,
-        bankAccountNumber: form.bankAccountNumber ?? null,
-        bankIfsc: form.bankIfsc ?? null,
-        bankAccountHolder: form.bankAccountHolder ?? null,
+        paymentUpiId: cleanUpi,
+        paymentPhone: form.paymentPhone ? form.paymentPhone.trim() : null,
+        bankName: form.bankName ? form.bankName.trim() : null,
+        bankAccountNumber: form.bankAccountNumber ? form.bankAccountNumber.trim() : null,
+        bankIfsc: form.bankIfsc ? form.bankIfsc.trim() : null,
+        bankAccountHolder: form.bankAccountHolder ? form.bankAccountHolder.trim() : null,
       });
+
+      if (cleanUpi && /^[\w.-]+@[\w.-]+$/.test(cleanUpi)) {
+        await api.post('/owner/upi-account', {
+          upiId: cleanUpi,
+          accountType: 'MERCHANT',
+          accountHolderName: form.bankAccountHolder || undefined,
+          businessName: cleanMerchantName || form.name || undefined,
+          bankName: form.bankName || undefined,
+        }).catch(() => null);
+      }
+
       return res.data.data.restaurant;
     },
     onSuccess: (updated) => {
       toast.success('Payment details saved!');
-      if (updated) setForm(updated);
+      if (updated) {
+        setForm(prev => ({
+          ...prev,
+          ...updated,
+          paymentUpiId: updated.paymentUpiId || form.paymentUpiId,
+          merchantName: updated.merchantName || form.merchantName,
+          upiEnabled: true,
+          paymentEnabled: true,
+        }));
+        if (updated.paymentUpiId || form.paymentUpiId) {
+          const upi = (updated.paymentUpiId || form.paymentUpiId || '').toLowerCase().trim();
+          setLastVerifiedUpi(upi);
+        }
+      }
       qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
+      qc.invalidateQueries({ queryKey: ['owner-upi-account'] });
     },
-    onError: () => toast.error('Failed to save payment details'),
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error || err?.response?.data?.message || 'Failed to save payment details';
+      toast.error(msg);
+    },
   });
 
   const handleSavePaymentDetails = async () => {

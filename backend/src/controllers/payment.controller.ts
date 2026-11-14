@@ -124,7 +124,10 @@ export async function createUpiIntent(
   // Authoritative amount comes directly from DB Order record
   const authoritativeAmount = order.total;
   const amountPaise = Math.round(authoritativeAmount * 100);
-  const merchantName = restaurant.merchantName || restaurant.name;
+  let merchantName = restaurant.merchantName;
+  if (!merchantName || (merchantName === 'Upstates Restaurant' && merchantVpa !== 'upstates@upi')) {
+    merchantName = restaurant.bankAccountHolder || upiAccount?.accountHolderName || (restaurant.name !== 'Upstates' ? restaurant.name : null) || merchantVpa.split('@')[0];
+  }
   const forceNew = Boolean(req.body.forceNew);
 
   // Resolve active acquiring bank/UPI PSP provider adapter
