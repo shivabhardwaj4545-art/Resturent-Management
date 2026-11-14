@@ -188,8 +188,7 @@ export class MerchantAccountService {
 
     const paymentEnabled = Boolean(
       vpaStatus === 'VALID' &&
-      (merchantStatus === 'ACTIVE' || merchantStatus === 'MERCHANT_APPROVED') &&
-      settlementStatus === 'APPROVED'
+      restaurant.paymentEnabled !== false
     );
 
     // Atomic transaction across restaurant_payment_accounts, restaurant_upi_accounts, and restaurants
@@ -271,7 +270,7 @@ export class MerchantAccountService {
         data: {
           paymentUpiId: cleanVpa,
           merchantName: verificationResult.accountHolderName || payeeName || businessName || restaurant.name,
-          upiEnabled: paymentEnabled,
+          upiEnabled: true,
           paymentEnabled: true,
           ...(params.bankAccountNumber ? { bankAccountNumber: params.bankAccountNumber } : {}),
           ...(params.bankIfsc ? { bankIfsc: params.bankIfsc } : {}),

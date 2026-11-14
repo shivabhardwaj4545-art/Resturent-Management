@@ -336,6 +336,14 @@ export async function getRestaurant(req: AuthenticatedRequest, res: Response, ne
         logger.warn('Failed to sort operating hours:', err);
       }
     }
+    if (restaurant && restaurant.paymentUpiId && !restaurant.upiEnabled) {
+      await prisma.restaurant.update({
+        where: { id: restaurant.id },
+        data: { upiEnabled: true, paymentEnabled: true },
+      }).catch(() => null);
+      restaurant.upiEnabled = true;
+      restaurant.paymentEnabled = true;
+    }
     res.json({ success: true, data: { restaurant } });
   } catch (error) { next(error); }
 }
@@ -388,6 +396,11 @@ export async function updateRestaurant(req: AuthenticatedRequest, res: Response,
         }
         body.slug = sanitizedSlug;
       }
+    }
+
+    if (body.paymentUpiId && typeof body.paymentUpiId === 'string' && isValidUpiId(body.paymentUpiId)) {
+      body.upiEnabled = true;
+      body.paymentEnabled = true;
     }
 
     const updated = await prisma.restaurant.update({
@@ -2507,7 +2520,7 @@ export async function getOwnerUpiAccount(
         restaurantId: restaurant.id,
         restaurantName: restaurant.name,
         paymentEnabled: restaurant.paymentEnabled,
-        upiEnabled: restaurant.upiEnabled,
+        upiEnabled: Boolean(restaurant.paymentUpiId ? true : (restaurant.upiEnabled ?? true)),
         paymentUpiId: restaurant.paymentUpiId,
         upiAccount: restaurant.upiAccount
           ? {

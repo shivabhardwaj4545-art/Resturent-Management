@@ -78,6 +78,8 @@ export async function createUpiIntent(
           data: { upiEnabled: true, paymentEnabled: true },
         }).catch(() => null);
       }
+      (restaurant as any).upiEnabled = true;
+      (restaurant as any).paymentEnabled = true;
     }
 
     if (upiAccount && upiAccount.verificationStatus === 'REJECTED') {

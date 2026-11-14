@@ -515,7 +515,11 @@ export function OwnerSettingsPage() {
     // Subsequent refetches should NOT overwrite what the user has typed
     if (data && !formInitialized.current) {
       formInitialized.current = true;
-      setForm(data);
+      setForm({
+        ...data,
+        paymentEnabled: data.paymentEnabled ?? true,
+        upiEnabled: data.paymentUpiId ? true : (data.upiEnabled ?? true),
+      });
       if (data.operatingHours) {
         setOperatingHours(data.operatingHours);
       }
@@ -547,7 +551,7 @@ export function OwnerSettingsPage() {
         operatingHours: operatingHours,
         themeColor: form.themeColor ?? null,
         paymentEnabled: form.paymentEnabled ?? true,
-        upiEnabled: form.upiEnabled ?? true,
+        upiEnabled: form.paymentUpiId ? true : (form.upiEnabled ?? true),
         merchantName: form.merchantName ?? null,
         paymentQrCode: form.paymentQrCode ?? null,
         paymentUpiId: form.paymentUpiId ?? null,
@@ -663,7 +667,7 @@ export function OwnerSettingsPage() {
       const res = await api.put('/owner/restaurant', {
         name: form.name ?? '',
         paymentEnabled: form.paymentEnabled ?? true,
-        upiEnabled: form.upiEnabled ?? true,
+        upiEnabled: form.paymentUpiId ? true : (form.upiEnabled ?? true),
         merchantName: form.merchantName ?? null,
         paymentQrCode: qrCodeToSave,
         paymentUpiId: form.paymentUpiId ?? null,
@@ -1210,170 +1214,6 @@ export function OwnerSettingsPage() {
                       onChange={(e) => setForm(f => ({ ...f, paymentPhone: e.target.value || null }))}
                       className="w-full px-3 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                     />
-                  </div>
-
-                  {/* 8-Stage Authorised Merchant Verification & Onboarding Lifecycle */}
-                  <div className="pt-4 border-t border-border/60 space-y-3">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div>
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                          <ShieldCheck className="w-4 h-4 text-primary" /> Authorised Merchant Verification Stages
-                        </h4>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">
-                          {stagesData?.stages?.stageSummary || 'Stage-by-stage acquiring bank verification and onboarding.'}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={handleRefreshStatus}
-                          disabled={isRefreshingStatus}
-                          className="px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-medium flex items-center gap-1 text-foreground transition-all cursor-pointer"
-                          title="Refresh provider transaction and KYC state"
-                        >
-                          <RefreshCw className={`w-3 h-3 ${isRefreshingStatus ? 'animate-spin' : ''}`} />
-                          <span>Refresh Status</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setOnboardingForm({
-                              legalBusinessName: form.merchantName || form.name || '',
-                              businessStructure: 'PROPRIETORSHIP',
-                              panNumber: '',
-                              gstin: '',
-                              businessAddress: form.address || '',
-                              contactPhone: form.phone || '',
-                              contactEmail: user?.email || '',
-                            });
-                            setShowOnboardingModal(true);
-                          }}
-                          className="px-2.5 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer shadow-xs active:scale-95"
-                        >
-                          <FileText className="w-3 h-3" />
-                          <span>KYC Onboarding</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Stage Indicator Cards Grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-left">
-                      {/* Stage 1: Syntax */}
-                      <div className={`p-2.5 rounded-xl border ${stagesData?.stages?.isValidSyntax
-                          ? 'bg-emerald-500/5 border-emerald-500/25 text-emerald-700 dark:text-emerald-300'
-                          : 'bg-muted/30 border-border text-muted-foreground'
-                        }`}>
-                        <div className="flex items-center justify-between text-[10px] font-bold uppercase">
-                          <span>1. Format Check</span>
-                          {stagesData?.stages?.isValidSyntax ? <Check className="w-3 h-3 text-emerald-500" /> : <Clock className="w-3 h-3 opacity-60" />}
-                        </div>
-                        <p className="text-xs font-semibold mt-1">
-                          {stagesData?.stages?.isValidSyntax ? 'Valid NPCI VPA' : 'Pending Format'}
-                        </p>
-                      </div>
-
-                      {/* Stage 2: Resolution */}
-                      <div className={`p-2.5 rounded-xl border ${stagesData?.stages?.vpaStatus === 'VALID'
-                          ? 'bg-emerald-500/5 border-emerald-500/25 text-emerald-700 dark:text-emerald-300'
-                          : stagesData?.stages?.vpaStatus === 'INVALID'
-                            ? 'bg-rose-500/5 border-rose-500/25 text-rose-700 dark:text-rose-300'
-                            : 'bg-muted/30 border-border text-muted-foreground'
-                        }`}>
-                        <div className="flex items-center justify-between text-[10px] font-bold uppercase">
-                          <span>2. VPA Resolution</span>
-                          {stagesData?.stages?.vpaStatus === 'VALID' ? <Check className="w-3 h-3 text-emerald-500" /> : <Clock className="w-3 h-3 opacity-60" />}
-                        </div>
-                        <p className="text-xs font-semibold mt-1">
-                          {stagesData?.stages?.vpaStatus || 'UNRESOLVED'}
-                        </p>
-                      </div>
-
-                      {/* Stage 3: Payee Name */}
-                      <div className={`p-2.5 rounded-xl border ${stagesData?.stages?.payeeNameMatched
-                          ? 'bg-emerald-500/5 border-emerald-500/25 text-emerald-700 dark:text-emerald-300'
-                          : 'bg-muted/30 border-border text-muted-foreground'
-                        }`}>
-                        <div className="flex items-center justify-between text-[10px] font-bold uppercase">
-                          <span>3. Payee Match</span>
-                          {stagesData?.stages?.payeeNameMatched ? <Check className="w-3 h-3 text-emerald-500" /> : <Clock className="w-3 h-3 opacity-60" />}
-                        </div>
-                        <p className="text-xs font-semibold mt-1 truncate" title={stagesData?.stages?.payeeName || 'Pending'}>
-                          {stagesData?.stages?.payeeName || 'Pending'}
-                        </p>
-                      </div>
-
-                      {/* Stage 4: Onboarding */}
-                      <div className={`p-2.5 rounded-xl border ${stagesData?.stages?.merchantStatus === 'ACTIVE' || stagesData?.stages?.merchantStatus === 'MERCHANT_APPROVED'
-                          ? 'bg-emerald-500/5 border-emerald-500/25 text-emerald-700 dark:text-emerald-300'
-                          : 'bg-muted/30 border-border text-muted-foreground'
-                        }`}>
-                        <div className="flex items-center justify-between text-[10px] font-bold uppercase">
-                          <span>4. Merchant KYC</span>
-                          {stagesData?.stages?.merchantStatus === 'ACTIVE' || stagesData?.stages?.merchantStatus === 'MERCHANT_APPROVED' ? (
-                            <Check className="w-3 h-3 text-emerald-500" />
-                          ) : (
-                            <Clock className="w-3 h-3 opacity-60" />
-                          )}
-                        </div>
-                        <p className="text-xs font-semibold mt-1 truncate">
-                          {stagesData?.stages?.merchantStatus || 'NOT_SUBMITTED'}
-                        </p>
-                      </div>
-
-                      {/* Stage 5: Merchant ID */}
-                      <div className={`p-2.5 rounded-xl border ${stagesData?.stages?.providerMerchantId
-                          ? 'bg-emerald-500/5 border-emerald-500/25 text-emerald-700 dark:text-emerald-300'
-                          : 'bg-muted/30 border-border text-muted-foreground'
-                        }`}>
-                        <div className="flex items-center justify-between text-[10px] font-bold uppercase">
-                          <span>5. Acquiring MID</span>
-                          {stagesData?.stages?.providerMerchantId ? <Check className="w-3 h-3 text-emerald-500" /> : <Clock className="w-3 h-3 opacity-60" />}
-                        </div>
-                        <p className="text-xs font-semibold mt-1 font-mono text-[11px] truncate">
-                          {stagesData?.stages?.providerMerchantId || 'Pending MID'}
-                        </p>
-                      </div>
-
-                      {/* Stage 6: MCC Code */}
-                      <div className="p-2.5 rounded-xl border bg-emerald-500/5 border-emerald-500/25 text-emerald-700 dark:text-emerald-300">
-                        <div className="flex items-center justify-between text-[10px] font-bold uppercase">
-                          <span>6. MCC Assigned</span>
-                          <Check className="w-3 h-3 text-emerald-500" />
-                        </div>
-                        <p className="text-xs font-semibold mt-1">
-                          MCC: {stagesData?.stages?.mcc || '5812'} (Food)
-                        </p>
-                      </div>
-
-                      {/* Stage 7: Settlement */}
-                      <div className={`p-2.5 rounded-xl border ${stagesData?.stages?.settlementStatus === 'APPROVED'
-                          ? 'bg-emerald-500/5 border-emerald-500/25 text-emerald-700 dark:text-emerald-300'
-                          : 'bg-muted/30 border-border text-muted-foreground'
-                        }`}>
-                        <div className="flex items-center justify-between text-[10px] font-bold uppercase">
-                          <span>7. Settlement</span>
-                          {stagesData?.stages?.settlementStatus === 'APPROVED' ? <Check className="w-3 h-3 text-emerald-500" /> : <Clock className="w-3 h-3 opacity-60" />}
-                        </div>
-                        <p className="text-xs font-semibold mt-1">
-                          {stagesData?.stages?.settlementStatus || 'PENDING'}
-                        </p>
-                      </div>
-
-                      {/* Stage 8: Enablement */}
-                      <div className={`p-2.5 rounded-xl border ${stagesData?.stages?.paymentEnabled
-                          ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
-                          : 'bg-muted/30 border-border text-muted-foreground'
-                        }`}>
-                        <div className="flex items-center justify-between text-[10px] font-bold uppercase">
-                          <span>8. Online Pay</span>
-                          {stagesData?.stages?.paymentEnabled ? <CheckCheck className="w-3.5 h-3.5 text-emerald-500" /> : <Clock className="w-3 h-3 opacity-60" />}
-                        </div>
-                        <p className="text-xs font-bold mt-1">
-                          {stagesData?.stages?.paymentEnabled ? '✓ Active & Ready' : 'Awaiting Steps'}
-                        </p>
-                      </div>
-                    </div>
                   </div>
 
                   {/* Auto-Generated Dynamic QR Code */}
