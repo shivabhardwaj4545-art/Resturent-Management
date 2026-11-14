@@ -1111,25 +1111,18 @@ export function OwnerSettingsPage() {
                     </div>
 
                     {/* Status Alert Banner */}
-                    {upiAccountData?.upiAccount?.merchantEligibilityStatus === 'MERCHANT_APPROVED' ? (
+                    {upiAccountData?.upiAccount?.merchantEligibilityStatus === 'MERCHANT_APPROVED' || isUpiVerified ? (
                       <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-start gap-2.5 text-xs text-emerald-700 dark:text-emerald-400">
                         <Check className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
                         <div>
-                          <strong>Approved for Direct UPI Payments:</strong> Your Merchant UPI account is verified. Customers can pay directly via Google Pay, PhonePe, Paytm, and dynamic QR.
-                        </div>
-                      </div>
-                    ) : upiAccountData?.upiAccount?.merchantEligibilityStatus === 'RESTRICTED' || accountType === 'PERSONAL' ? (
-                      <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-2.5 text-xs text-amber-700 dark:text-amber-400">
-                        <span className="text-sm">⚠️</span>
-                        <div>
-                          <strong>Bank Link Policy Restriction:</strong> Personal (P2P) UPI IDs cannot receive dynamic commercial order intents under NPCI and acquiring bank rules. Receiving banks decline such transactions with <em>"Receiver bank declined due to internal link policy"</em>. Online customer checkout will offer Pay to Waiter or Pay on Counter until an approved Merchant VPA is registered.
+                          <strong>Ready for Direct UPI Payments:</strong> Your UPI ID is active. Customers can pay directly via Google Pay, PhonePe, Paytm, and dynamic QR directly to your linked bank account.
                         </div>
                       </div>
                     ) : (
                       <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-start gap-2.5 text-xs text-blue-700 dark:text-blue-400">
                         <span className="text-sm">ℹ️</span>
                         <div>
-                          Enter your UPI ID below and click <strong>Verify & Register UPI ID</strong> to validate account format and commercial payment eligibility.
+                          Enter your UPI ID below and click <strong>Verify</strong> to activate direct customer payments.
                         </div>
                       </div>
                     )}

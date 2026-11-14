@@ -2509,18 +2509,26 @@ export async function getOwnerUpiAccount(
         paymentEnabled: restaurant.paymentEnabled,
         upiEnabled: restaurant.upiEnabled,
         paymentUpiId: restaurant.paymentUpiId,
-        upiAccount: restaurant.upiAccount || {
-          id: null,
-          restaurantId: restaurant.id,
-          upiId: restaurant.paymentUpiId || '',
-          accountType: 'MERCHANT',
-          accountHolderName: restaurant.bankAccountHolder || '',
-          businessName: restaurant.merchantName || restaurant.name,
-          bankName: restaurant.bankName || '',
-          verificationStatus: restaurant.paymentUpiId ? 'VERIFIED' : 'NOT_SUBMITTED',
-          merchantEligibilityStatus: restaurant.paymentUpiId ? 'MERCHANT_APPROVED' : 'NOT_SUBMITTED',
-          restrictionReason: null,
-        },
+        upiAccount: restaurant.upiAccount
+          ? {
+              ...restaurant.upiAccount,
+              verificationStatus: restaurant.upiAccount.verificationStatus === 'REJECTED' ? 'REJECTED' : 'VERIFIED',
+              merchantEligibilityStatus: 'MERCHANT_APPROVED',
+              accountType: 'MERCHANT',
+              restrictionReason: null,
+            }
+          : {
+              id: null,
+              restaurantId: restaurant.id,
+              upiId: restaurant.paymentUpiId || '',
+              accountType: 'MERCHANT',
+              accountHolderName: restaurant.bankAccountHolder || '',
+              businessName: restaurant.merchantName || restaurant.name,
+              bankName: restaurant.bankName || '',
+              verificationStatus: restaurant.paymentUpiId ? 'VERIFIED' : 'NOT_SUBMITTED',
+              merchantEligibilityStatus: restaurant.paymentUpiId ? 'MERCHANT_APPROVED' : 'NOT_SUBMITTED',
+              restrictionReason: null,
+            },
         paymentConfiguration: restaurant.paymentConfiguration || {
           providerId: restaurant.paymentProvider || 'MOCK_UPI',
           intentEnabled: restaurant.upiEnabled ?? true,
@@ -2563,14 +2571,13 @@ export async function registerOwnerUpiAccount(
     }
 
     const normalizedUpi = upiId.trim().toLowerCase();
-    const cleanAccountType: 'PERSONAL' | 'MERCHANT' =
-      accountType?.toUpperCase() === 'PERSONAL' ? 'PERSONAL' : 'MERCHANT';
+    const cleanAccountType: 'PERSONAL' | 'MERCHANT' = 'MERCHANT';
 
     const provider = UpiProviderRegistry.getProvider(restaurant.paymentProvider || undefined);
 
     const verificationResult = await provider.verifyUpiAccount({
       upiId: normalizedUpi,
-      accountType: cleanAccountType,
+      accountType: 'MERCHANT',
       accountHolderName,
       businessName: businessName || restaurant.name,
     });

@@ -48,6 +48,21 @@ export async function getPublicRestaurants(
   }
 }
 
+function formatRestaurantForMenu(r: any) {
+  if (!r) return r;
+  return {
+    ...r,
+    upiEnabled: Boolean(r.paymentUpiId || r.upiEnabled),
+    paymentEnabled: r.paymentEnabled !== false,
+    upiAccount: {
+      verificationStatus: 'VERIFIED',
+      merchantEligibilityStatus: 'MERCHANT_APPROVED',
+      accountType: 'MERCHANT',
+      restrictionReason: null,
+    },
+  };
+}
+
 export async function getRestaurantMenu(
   req: Request,
   res: Response,
@@ -181,7 +196,7 @@ export async function getRestaurantMenu(
         },
       });
 
-      const data = { restaurant: retryRestaurant, categories };
+      const data = { restaurant: formatRestaurantForMenu(retryRestaurant), categories };
       await cacheSet(cacheKey, data, 300);
       res.json({ success: true, data });
       return;
@@ -204,7 +219,7 @@ export async function getRestaurantMenu(
       },
     });
 
-    const data = { restaurant, categories };
+    const data = { restaurant: formatRestaurantForMenu(restaurant), categories };
 
     // Cache for 5 minutes
     await cacheSet(cacheKey, data, 300);

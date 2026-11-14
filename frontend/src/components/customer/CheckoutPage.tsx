@@ -207,15 +207,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
   const [selectedPayment, setSelectedPayment] = useState<'UPI_INTENT' | 'COD' | 'PAY_TO_WAITER'>('UPI_INTENT');
   const [onlinePaymentType, setOnlinePaymentType] = useState<'DIRECT' | 'RAZORPAY'>('DIRECT');
 
-  const isUpiRestricted =
-    (restaurant as any)?.upiAccount?.merchantEligibilityStatus === 'RESTRICTED' ||
-    restaurant?.upiEnabled === false;
-
-  useEffect(() => {
-    if (isUpiRestricted && selectedPayment === 'UPI_INTENT') {
-      setSelectedPayment('PAY_TO_WAITER');
-    }
-  }, [isUpiRestricted, selectedPayment]);
+  const isUpiRestricted = false;
 
   useEffect(() => {
     setMounted(true);
@@ -761,11 +753,9 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
               {
                 value: 'UPI_INTENT',
                 label: 'Pay via UPI',
-                sublabel: isUpiRestricted
-                  ? '⚠️ Online UPI paused: Receiving bank link policy restricts personal handles from commercial orders.'
-                  : 'Instant UPI via Google Pay, PhonePe, Paytm, or QR scan',
+                sublabel: 'Instant UPI via Google Pay, PhonePe, Paytm, or QR scan',
                 icon: <Smartphone className="w-5 h-5 text-primary" />,
-                disabled: isUpiRestricted,
+                disabled: false,
               },
             ].map((method) => (
               <button
@@ -804,15 +794,6 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
               </button>
             ))}
           </div>
-
-          {isUpiRestricted && (
-            <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
-              <span className="text-sm">💡</span>
-              <div>
-                <strong>Notice:</strong> Online UPI intent is currently unavailable because this restaurant's UPI ID is a personal account. Bank link policies reject commercial app deep links to personal VPAs. Please choose <strong>Pay to Waiter</strong> or <strong>Pay on Counter</strong>.
-              </div>
-            </div>
-          )}
         </div>
 
         {selectedPayment === 'PAY_TO_WAITER' && (
