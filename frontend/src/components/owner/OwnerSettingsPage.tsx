@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import {
   Settings, UtensilsCrossed, LayoutDashboard, ShoppingBag, Tag, BarChart3, LogOut,
   Menu, Save, Globe, Phone, MapPin, Clock, Palette, QrCode, Download, CreditCard, Banknote, Building2, Smartphone, Star, Printer,
-  Upload, Trash2, CheckCircle2, Sparkles, RefreshCw, FileImage, Info, Bed, Power, Ban, Plus, Check, Lock, X
+  Upload, Trash2, CheckCircle2, Sparkles, RefreshCw, FileImage, Info, Bed, Power, Ban, Plus, Check, Lock, X, Loader2
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/services/api';
@@ -84,6 +84,7 @@ export function OwnerSettingsPage() {
   const { user, logout } = useAuthStore();
   const router = useRouter();
   const qc = useQueryClient();
+  const queryClient = qc;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [form, setForm] = useState<Partial<Restaurant>>({});
   const formInitialized = useRef(false);
@@ -334,6 +335,49 @@ export function OwnerSettingsPage() {
     },
     enabled: !!user && user.role === 'RESTAURANT_OWNER',
   });
+
+  const { data: upiAccountData, refetch: refetchUpiAccount } = useQuery({
+    queryKey: ['owner-upi-account'],
+    queryFn: async () => {
+      const res = await api.get('/owner/upi-account');
+      return res.data?.data;
+    },
+    enabled: !!user && user.role === 'RESTAURANT_OWNER',
+  });
+
+  const [accountType, setAccountType] = useState<'MERCHANT' | 'PERSONAL'>('MERCHANT');
+  const [isVerifyingUpi, setIsVerifyingUpi] = useState(false);
+
+  useEffect(() => {
+    if (upiAccountData?.upiAccount?.accountType) {
+      setAccountType(upiAccountData.upiAccount.accountType.toUpperCase() === 'PERSONAL' ? 'PERSONAL' : 'MERCHANT');
+    }
+  }, [upiAccountData]);
+
+  const handleVerifyAndRegisterUpi = async () => {
+    if (!form.paymentUpiId || !/^[\w.-]+@[\w.-]+$/.test(form.paymentUpiId.trim())) {
+      toast.error('Please enter a valid UPI ID (e.g. restaurant@okaxis).');
+      return;
+    }
+    setIsVerifyingUpi(true);
+    try {
+      const res = await api.post('/owner/upi-account', {
+        upiId: form.paymentUpiId.trim(),
+        accountType,
+        accountHolderName: form.bankAccountHolder || undefined,
+        businessName: form.merchantName || form.name || undefined,
+        bankName: form.bankName || undefined,
+      });
+
+      toast.success(res.data?.message || 'UPI Account submitted successfully!');
+      refetchUpiAccount();
+      queryClient.invalidateQueries({ queryKey: ['owner-restaurant'] });
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || err.message || 'Failed to verify UPI account.');
+    } finally {
+      setIsVerifyingUpi(false);
+    }
+  };
 
   // Permissions controlled globally or per-restaurant by Super Admin
   const isTableQrAllowed =
@@ -932,33 +976,102 @@ export function OwnerSettingsPage() {
                     </div>
                   </div>
 
+                  {/* UPI Account Type & Compliance Notice */}
+                  <div className="p-4 bg-muted/40 border border-border rounded-2xl space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-bold text-foreground">UPI Account Classification</p>
+                        <p className="text-[11px] text-muted-foreground">Select whether this handle is a commercial Merchant VPA or Personal VPA</p>
+                      </div>
+                      <div className="flex bg-muted p-1 rounded-xl border border-border/60">
+                        <button
+                          type="button"
+                          onClick={() => setAccountType('MERCHANT')}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                            accountType === 'MERCHANT'
+                              ? 'bg-card text-primary shadow-xs font-bold'
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          Merchant VPA (Business)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAccountType('PERSONAL')}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                            accountType === 'PERSONAL'
+                              ? 'bg-card text-amber-600 dark:text-amber-400 shadow-xs font-bold'
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          Personal VPA (P2P)
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Status Alert Banner */}
+                    {upiAccountData?.upiAccount?.merchantEligibilityStatus === 'MERCHANT_APPROVED' ? (
+                      <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-start gap-2.5 text-xs text-emerald-700 dark:text-emerald-400">
+                        <Check className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <strong>Approved for Direct UPI Payments:</strong> Your Merchant UPI account is verified. Customers can pay directly via Google Pay, PhonePe, Paytm, and dynamic QR.
+                        </div>
+                      </div>
+                    ) : upiAccountData?.upiAccount?.merchantEligibilityStatus === 'RESTRICTED' || accountType === 'PERSONAL' ? (
+                      <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-2.5 text-xs text-amber-700 dark:text-amber-400">
+                        <span className="text-sm">⚠️</span>
+                        <div>
+                          <strong>Bank Link Policy Restriction:</strong> Personal (P2P) UPI IDs cannot receive dynamic commercial order intents under NPCI and acquiring bank rules. Receiving banks decline such transactions with <em>"Receiver bank declined due to internal link policy"</em>. Online customer checkout will offer Pay to Waiter or Pay on Counter until an approved Merchant VPA is registered.
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-start gap-2.5 text-xs text-blue-700 dark:text-blue-400">
+                        <span className="text-sm">ℹ️</span>
+                        <div>
+                          Enter your UPI ID below and click <strong>Verify & Register UPI ID</strong> to validate account format and commercial payment eligibility.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* UPI ID & Merchant Info */}
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
                       <label className="text-xs font-semibold text-muted-foreground mb-1.5 block flex items-center gap-1">
-                        <Smartphone className="w-3.5 h-3.5 text-primary" /> UPI ID (Merchant VPA) <span className="text-red-500">*</span>
+                        <Smartphone className="w-3.5 h-3.5 text-primary" /> UPI ID (VPA) <span className="text-red-500">*</span>
                       </label>
-                      <input
-                        type="text"
-                        placeholder="yourname@upi"
-                        value={form.paymentUpiId ?? ''}
-                        onChange={(e) => setForm(f => ({ ...f, paymentUpiId: e.target.value || null }))}
-                        className={`w-full px-3 py-2.5 bg-muted/30 border rounded-xl text-sm font-mono focus:outline-none focus:ring-2 ${
-                          form.paymentUpiId && !/^[\w.-]+@[\w.-]+$/.test(form.paymentUpiId.trim())
-                            ? 'border-red-500 focus:ring-red-500/30'
-                            : 'border-border focus:ring-primary/30'
-                        }`}
-                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="restaurant@okaxis"
+                          value={form.paymentUpiId ?? ''}
+                          onChange={(e) => setForm(f => ({ ...f, paymentUpiId: e.target.value || null }))}
+                          className={`flex-1 px-3 py-2.5 bg-muted/30 border rounded-xl text-sm font-mono focus:outline-none focus:ring-2 ${
+                            form.paymentUpiId && !/^[\w.-]+@[\w.-]+$/.test(form.paymentUpiId.trim())
+                              ? 'border-red-500 focus:ring-red-500/30'
+                              : 'border-border focus:ring-primary/30'
+                          }`}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleVerifyAndRegisterUpi}
+                          disabled={isVerifyingUpi || !form.paymentUpiId}
+                          className="px-3.5 py-2.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1 cursor-pointer flex-shrink-0"
+                        >
+                          {isVerifyingUpi ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                          <span>Verify</span>
+                        </button>
+                      </div>
                       {form.paymentUpiId && !/^[\w.-]+@[\w.-]+$/.test(form.paymentUpiId.trim()) ? (
                         <p className="text-[10px] text-red-500 mt-1">Format must be username@upi (e.g., restaurant@okaxis, 9876543210@paytm)</p>
                       ) : (
-                        <p className="text-[10px] text-muted-foreground mt-1">Primary UPI ID for generating customer payment links & QR codes.</p>
+                        <p className="text-[10px] text-muted-foreground mt-1">UPI ID for receiving direct customer payments.</p>
                       )}
                     </div>
 
                     <div>
                       <label className="text-xs font-semibold text-muted-foreground mb-1.5 block flex items-center gap-1">
-                        <Building2 className="w-3.5 h-3.5" /> Merchant / Display Name for UPI
+                        <Building2 className="w-3.5 h-3.5" /> Merchant / Business Name for UPI
                       </label>
                       <input
                         type="text"

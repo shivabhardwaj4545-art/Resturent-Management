@@ -168,5 +168,74 @@ describe('Payment Architecture Test Suite', () => {
       expect(expectedAnnualDiscountPrice).toBe(20390);
     });
   });
+
+  describe('D. Restaurant UPI Account Onboarding & Link Policy Enforcement', () => {
+    it('should classify personal UPI IDs as RESTRICTED with explicit bank link policy notice', async () => {
+      const mock = new MockUpiProvider();
+      const result = await mock.verifyUpiAccount({
+        upiId: 'owner@okhdfcbank',
+        accountType: 'PERSONAL',
+        accountHolderName: 'Restaurant Owner',
+      });
+
+      expect(result.isValidSyntax).toBe(true);
+      expect(result.accountExists).toBe(true);
+      expect(result.accountType).toBe('PERSONAL');
+      expect(result.verificationStatus).toBe('VERIFIED');
+      expect(result.merchantEligibilityStatus).toBe('RESTRICTED');
+      expect(result.intentEnabled).toBe(false);
+      expect(result.dynamicQrEnabled).toBe(false);
+      expect(result.restrictionReason).toContain('Personal (P2P) UPI accounts are restricted by NPCI and receiving banks');
+      expect(result.restrictionReason).toContain('internal link policies');
+    });
+
+    it('should approve commercial Merchant UPI IDs with assigned providerMerchantId', async () => {
+      const mock = new MockUpiProvider();
+      const result = await mock.verifyUpiAccount({
+        upiId: 'restro.merchant@hdfcbank',
+        accountType: 'MERCHANT',
+        businessName: 'Spice Route Bistro',
+      });
+
+      expect(result.isValidSyntax).toBe(true);
+      expect(result.accountExists).toBe(true);
+      expect(result.accountType).toBe('MERCHANT');
+      expect(result.verificationStatus).toBe('VERIFIED');
+      expect(result.merchantEligibilityStatus).toBe('MERCHANT_APPROVED');
+      expect(result.intentEnabled).toBe(true);
+      expect(result.dynamicQrEnabled).toBe(true);
+      expect(result.providerMerchantId).toBeDefined();
+    });
+
+    it('should reject malformed UPI IDs during onboarding', async () => {
+      const mock = new MockUpiProvider();
+      const result = await mock.verifyUpiAccount({
+        upiId: 'invalid-no-at-sign',
+        accountType: 'MERCHANT',
+      });
+
+      expect(result.isValidSyntax).toBe(false);
+      expect(result.verificationStatus).toBe('REJECTED');
+      expect(result.merchantEligibilityStatus).toBe('RESTRICTED');
+      expect(result.intentEnabled).toBe(false);
+    });
+
+    it('BankUpiProvider should require configured credentials and flag personal accounts as RESTRICTED', async () => {
+      const bank = new BankUpiProvider({
+        merchantId: '', // Unconfigured
+        apiKey: '',
+      });
+
+      const personalCheck = await bank.checkMerchantEligibility({
+        upiId: 'personal@axisbank',
+        accountType: 'PERSONAL',
+      });
+
+      expect(personalCheck.isEligibleForCommercialPayments).toBe(false);
+      expect(personalCheck.merchantEligibilityStatus).toBe('RESTRICTED');
+      expect(personalCheck.intentEnabled).toBe(false);
+      expect(personalCheck.restrictionReason).toContain('Personal (P2P) UPI ID cannot accept customer orders');
+    });
+  });
 });
 

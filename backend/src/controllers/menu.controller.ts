@@ -103,6 +103,14 @@ export async function getRestaurantMenu(
         merchantName: true,
         featureFlags: true,
         platformType: true,
+        upiAccount: {
+          select: {
+            verificationStatus: true,
+            merchantEligibilityStatus: true,
+            accountType: true,
+            restrictionReason: true,
+          },
+        },
       },
     });
 

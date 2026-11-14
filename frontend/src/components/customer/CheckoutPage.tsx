@@ -206,6 +206,16 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
   const [selectedPayment, setSelectedPayment] = useState<'UPI_INTENT' | 'COD' | 'PAY_TO_WAITER'>('UPI_INTENT');
   const [onlinePaymentType, setOnlinePaymentType] = useState<'DIRECT' | 'RAZORPAY'>('DIRECT');
 
+  const isUpiRestricted =
+    (restaurant as any)?.upiAccount?.merchantEligibilityStatus === 'RESTRICTED' ||
+    restaurant?.upiEnabled === false;
+
+  useEffect(() => {
+    if (isUpiRestricted && selectedPayment === 'UPI_INTENT') {
+      setSelectedPayment('PAY_TO_WAITER');
+    }
+  }, [isUpiRestricted, selectedPayment]);
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -413,6 +423,42 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
       }
     } finally {
       setIsCheckingUpiStatus(false);
+    }
+  };
+
+  const [utrInput, setUtrInput] = useState('');
+  const [isSubmittingUtr, setIsSubmittingUtr] = useState(false);
+
+  const handleSubmitUtr = async () => {
+    if (!upiData?.paymentId || !utrInput.trim()) {
+      toast.error('Please enter the 12-digit UPI Reference / UTR Number from your payment receipt.');
+      return;
+    }
+    const cleanUtr = utrInput.trim();
+    if (!/^\d{12}$/.test(cleanUtr) && cleanUtr.length < 8) {
+      toast.error('Please enter a valid 12-digit UTR / Bank Reference Number.');
+      return;
+    }
+
+    setIsSubmittingUtr(true);
+    try {
+      const res = await api.post('/payments/verify-upi', {
+        paymentId: upiData.paymentId,
+        orderId: upiData.orderId,
+        providerTxnId: cleanUtr,
+      });
+
+      if (res.data?.success) {
+        saveOrderToRecent(upiData.orderId, restaurantSlug);
+        clearCart();
+        setShowUpiModal(false);
+        toast.success('Payment Verified & Order Confirmed! 🎉');
+        router.push(`/r/${restaurantSlug}/order/${upiData.orderId}`);
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || err.message || 'Payment verification failed with the provided UTR.');
+    } finally {
+      setIsSubmittingUtr(false);
     }
   };
 
@@ -726,28 +772,40 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                 label: 'Pay to Waiter',
                 sublabel: 'Pay cash, UPI, or card to your waiter at your table',
                 icon: <User className="w-5 h-5 text-orange-500" />,
+                disabled: false,
               },
               {
                 value: 'COD',
                 label: 'Pay on Counter',
                 sublabel: 'Pay cash or card at the restaurant counter',
                 icon: <Banknote className="w-5 h-5 text-emerald-500" />,
+                disabled: false,
               },
               {
                 value: 'UPI_INTENT',
                 label: 'Pay via UPI',
-                sublabel: 'Instant UPI via Google Pay, PhonePe, Paytm, or QR scan',
+                sublabel: isUpiRestricted
+                  ? '⚠️ Online UPI paused: Receiving bank link policy restricts personal handles from commercial orders.'
+                  : 'Instant UPI via Google Pay, PhonePe, Paytm, or QR scan',
                 icon: <Smartphone className="w-5 h-5 text-primary" />,
+                disabled: isUpiRestricted,
               },
             ].map((method) => (
                 <button
                   key={method.value}
                   type="button"
-                  onClick={() => setSelectedPayment(method.value as 'UPI_INTENT' | 'COD' | 'PAY_TO_WAITER')}
+                  disabled={method.disabled}
+                  onClick={() => {
+                    if (!method.disabled) {
+                      setSelectedPayment(method.value as 'UPI_INTENT' | 'COD' | 'PAY_TO_WAITER');
+                    }
+                  }}
                   className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all ${
-                    selectedPayment === method.value
+                    method.disabled
+                      ? 'opacity-50 cursor-not-allowed bg-muted/20 border-border/60'
+                      : selectedPayment === method.value
                       ? 'border-primary bg-primary/5'
-                      : 'border-border hover:bg-muted/50'
+                      : 'border-border hover:bg-muted/50 cursor-pointer'
                   }`}
                 >
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
@@ -756,7 +814,14 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                     {method.icon}
                   </div>
                   <div className="text-left flex-1">
-                    <p className="font-semibold text-sm">{method.label}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-sm">{method.label}</p>
+                      {method.disabled && (
+                        <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold px-2 py-0.5 rounded-full border border-amber-500/20">
+                          Unavailable
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-muted-foreground">{method.sublabel}</p>
                   </div>
                   <div className={`w-4 h-4 rounded-full border-2 ${
@@ -765,6 +830,15 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                 </button>
               ))}
             </div>
+
+            {isUpiRestricted && (
+              <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+                <span className="text-sm">💡</span>
+                <div>
+                  <strong>Notice:</strong> Online UPI intent is currently unavailable because this restaurant's UPI ID is a personal account. Bank link policies reject commercial app deep links to personal VPAs. Please choose <strong>Pay to Waiter</strong> or <strong>Pay on Counter</strong>.
+                </div>
+              </div>
+            )}
         </div>
 
         {selectedPayment === 'PAY_TO_WAITER' && (
@@ -1318,7 +1392,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                   </div>
                 </div>
 
-                {/* Real-time Verification Status Box */}
+                {/* Real-time Verification Status & UTR Submission Box */}
                 <div className="p-4 bg-primary/5 border border-primary/20 rounded-2xl text-left space-y-3">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary flex-shrink-0">
@@ -1341,6 +1415,31 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                     {isCheckingUpiStatus ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5 text-primary" />}
                     <span>I Have Paid (Refresh Status)</span>
                   </button>
+
+                  <div className="pt-2 border-t border-border/60">
+                    <label className="block text-[11px] font-semibold text-foreground mb-1.5">
+                      Paid via App? Enter 12-digit UTR / Ref No. for Instant Confirmation
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={utrInput}
+                        onChange={(e) => setUtrInput(e.target.value)}
+                        placeholder="e.g. 431289123456"
+                        maxLength={18}
+                        className="flex-1 px-3 py-2 text-xs rounded-xl border border-border bg-card text-foreground font-mono placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSubmitUtr}
+                        disabled={isSubmittingUtr || !utrInput.trim()}
+                        className="px-3.5 py-2 text-xs font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        {isSubmittingUtr ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                        <span>Verify UTR</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
 

@@ -64,8 +64,57 @@ export interface UpiWebhookResult {
   rawPayload: any;
 }
 
+export interface VerifyUpiAccountParams {
+  upiId: string;
+  accountType: 'PERSONAL' | 'MERCHANT';
+  accountHolderName?: string;
+  businessName?: string;
+}
+
+export interface VerifyUpiAccountResult {
+  isValidSyntax: boolean;
+  accountExists: boolean;
+  accountType: 'PERSONAL' | 'MERCHANT';
+  accountHolderName?: string;
+  businessName?: string;
+  bankName?: string;
+  providerMerchantId?: string;
+  verificationStatus: 'VERIFIED' | 'REJECTED' | 'FAILED' | 'PENDING_VERIFICATION';
+  merchantEligibilityStatus: 'MERCHANT_APPROVED' | 'RESTRICTED' | 'PENDING_APPROVAL';
+  restrictionReason?: string;
+  intentEnabled: boolean;
+  dynamicQrEnabled: boolean;
+  rawResponse?: any;
+}
+
+export interface CheckMerchantEligibilityParams {
+  upiId: string;
+  accountType: string;
+  providerMerchantId?: string;
+}
+
+export interface CheckMerchantEligibilityResult {
+  isEligibleForCommercialPayments: boolean;
+  merchantEligibilityStatus: 'MERCHANT_APPROVED' | 'RESTRICTED' | 'PENDING_APPROVAL' | 'REJECTED';
+  intentEnabled: boolean;
+  dynamicQrEnabled: boolean;
+  restrictionReason?: string;
+  recommendedAction?: string;
+}
+
 export interface IUpiPaymentProvider {
   readonly providerName: string;
+
+  /**
+   * Validates account syntax, verifies account existence via penny drop / VPA lookup,
+   * and strictly evaluates commercial payment eligibility
+   */
+  verifyUpiAccount(params: VerifyUpiAccountParams): Promise<VerifyUpiAccountResult>;
+
+  /**
+   * Checks whether the receiving UPI account has approved acquiring bank onboarding for commercial payments
+   */
+  checkMerchantEligibility(params: CheckMerchantEligibilityParams): Promise<CheckMerchantEligibilityResult>;
 
   /**
    * Generates a unique UPI Intent deep link and QR payload for an order
@@ -87,4 +136,3 @@ export interface IUpiPaymentProvider {
    */
   parseWebhook(rawBody: string, headers: Record<string, string>): Promise<UpiWebhookResult>;
 }
-

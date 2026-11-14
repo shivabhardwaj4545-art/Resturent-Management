@@ -14,6 +14,8 @@ import { sortOperatingHours } from '../utils/operatingHours';
 import { logger } from '../utils/logger';
 import { sendKitchenStaffWelcomeEmail } from '../services/email.service';
 import { checkRestaurantSubscriptionExpiry } from '../jobs/subscription.job';
+import { UpiProviderRegistry } from '../services/payment/UpiProviderRegistry';
+import { isValidUpiId } from '../services/payment.upi.service';
 
 async function getOwnerRestaurant(ownerId: string) {
   let restaurant = await prisma.restaurant.findFirst({
@@ -2418,6 +2420,216 @@ export async function verifyOwnerSubscriptionPayment(req: AuthenticatedRequest, 
     next(error);
   }
 }
+
+/**
+ * RESTAURANT UPI ACCOUNT ONBOARDING APIS
+ */
+
+export async function getOwnerUpiAccount(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const restaurant = await prisma.restaurant.findFirst({
+      where: { ownerId: req.user!.id },
+      include: {
+        upiAccount: true,
+        paymentConfiguration: true,
+      },
+    });
+
+    if (!restaurant) {
+      throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
+    }
+
+    res.json({
+      success: true,
+      data: {
+        restaurantId: restaurant.id,
+        restaurantName: restaurant.name,
+        paymentEnabled: restaurant.paymentEnabled,
+        upiEnabled: restaurant.upiEnabled,
+        paymentUpiId: restaurant.paymentUpiId,
+        upiAccount: restaurant.upiAccount || {
+          id: null,
+          restaurantId: restaurant.id,
+          upiId: restaurant.paymentUpiId || '',
+          accountType: 'MERCHANT',
+          accountHolderName: restaurant.bankAccountHolder || '',
+          businessName: restaurant.merchantName || restaurant.name,
+          bankName: restaurant.bankName || '',
+          verificationStatus: restaurant.paymentUpiId ? 'VERIFIED' : 'NOT_SUBMITTED',
+          merchantEligibilityStatus: restaurant.paymentUpiId ? 'MERCHANT_APPROVED' : 'NOT_SUBMITTED',
+          restrictionReason: null,
+        },
+        paymentConfiguration: restaurant.paymentConfiguration || {
+          providerId: restaurant.paymentProvider || 'MOCK_UPI',
+          intentEnabled: restaurant.upiEnabled ?? true,
+          dynamicQrEnabled: true,
+          productionEnabled: true,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function registerOwnerUpiAccount(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const restaurant = await prisma.restaurant.findFirst({
+      where: { ownerId: req.user!.id },
+      include: { upiAccount: true, paymentConfiguration: true },
+    });
+
+    if (!restaurant) {
+      throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
+    }
+
+    const { upiId, accountType, accountHolderName, businessName, bankName } = req.body as {
+      upiId?: string;
+      accountType?: string;
+      accountHolderName?: string;
+      businessName?: string;
+      bankName?: string;
+    };
+
+    if (!upiId || typeof upiId !== 'string') {
+      throw new AppError('A valid UPI ID is required.', 400, 'INVALID_UPI_ID');
+    }
+
+    const normalizedUpi = upiId.trim().toLowerCase();
+    const cleanAccountType: 'PERSONAL' | 'MERCHANT' =
+      accountType?.toUpperCase() === 'PERSONAL' ? 'PERSONAL' : 'MERCHANT';
+
+    const provider = UpiProviderRegistry.getProvider(restaurant.paymentProvider || undefined);
+
+    const verificationResult = await provider.verifyUpiAccount({
+      upiId: normalizedUpi,
+      accountType: cleanAccountType,
+      accountHolderName,
+      businessName: businessName || restaurant.name,
+    });
+
+    if (!verificationResult.isValidSyntax) {
+      throw new AppError(
+        verificationResult.restrictionReason ||
+          'Invalid UPI ID format. Expected username@bank (e.g. restaurant@okaxis).',
+        400,
+        'INVALID_UPI_SYNTAX'
+      );
+    }
+
+    const now = new Date();
+
+    const [savedAccount, savedConfig] = await prisma.$transaction(async (tx) => {
+      const upiAcc = await tx.restaurantUpiAccount.upsert({
+        where: { restaurantId: restaurant.id },
+        create: {
+          restaurantId: restaurant.id,
+          upiId: normalizedUpi,
+          accountType: cleanAccountType,
+          accountHolderName: verificationResult.accountHolderName || accountHolderName || null,
+          businessName: verificationResult.businessName || businessName || restaurant.name,
+          bankName: verificationResult.bankName || bankName || null,
+          providerId: provider.providerName,
+          providerMerchantId: verificationResult.providerMerchantId || null,
+          verificationStatus: verificationResult.verificationStatus,
+          merchantEligibilityStatus: verificationResult.merchantEligibilityStatus,
+          restrictionReason: verificationResult.restrictionReason || null,
+          verifiedAt: verificationResult.verificationStatus === 'VERIFIED' ? now : null,
+          approvedAt: verificationResult.merchantEligibilityStatus === 'MERCHANT_APPROVED' ? now : null,
+          metadata: verificationResult.rawResponse || {},
+        },
+        update: {
+          upiId: normalizedUpi,
+          accountType: cleanAccountType,
+          accountHolderName: verificationResult.accountHolderName || accountHolderName || null,
+          businessName: verificationResult.businessName || businessName || restaurant.name,
+          bankName: verificationResult.bankName || bankName || null,
+          providerId: provider.providerName,
+          providerMerchantId: verificationResult.providerMerchantId || null,
+          verificationStatus: verificationResult.verificationStatus,
+          merchantEligibilityStatus: verificationResult.merchantEligibilityStatus,
+          restrictionReason: verificationResult.restrictionReason || null,
+          verifiedAt: verificationResult.verificationStatus === 'VERIFIED' ? now : null,
+          approvedAt: verificationResult.merchantEligibilityStatus === 'MERCHANT_APPROVED' ? now : null,
+          metadata: verificationResult.rawResponse || {},
+        },
+      });
+
+      const payCfg = await tx.restaurantPaymentConfiguration.upsert({
+        where: { restaurantId: restaurant.id },
+        create: {
+          restaurantId: restaurant.id,
+          providerId: provider.providerName,
+          merchantId: verificationResult.providerMerchantId || null,
+          intentEnabled: verificationResult.intentEnabled,
+          dynamicQrEnabled: verificationResult.dynamicQrEnabled,
+          productionEnabled: verificationResult.merchantEligibilityStatus === 'MERCHANT_APPROVED',
+        },
+        update: {
+          providerId: provider.providerName,
+          merchantId: verificationResult.providerMerchantId || null,
+          intentEnabled: verificationResult.intentEnabled,
+          dynamicQrEnabled: verificationResult.dynamicQrEnabled,
+          productionEnabled: verificationResult.merchantEligibilityStatus === 'MERCHANT_APPROVED',
+        },
+      });
+
+      // Update restaurant's active upi settings
+      await tx.restaurant.update({
+        where: { id: restaurant.id },
+        data: {
+          paymentUpiId: normalizedUpi,
+          merchantName: verificationResult.businessName || businessName || restaurant.name,
+          upiEnabled: verificationResult.intentEnabled,
+          paymentEnabled: true,
+        },
+      });
+
+      // Record audit log
+      await tx.paymentAuditLog.create({
+        data: {
+          orderId: restaurant.id,
+          actorType: 'OWNER',
+          actorId: req.user!.id,
+          action: 'REGISTER_UPI_ACCOUNT',
+          details: {
+            accountType: cleanAccountType,
+            verificationStatus: verificationResult.verificationStatus,
+            merchantEligibilityStatus: verificationResult.merchantEligibilityStatus,
+            restrictionReason: verificationResult.restrictionReason,
+          },
+        },
+      });
+
+      return [upiAcc, payCfg];
+    });
+
+    await cacheDelPattern(`menu:${restaurant.slug}*`);
+
+    res.json({
+      success: true,
+      message:
+        savedAccount.merchantEligibilityStatus === 'MERCHANT_APPROVED'
+          ? 'Merchant UPI account verified & approved for commercial payments.'
+          : 'Personal UPI account registered. Note: Commercial online customer payments are restricted by bank policy on personal VPAs.',
+      data: {
+        upiAccount: savedAccount,
+        paymentConfiguration: savedConfig,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 
 
 

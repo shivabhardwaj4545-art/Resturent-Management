@@ -7,8 +7,12 @@ import {
   UpiVerificationResult,
   UpiStatusResult,
   UpiWebhookResult,
+  VerifyUpiAccountParams,
+  VerifyUpiAccountResult,
+  CheckMerchantEligibilityParams,
+  CheckMerchantEligibilityResult,
 } from '../types';
-import { buildUpiIntentUrl } from '../../payment.upi.service';
+import { buildUpiIntentUrl, isValidUpiId } from '../../payment.upi.service';
 
 /**
  * Mock / Sandbox UPI Provider
@@ -30,6 +34,97 @@ export class MockUpiProvider implements IUpiPaymentProvider {
       payerVpa?: string;
     }
   >();
+
+  /**
+   * Simulates VPA existence check and commercial merchant eligibility evaluation
+   */
+  public async verifyUpiAccount(params: VerifyUpiAccountParams): Promise<VerifyUpiAccountResult> {
+    const { upiId, accountType, accountHolderName, businessName } = params;
+
+    const isValid = isValidUpiId(upiId);
+    if (!isValid) {
+      return {
+        isValidSyntax: false,
+        accountExists: false,
+        accountType,
+        verificationStatus: 'REJECTED',
+        merchantEligibilityStatus: 'RESTRICTED',
+        restrictionReason: 'Invalid UPI ID format. Standard format is username@bank (e.g., restaurant@okaxis).',
+        intentEnabled: false,
+        dynamicQrEnabled: false,
+      };
+    }
+
+    const isPersonal = accountType.toUpperCase() === 'PERSONAL';
+
+    if (isPersonal) {
+      // Personal UPI IDs exist and are identity verified, but NOT approved for merchant intent
+      return {
+        isValidSyntax: true,
+        accountExists: true,
+        accountType: 'PERSONAL',
+        accountHolderName: accountHolderName || 'Account Holder',
+        bankName: 'State Bank of India',
+        verificationStatus: 'VERIFIED',
+        merchantEligibilityStatus: 'RESTRICTED',
+        restrictionReason:
+          'Personal (P2P) UPI accounts are restricted by NPCI and receiving banks from accepting dynamic commercial intent links or dynamic QR payments. Receiver banks decline such payments due to internal link policies.',
+        intentEnabled: false,
+        dynamicQrEnabled: false,
+        rawResponse: { accountType: 'PERSONAL', code: 'P2P_RESTRICTED' },
+      };
+    }
+
+    // Commercial Merchant UPI ID
+    const providerMerchantId = `MOCK-MID-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+    return {
+      isValidSyntax: true,
+      accountExists: true,
+      accountType: 'MERCHANT',
+      accountHolderName: accountHolderName || businessName || 'Verified Merchant',
+      businessName: businessName || 'Restaurant Business',
+      bankName: 'HDFC Bank Merchant Services',
+      providerMerchantId,
+      verificationStatus: 'VERIFIED',
+      merchantEligibilityStatus: 'MERCHANT_APPROVED',
+      intentEnabled: true,
+      dynamicQrEnabled: true,
+      rawResponse: {
+        accountType: 'MERCHANT',
+        mcc: '5812',
+        settlementModel: 'DIRECT_SETTLEMENT',
+        status: 'ACTIVE',
+      },
+    };
+  }
+
+  /**
+   * Evaluates whether a registered UPI account is eligible for commercial customer payments
+   */
+  public async checkMerchantEligibility(
+    params: CheckMerchantEligibilityParams
+  ): Promise<CheckMerchantEligibilityResult> {
+    const isPersonal = params.accountType.toUpperCase() === 'PERSONAL';
+
+    if (isPersonal) {
+      return {
+        isEligibleForCommercialPayments: false,
+        merchantEligibilityStatus: 'RESTRICTED',
+        intentEnabled: false,
+        dynamicQrEnabled: false,
+        restrictionReason:
+          'Personal (P2P) UPI ID cannot accept customer orders via UPI Intent or Dynamic QR. Bank internal link policy blocks commercial payments to personal VPAs.',
+        recommendedAction: 'Register an approved Merchant UPI ID with your acquiring bank.',
+      };
+    }
+
+    return {
+      isEligibleForCommercialPayments: true,
+      merchantEligibilityStatus: 'MERCHANT_APPROVED',
+      intentEnabled: true,
+      dynamicQrEnabled: true,
+    };
+  }
 
   public async createIntent(params: CreateIntentParams): Promise<UpiIntentResult> {
     const {

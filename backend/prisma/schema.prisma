@@ -198,6 +198,8 @@ model Restaurant {
   chatMessages   ChatMessage[]
   subscription   RestaurantSubscription[]
   reviews        Review[]
+  upiAccount     RestaurantUpiAccount?
+  paymentConfiguration RestaurantPaymentConfiguration?
 
   @@index([slug])
   @@index([ownerId])
@@ -471,9 +473,11 @@ model CouponUsage {
 model Payment {
   id                String        @id @default(cuid())
   orderId           String        @unique
+  restaurantId      String?
   method            PaymentMethod
   status            PaymentStatus @default(PENDING)
   amount            Float
+  amountPaise       Int?
   txnRef            String?       @unique
   providerTxnId     String?
   razorpayOrderId   String?
@@ -488,6 +492,7 @@ model Payment {
   auditLogs PaymentAuditLog[]
 
   @@index([orderId])
+  @@index([restaurantId])
   @@index([txnRef])
   @@index([razorpayOrderId])
   @@map("payments")
@@ -502,6 +507,7 @@ model PaymentAttempt {
   providerRef  String?
   provider     String   @default("MOCK_UPI")
   amount       Float
+  amountPaise  Int?
   currency     String   @default("INR")
   status       String   @default("PENDING") // PENDING, SUCCESS, FAILED, EXPIRED
   intentUrl    String?
@@ -540,22 +546,70 @@ model PaymentWebhookEvent {
 }
 
 model PaymentAuditLog {
-  id        String   @id @default(cuid())
-  orderId   String
-  paymentId String?
-  actorType String   // SYSTEM, EMPLOYEE, ADMIN, CUSTOMER, WEBHOOK
-  actorId   String?
-  actorName String?
-  action    String   // ATTEMPT_INITIATED, STATUS_CHECKED, VERIFIED_PAID, CASH_CONFIRMED, CANCELLED, RECONCILED
-  details   Json?
-  createdAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  orderId      String
+  paymentId    String?
+  restaurantId String?
+  eventType    String?
+  actorType    String   // SYSTEM, EMPLOYEE, ADMIN, CUSTOMER, WEBHOOK
+  actorId      String?
+  actorName    String?
+  action       String   // ATTEMPT_INITIATED, STATUS_CHECKED, VERIFIED_PAID, CASH_CONFIRMED, CANCELLED, RECONCILED
+  details      Json?
+  createdAt    DateTime @default(now())
 
-  payment   Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  payment      Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
   @@index([paymentId])
+  @@index([restaurantId])
   @@index([actorType, actorId])
   @@map("payment_audit_logs")
+}
+
+model RestaurantUpiAccount {
+  id                        String    @id @default(cuid())
+  restaurantId              String    @unique
+  upiId                     String
+  accountType               String    @default("MERCHANT") // PERSONAL, MERCHANT
+  accountHolderName         String?
+  businessName              String?
+  bankName                  String?
+  providerId                String?   @default("MOCK_UPI")
+  providerMerchantId        String?
+  verificationStatus        String    @default("NOT_SUBMITTED") // NOT_SUBMITTED, PENDING_VERIFICATION, VERIFIED, REJECTED
+  merchantEligibilityStatus String    @default("NOT_SUBMITTED") // NOT_SUBMITTED, PENDING_APPROVAL, MERCHANT_APPROVED, RESTRICTED, REJECTED, SUSPENDED
+  restrictionReason         String?
+  verifiedAt                DateTime?
+  approvedAt                DateTime?
+  metadata                  Json?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  restaurant                Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+  @@index([verificationStatus])
+  @@index([merchantEligibilityStatus])
+  @@map("restaurant_upi_accounts")
+}
+
+model RestaurantPaymentConfiguration {
+  id                  String   @id @default(cuid())
+  restaurantId        String   @unique
+  providerId          String   @default("MOCK_UPI")
+  merchantId          String?
+  intentEnabled       Boolean  @default(true)
+  dynamicQrEnabled    Boolean  @default(true)
+  productionEnabled   Boolean  @default(false)
+  settlementConfigRef String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  restaurant          Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+  @@map("restaurant_payment_configurations")
 }
 
 model Review {

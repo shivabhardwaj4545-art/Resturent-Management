@@ -1973,3 +1973,164 @@ export async function updateLoyaltySettings(req: AuthenticatedRequest, res: Resp
     res.json({ success: true, data: { settings: setting.value }, message: 'Loyalty settings updated successfully' });
   } catch (error) { next(error); }
 }
+
+/**
+ * RESTAURANT UPI ACCOUNTS MANAGEMENT (ADMIN)
+ */
+
+export async function getAllRestaurantUpiAccounts(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const restaurants = await prisma.restaurant.findMany({
+      where: { deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        phone: true,
+        paymentEnabled: true,
+        upiEnabled: true,
+        paymentUpiId: true,
+        owner: {
+          select: { id: true, name: true, email: true, phone: true },
+        },
+        upiAccount: true,
+        paymentConfiguration: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        accounts: restaurants.map((r) => ({
+          restaurantId: r.id,
+          restaurantName: r.name,
+          restaurantSlug: r.slug,
+          owner: r.owner,
+          paymentEnabled: r.paymentEnabled,
+          upiEnabled: r.upiEnabled,
+          activeUpiId: r.paymentUpiId,
+          upiAccount: r.upiAccount || {
+            verificationStatus: r.paymentUpiId ? 'VERIFIED' : 'NOT_SUBMITTED',
+            merchantEligibilityStatus: r.paymentUpiId ? 'MERCHANT_APPROVED' : 'NOT_SUBMITTED',
+            accountType: 'MERCHANT',
+            upiId: r.paymentUpiId || '',
+          },
+          paymentConfiguration: r.paymentConfiguration || {
+            providerId: 'MOCK_UPI',
+            intentEnabled: r.upiEnabled ?? true,
+            dynamicQrEnabled: true,
+            productionEnabled: true,
+          },
+        })),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateRestaurantUpiAccountStatus(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const restaurantId = req.params.restaurantId as string;
+    const { verificationStatus, merchantEligibilityStatus, restrictionReason } = req.body as {
+      verificationStatus?: string;
+      merchantEligibilityStatus?: string;
+      restrictionReason?: string;
+    };
+
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      include: { upiAccount: true, paymentConfiguration: true },
+    });
+
+    if (!restaurant) {
+      throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
+    }
+
+    const now = new Date();
+    const isApproved = merchantEligibilityStatus === 'MERCHANT_APPROVED';
+
+    const [updatedAccount, updatedConfig] = await prisma.$transaction(async (tx) => {
+      const acc = await tx.restaurantUpiAccount.upsert({
+        where: { restaurantId },
+        create: {
+          restaurantId,
+          upiId: restaurant.paymentUpiId || 'unknown@upi',
+          accountType: 'MERCHANT',
+          verificationStatus: verificationStatus || 'VERIFIED',
+          merchantEligibilityStatus: merchantEligibilityStatus || 'MERCHANT_APPROVED',
+          restrictionReason: restrictionReason || null,
+          verifiedAt: verificationStatus === 'VERIFIED' ? now : null,
+          approvedAt: isApproved ? now : null,
+        },
+        update: {
+          ...(verificationStatus && { verificationStatus }),
+          ...(merchantEligibilityStatus && { merchantEligibilityStatus }),
+          restrictionReason: restrictionReason !== undefined ? restrictionReason : undefined,
+          ...(isApproved && { approvedAt: now }),
+        },
+      });
+
+      const cfg = await tx.restaurantPaymentConfiguration.upsert({
+        where: { restaurantId },
+        create: {
+          restaurantId,
+          providerId: 'MOCK_UPI',
+          intentEnabled: isApproved,
+          dynamicQrEnabled: isApproved,
+          productionEnabled: isApproved,
+        },
+        update: {
+          intentEnabled: isApproved,
+          dynamicQrEnabled: isApproved,
+          productionEnabled: isApproved,
+        },
+      });
+
+      await tx.restaurant.update({
+        where: { id: restaurantId },
+        data: {
+          upiEnabled: isApproved,
+        },
+      });
+
+      await tx.paymentAuditLog.create({
+        data: {
+          orderId: restaurantId,
+          actorType: 'ADMIN',
+          actorId: req.user!.id,
+          action: 'UPDATE_UPI_ACCOUNT_STATUS',
+          details: {
+            verificationStatus,
+            merchantEligibilityStatus,
+            restrictionReason,
+          },
+        },
+      });
+
+      return [acc, cfg];
+    });
+
+    await cacheDelPattern(`menu:${restaurant.slug}*`);
+
+    res.json({
+      success: true,
+      message: `Restaurant UPI status updated to ${merchantEligibilityStatus || verificationStatus}`,
+      data: {
+        upiAccount: updatedAccount,
+        paymentConfiguration: updatedConfig,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}

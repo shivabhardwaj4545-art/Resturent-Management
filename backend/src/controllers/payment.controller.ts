@@ -43,6 +43,29 @@ export async function createUpiIntent(
 
     const restaurant = order.restaurant;
 
+    // Check restaurant UPI account eligibility (personal P2P vs commercial merchant)
+    const upiAccount = await prisma.restaurantUpiAccount.findUnique({
+      where: { restaurantId: restaurant.id },
+    });
+
+    if (upiAccount) {
+      if (upiAccount.merchantEligibilityStatus === 'RESTRICTED') {
+        throw new AppError(
+          upiAccount.restrictionReason ||
+            'Online UPI payments are restricted for this restaurant because the registered UPI ID is a Personal (P2P) account. Under NPCI and acquiring bank policies, personal UPI handles cannot accept dynamic commercial order payments (which causes "Receiver bank declined due to internal link policy"). Please choose Pay to Waiter or Pay on Counter.',
+          400,
+          'UPI_PERSONAL_ACCOUNT_RESTRICTED'
+        );
+      }
+      if (upiAccount.verificationStatus === 'REJECTED') {
+        throw new AppError(
+          'Online UPI is disabled for this restaurant because the registered receiving account was rejected during verification. Please choose Pay to Waiter or Pay on Counter.',
+          400,
+          'UPI_ACCOUNT_REJECTED'
+        );
+      }
+    }
+
     if (restaurant.paymentEnabled === false) {
       throw new AppError('Online payments are currently disabled for this restaurant.', 400, 'PAYMENTS_DISABLED');
     }

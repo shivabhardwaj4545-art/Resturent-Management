@@ -41,6 +41,8 @@ import {
   getAdminReviews,
   getLoyaltySettings,
   updateLoyaltySettings,
+  getAllRestaurantUpiAccounts,
+  updateRestaurantUpiAccountStatus,
 } from '../controllers/admin.controller';
 
 const router = Router();
@@ -60,6 +62,10 @@ router.patch('/restaurants/:id/tabs', updateRestaurantTabs);
 router.post('/restaurants/:id/subscription', assignRestaurantSubscription);
 router.post('/restaurants/:id/terminate-sessions', terminateRestaurantSessions);
 router.delete('/restaurants/:id', deleteRestaurant);
+
+// Restaurant UPI Onboarding Management
+router.get('/upi-accounts', getAllRestaurantUpiAccounts);
+router.patch('/upi-accounts/:restaurantId/status', updateRestaurantUpiAccountStatus);
 
 // User management
 router.get('/users', getAllUsers);

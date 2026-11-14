@@ -55,6 +55,8 @@ import {
   buyOwnerSubscription,
   createOwnerSubscriptionOrder,
   verifyOwnerSubscriptionPayment,
+  getOwnerUpiAccount,
+  registerOwnerUpiAccount,
 } from '../controllers/owner.controller';
 import { upload, uploadDocument } from '../services/cloudinary.service';
 
@@ -79,6 +81,8 @@ router.post('/restaurant/logo', upload.single('logo'), uploadLogo);
 router.post('/restaurant/banner', upload.single('banner'), uploadBanner);
 router.post('/restaurant/payment-qr', upload.single('paymentQr'), uploadPaymentQr);
 router.get('/restaurant/sign-table', signTable);
+router.get('/upi-account', getOwnerUpiAccount);
+router.post('/upi-account', registerOwnerUpiAccount);
 
 // Menu categories
 router.get('/menu/categories', getCategories);
