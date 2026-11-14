@@ -39,7 +39,7 @@ async function getOwnerRestaurant(ownerId: string) {
 export async function getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     let restaurant = await getOwnerRestaurant(req.user!.id);
-    
+
     // Local start of today (00:00:00.000)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -195,7 +195,7 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response, nex
       .sort((a, b) => a.date.localeCompare(b.date));
 
     // Check expiry & fetch active subscription for dashboard status
-    await checkRestaurantSubscriptionExpiry(restaurant.id).catch(() => {});
+    await checkRestaurantSubscriptionExpiry(restaurant.id).catch(() => { });
     restaurant = await syncRestaurantPlatformWithPlan(restaurant);
     const activeSubscription = await prisma.restaurantSubscription.findFirst({
       where: { restaurantId: restaurant.id, isActive: true },
@@ -217,18 +217,18 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response, nex
         },
         subscription: activeSubscription
           ? {
-              id: activeSubscription.id,
-              planName: activeSubscription.plan.name,
-              planPrice: activeSubscription.plan.price,
-              amount: activeSubscription.amount,
-              paymentStatus: activeSubscription.paymentStatus,
-              paymentMethod: activeSubscription.paymentMethod,
-              startsAt: activeSubscription.startsAt,
-              expiresAt: activeSubscription.expiresAt,
-              isActive: activeSubscription.isActive,
-              daysRemaining: Math.max(0, Math.ceil((new Date(activeSubscription.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))),
-              planFeatures: activeSubscription.plan.features,
-            }
+            id: activeSubscription.id,
+            planName: activeSubscription.plan.name,
+            planPrice: activeSubscription.plan.price,
+            amount: activeSubscription.amount,
+            paymentStatus: activeSubscription.paymentStatus,
+            paymentMethod: activeSubscription.paymentMethod,
+            startsAt: activeSubscription.startsAt,
+            expiresAt: activeSubscription.expiresAt,
+            isActive: activeSubscription.isActive,
+            daysRemaining: Math.max(0, Math.ceil((new Date(activeSubscription.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))),
+            planFeatures: activeSubscription.plan.features,
+          }
           : null,
         stats: {
           todayRevenue: Math.round((todayRevenue + Number.EPSILON) * 100) / 100,
@@ -1865,7 +1865,7 @@ export async function clearOwnerOrderHistory(req: AuthenticatedRequest, res: Res
 export async function getOwnerSubscription(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const restaurant = await getOwnerRestaurant(req.user!.id);
-    
+
     // Check if subscription has expired and auto-suspend if so
     await checkRestaurantSubscriptionExpiry(restaurant.id);
 
@@ -1903,7 +1903,7 @@ export async function getOwnerSubscription(req: AuthenticatedRequest, res: Respo
     // 3. Past or expired free trial (after 1 month)
     const hadCompletedTrial = subscriptions.some(
       (s) => (s.paymentStatus === 'FREE_TRIAL' || s.paymentMethod === 'FREE_TRIAL' || (s.plan?.price === 0 && s.amount === 0)) &&
-             (!s.isActive || new Date(s.expiresAt) <= now)
+        (!s.isActive || new Date(s.expiresAt) <= now)
     );
 
     let filteredPlans = plans;
@@ -1989,9 +1989,9 @@ export async function buyOwnerSubscription(req: AuthenticatedRequest, res: Respo
 
       const hasTrialHistory = existingTrials.some(
         (s) => s.paymentStatus === 'FREE_TRIAL' ||
-               s.paymentStatus === 'TRIAL_PENDING' ||
-               s.paymentMethod === 'FREE_TRIAL' ||
-               (s.plan?.price === 0 && s.amount === 0)
+          s.paymentStatus === 'TRIAL_PENDING' ||
+          s.paymentMethod === 'FREE_TRIAL' ||
+          (s.plan?.price === 0 && s.amount === 0)
       );
 
       if (hasTrialHistory) {
@@ -2034,7 +2034,7 @@ export async function buyOwnerSubscription(req: AuthenticatedRequest, res: Respo
             title: '⏳ New Free Trial Request',
             message: `${restaurant.name} has requested activation of free trial: ${plan.name}. Please review and approve in Subscriptions.`,
           },
-        }).catch(() => {});
+        }).catch(() => { });
 
         emitNotification(adm.id, {
           type: 'FREE_TRIAL_REQUESTED',
@@ -2053,7 +2053,7 @@ export async function buyOwnerSubscription(req: AuthenticatedRequest, res: Respo
           title: '⏳ Free Trial Request Submitted',
           message: `Your request for ${plan.name} has been sent to Admin. It will be activated for 30 days once approved by admin!`,
         },
-      }).catch(() => {});
+      }).catch(() => { });
 
       emitNotification(req.user!.id, {
         type: 'FREE_TRIAL_REQUESTED',
@@ -2149,7 +2149,7 @@ export async function buyOwnerSubscription(req: AuthenticatedRequest, res: Respo
         title: `🎉 ${plan.name} Activated!`,
         message: `Your restaurant has subscribed to ${plan.name} for ${days} days (₹${formattedPrice}). Valid until ${expiresAt.toLocaleDateString()}. Your restaurant is now active!`,
       },
-    }).catch(() => {});
+    }).catch(() => { });
 
     emitNotification(req.user!.id, {
       type: 'SUBSCRIPTION_ACTIVATED',
@@ -2215,9 +2215,9 @@ export async function createOwnerSubscriptionOrder(req: AuthenticatedRequest, re
 
       const hasTrialHistory = existingTrials.some(
         (s) => s.paymentStatus === 'FREE_TRIAL' ||
-               s.paymentStatus === 'TRIAL_PENDING' ||
-               s.paymentMethod === 'FREE_TRIAL' ||
-               (s.plan?.price === 0 && s.amount === 0)
+          s.paymentStatus === 'TRIAL_PENDING' ||
+          s.paymentMethod === 'FREE_TRIAL' ||
+          (s.plan?.price === 0 && s.amount === 0)
       );
 
       if (hasTrialHistory) {
@@ -2422,7 +2422,7 @@ export async function verifyOwnerSubscriptionPayment(req: AuthenticatedRequest, 
         title: `🎉 ${plan.name} Activated via Razorpay!`,
         message: `Your payment of ₹${formattedPrice} was successful. ${plan.name} plan is active for ${days} days until ${expiresAt.toLocaleDateString()}. Restaurant is now open!`,
       },
-    }).catch(() => {});
+    }).catch(() => { });
 
     emitNotification(req.user!.id, {
       type: 'SUBSCRIPTION_ACTIVATED',
@@ -2545,7 +2545,7 @@ export async function registerOwnerUpiAccount(
     if (!verificationResult.isValidSyntax) {
       throw new AppError(
         verificationResult.restrictionReason ||
-          'Invalid UPI ID format. Expected username@bank (e.g. restaurant@okaxis).',
+        'Invalid UPI ID format. Expected username@bank (e.g. restaurant@okaxis).',
         400,
         'INVALID_UPI_SYNTAX'
       );

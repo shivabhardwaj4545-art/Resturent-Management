@@ -44,237 +44,237 @@ export async function createUpiIntent(
     const restaurant = order.restaurant;
 
     // Check restaurant UPI account eligibility (personal P2P vs commercial merchant)
-    let upiAccount = await prisma.restaurantUpiAccount.findUnique({
-      where: { restaurantId: restaurant.id },
-    });
-
-    if (!upiAccount && restaurant.paymentUpiId && isValidUpiId(restaurant.paymentUpiId)) {
-      const cleanUpi = restaurant.paymentUpiId.toLowerCase().trim();
-      upiAccount = await prisma.restaurantUpiAccount.upsert({
+      let upiAccount = await prisma.restaurantUpiAccount.findUnique({
         where: { restaurantId: restaurant.id },
-        create: {
-          restaurantId: restaurant.id,
-          upiId: cleanUpi,
-          accountType: 'MERCHANT',
-          businessName: restaurant.merchantName || restaurant.name,
-          providerId: 'DIRECT_UPI',
-          verificationStatus: 'VERIFIED',
-          merchantEligibilityStatus: 'MERCHANT_APPROVED',
-          verifiedAt: new Date(),
-          approvedAt: new Date(),
-        },
-        update: {
-          upiId: cleanUpi,
-          verificationStatus: 'VERIFIED',
-          merchantEligibilityStatus: 'MERCHANT_APPROVED',
-        },
-      }).catch(() => null);
-    }
-
-    if (upiAccount) {
-      if (upiAccount.merchantEligibilityStatus === 'RESTRICTED') {
-        throw new AppError(
-          upiAccount.restrictionReason ||
-            'Online UPI payments are restricted for this restaurant because the registered UPI ID is a Personal (P2P) account. Under NPCI and acquiring bank policies, personal UPI handles cannot accept dynamic commercial order payments (which causes "Receiver bank declined due to internal link policy"). Please choose Pay to Waiter or Pay on Counter.',
-          400,
-          'UPI_PERSONAL_ACCOUNT_RESTRICTED'
-        );
-      }
-      if (upiAccount.verificationStatus === 'REJECTED') {
-        throw new AppError(
-          'Online UPI is disabled for this restaurant because the registered receiving account was rejected during verification. Please choose Pay to Waiter or Pay on Counter.',
-          400,
-          'UPI_ACCOUNT_REJECTED'
-        );
-      }
-    }
-
-    // Requirement 5: A restaurant must not become production payment-enabled until its merchant account
-    // and direct-settlement eligibility are approved by the acquiring provider.
-    if (process.env.NODE_ENV === 'production') {
-      if (!upiAccount || upiAccount.merchantEligibilityStatus !== 'MERCHANT_APPROVED') {
-        throw new AppError(
-          'Production UPI payments are unavailable for this restaurant until its merchant acquiring account and direct-settlement eligibility are approved by the provider.',
-          400,
-          'MERCHANT_APPROVAL_REQUIRED'
-        );
-      }
-    }
-
-    if (restaurant.paymentEnabled === false) {
-      throw new AppError('Online payments are currently disabled for this restaurant.', 400, 'PAYMENTS_DISABLED');
-    }
-
-    if (restaurant.upiEnabled === false) {
-      throw new AppError('UPI payments are disabled for this restaurant.', 400, 'UPI_DISABLED');
-    }
-
-    let merchantVpa = restaurant.paymentUpiId;
-    if (!merchantVpa || !isValidUpiId(merchantVpa)) {
-      const fallbackUpi = process.env.PLATFORM_DEFAULT_UPI_ID || 'ezrestro@upi';
-      merchantVpa = isValidUpiId(fallbackUpi) ? fallbackUpi : 'teamezrestro@upi';
-    }
-
-    // Authoritative amount comes directly from DB Order record
-    const authoritativeAmount = order.total;
-    const amountPaise = Math.round(authoritativeAmount * 100);
-    const merchantName = restaurant.merchantName || restaurant.name;
-    const forceNew = Boolean(req.body.forceNew);
-
-    // Resolve active acquiring bank/UPI PSP provider adapter
-    const provider = UpiProviderRegistry.getProvider(restaurant.paymentProvider || undefined);
-
-    // Idempotency check: Reuse existing active pending attempt if not expired and not forcing new
-    const existingPayment = await prisma.payment.findUnique({
-      where: { orderId: order.id },
-      include: {
-        attempts: {
-          where: { status: 'PENDING' },
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-        },
-      },
-    });
-
-    const activeAttempt = existingPayment?.attempts?.[0];
-    const isAttemptValid = activeAttempt && activeAttempt.expiresAt > new Date();
-
-    if (existingPayment && activeAttempt && isAttemptValid && !forceNew) {
-      res.json({
-        success: true,
-        data: {
-          paymentId: existingPayment.id,
-          attemptId: activeAttempt.id,
-          orderId: order.id,
-          restaurantId: restaurant.id,
-          txnRef: activeAttempt.merchantRef,
-          merchantRef: activeAttempt.merchantRef,
-          amount: activeAttempt.amount,
-          amountPaise: activeAttempt.amountPaise || amountPaise,
-          currency: activeAttempt.currency || 'INR',
-          merchantVpa,
-          merchantName,
-          status: 'PENDING',
-          paymentStatus: existingPayment.status,
-          upiIntentUrl: activeAttempt.intentUrl,
-          qrPayload: activeAttempt.qrPayload || activeAttempt.intentUrl,
-          expiresAt: activeAttempt.expiresAt,
-          utr: existingPayment.providerTxnId || null,
-          utrStatus: existingPayment.providerTxnId ? 'CONFIRMED' : 'AWAITING_BANK_REFERENCE',
-          createdAt: activeAttempt.createdAt,
-          reused: true,
-        },
       });
-      return;
-    }
 
-    const merchantTxnRef = generateTransactionRef(order.id);
-
-    const intentResult = await provider.createIntent({
-      orderId: order.id,
-      restaurantId: restaurant.id,
-      restaurantName: restaurant.name,
-      merchantVpa,
-      merchantName,
-      amount: authoritativeAmount,
-      currency: 'INR',
-      merchantTxnRef,
-      customerName: order.guestName || undefined,
-      customerPhone: order.guestPhone || undefined,
-      orderNote: `Order #${order.id.slice(-6).toUpperCase()}`,
-    });
-
-    // Create or update Payment record with unique transaction reference and PENDING status
-    const payment = await prisma.payment.upsert({
-      where: { orderId: order.id },
+      if(!upiAccount && restaurant.paymentUpiId && isValidUpiId(restaurant.paymentUpiId)) {
+        const cleanUpi = restaurant.paymentUpiId.toLowerCase().trim();
+    upiAccount = await prisma.restaurantUpiAccount.upsert({
+      where: { restaurantId: restaurant.id },
       create: {
-        orderId: order.id,
         restaurantId: restaurant.id,
-        method: 'UPI_INTENT',
-        status: 'PENDING',
-        amount: authoritativeAmount,
-        amountPaise,
-        txnRef: merchantTxnRef,
+        upiId: cleanUpi,
+        accountType: 'MERCHANT',
+        businessName: restaurant.merchantName || restaurant.name,
+        providerId: 'DIRECT_UPI',
+        verificationStatus: 'VERIFIED',
+        merchantEligibilityStatus: 'MERCHANT_APPROVED',
+        verifiedAt: new Date(),
+        approvedAt: new Date(),
       },
       update: {
-        method: 'UPI_INTENT',
-        status: 'PENDING',
-        amount: authoritativeAmount,
-        amountPaise,
-        txnRef: merchantTxnRef,
+        upiId: cleanUpi,
+        verificationStatus: 'VERIFIED',
+        merchantEligibilityStatus: 'MERCHANT_APPROVED',
       },
-    });
+    }).catch(() => null);
+  }
 
-    // Store PaymentAttempt record
-    const attempt = await prisma.paymentAttempt.create({
-      data: {
-        orderId: order.id,
-        restaurantId: restaurant.id,
-        paymentId: payment.id,
-        merchantRef: merchantTxnRef,
-        providerRef: intentResult.providerTxnRef || null,
-        provider: provider.providerName,
-        amount: authoritativeAmount,
-        amountPaise,
-        currency: 'INR',
-        status: 'PENDING',
-        intentUrl: intentResult.intentUrl,
-        qrPayload: intentResult.qrPayload,
-        expiresAt: intentResult.expiresAt,
-        metadata: intentResult.metadata || {},
+    if (upiAccount) {
+    if (upiAccount.merchantEligibilityStatus === 'RESTRICTED') {
+      throw new AppError(
+        upiAccount.restrictionReason ||
+        'Online UPI payments are restricted for this restaurant because the registered UPI ID is a Personal (P2P) account. Under NPCI and acquiring bank policies, personal UPI handles cannot accept dynamic commercial order payments (which causes "Receiver bank declined due to internal link policy"). Please choose Pay to Waiter or Pay on Counter.',
+        400,
+        'UPI_PERSONAL_ACCOUNT_RESTRICTED'
+      );
+    }
+    if (upiAccount.verificationStatus === 'REJECTED') {
+      throw new AppError(
+        'Online UPI is disabled for this restaurant because the registered receiving account was rejected during verification. Please choose Pay to Waiter or Pay on Counter.',
+        400,
+        'UPI_ACCOUNT_REJECTED'
+      );
+    }
+  }
+
+  // Requirement 5: A restaurant must not become production payment-enabled until its merchant account
+  // and direct-settlement eligibility are approved by the acquiring provider.
+  if (process.env.NODE_ENV === 'production') {
+    if (!upiAccount || upiAccount.merchantEligibilityStatus !== 'MERCHANT_APPROVED') {
+      throw new AppError(
+        'Production UPI payments are unavailable for this restaurant until its merchant acquiring account and direct-settlement eligibility are approved by the provider.',
+        400,
+        'MERCHANT_APPROVAL_REQUIRED'
+      );
+    }
+  }
+
+  if (restaurant.paymentEnabled === false) {
+    throw new AppError('Online payments are currently disabled for this restaurant.', 400, 'PAYMENTS_DISABLED');
+  }
+
+  if (restaurant.upiEnabled === false) {
+    throw new AppError('UPI payments are disabled for this restaurant.', 400, 'UPI_DISABLED');
+  }
+
+  let merchantVpa = restaurant.paymentUpiId;
+  if (!merchantVpa || !isValidUpiId(merchantVpa)) {
+    const fallbackUpi = process.env.PLATFORM_DEFAULT_UPI_ID || 'ezrestro@upi';
+    merchantVpa = isValidUpiId(fallbackUpi) ? fallbackUpi : 'teamezrestro@upi';
+  }
+
+  // Authoritative amount comes directly from DB Order record
+  const authoritativeAmount = order.total;
+  const amountPaise = Math.round(authoritativeAmount * 100);
+  const merchantName = restaurant.merchantName || restaurant.name;
+  const forceNew = Boolean(req.body.forceNew);
+
+  // Resolve active acquiring bank/UPI PSP provider adapter
+  const provider = UpiProviderRegistry.getProvider(restaurant.paymentProvider || undefined);
+
+  // Idempotency check: Reuse existing active pending attempt if not expired and not forcing new
+  const existingPayment = await prisma.payment.findUnique({
+    where: { orderId: order.id },
+    include: {
+      attempts: {
+        where: { status: 'PENDING' },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
       },
-    });
+    },
+  });
 
-    // Create PaymentAuditLog
-    await prisma.paymentAuditLog.create({
-      data: {
-        orderId: order.id,
-        paymentId: payment.id,
-        actorType: 'CUSTOMER',
-        action: 'ATTEMPT_INITIATED',
-        details: {
-          merchantTxnRef,
-          amount: authoritativeAmount,
-          amountPaise,
-          provider: provider.providerName,
-        },
-      },
-    });
+  const activeAttempt = existingPayment?.attempts?.[0];
+  const isAttemptValid = activeAttempt && activeAttempt.expiresAt > new Date();
 
-    // Ensure order payment method is recorded as UPI_INTENT
-    await prisma.order.update({
-      where: { id: order.id },
-      data: { paymentMethod: 'UPI_INTENT' },
-    });
-
-    logger.info('UPI Intent generated successfully:', {
-      orderId: order.id,
-      paymentId: payment.id,
-      merchantTxnRef,
-      amount: authoritativeAmount,
-      provider: provider.providerName,
-    });
-
+  if (existingPayment && activeAttempt && isAttemptValid && !forceNew) {
     res.json({
       success: true,
       data: {
-        paymentId: payment.id,
+        paymentId: existingPayment.id,
+        attemptId: activeAttempt.id,
         orderId: order.id,
-        attemptId: attempt.id,
-        txnRef: merchantTxnRef,
-        amount: authoritativeAmount,
-        currency: 'INR',
+        restaurantId: restaurant.id,
+        txnRef: activeAttempt.merchantRef,
+        merchantRef: activeAttempt.merchantRef,
+        amount: activeAttempt.amount,
+        amountPaise: activeAttempt.amountPaise || amountPaise,
+        currency: activeAttempt.currency || 'INR',
         merchantVpa,
         merchantName,
-        upiIntentUrl: intentResult.intentUrl,
-        qrPayload: intentResult.qrPayload,
-        expiresAt: intentResult.expiresAt,
+        status: 'PENDING',
+        paymentStatus: existingPayment.status,
+        upiIntentUrl: activeAttempt.intentUrl,
+        qrPayload: activeAttempt.qrPayload || activeAttempt.intentUrl,
+        expiresAt: activeAttempt.expiresAt,
+        utr: existingPayment.providerTxnId || null,
+        utrStatus: existingPayment.providerTxnId ? 'CONFIRMED' : 'AWAITING_BANK_REFERENCE',
+        createdAt: activeAttempt.createdAt,
+        reused: true,
       },
-      message: 'UPI payment attempt created successfully.',
     });
-  } catch (error) {
-    next(error);
+    return;
   }
+
+  const merchantTxnRef = generateTransactionRef(order.id);
+
+  const intentResult = await provider.createIntent({
+    orderId: order.id,
+    restaurantId: restaurant.id,
+    restaurantName: restaurant.name,
+    merchantVpa,
+    merchantName,
+    amount: authoritativeAmount,
+    currency: 'INR',
+    merchantTxnRef,
+    customerName: order.guestName || undefined,
+    customerPhone: order.guestPhone || undefined,
+    orderNote: `Order #${order.id.slice(-6).toUpperCase()}`,
+  });
+
+  // Create or update Payment record with unique transaction reference and PENDING status
+  const payment = await prisma.payment.upsert({
+    where: { orderId: order.id },
+    create: {
+      orderId: order.id,
+      restaurantId: restaurant.id,
+      method: 'UPI_INTENT',
+      status: 'PENDING',
+      amount: authoritativeAmount,
+      amountPaise,
+      txnRef: merchantTxnRef,
+    },
+    update: {
+      method: 'UPI_INTENT',
+      status: 'PENDING',
+      amount: authoritativeAmount,
+      amountPaise,
+      txnRef: merchantTxnRef,
+    },
+  });
+
+  // Store PaymentAttempt record
+  const attempt = await prisma.paymentAttempt.create({
+    data: {
+      orderId: order.id,
+      restaurantId: restaurant.id,
+      paymentId: payment.id,
+      merchantRef: merchantTxnRef,
+      providerRef: intentResult.providerTxnRef || null,
+      provider: provider.providerName,
+      amount: authoritativeAmount,
+      amountPaise,
+      currency: 'INR',
+      status: 'PENDING',
+      intentUrl: intentResult.intentUrl,
+      qrPayload: intentResult.qrPayload,
+      expiresAt: intentResult.expiresAt,
+      metadata: intentResult.metadata || {},
+    },
+  });
+
+  // Create PaymentAuditLog
+  await prisma.paymentAuditLog.create({
+    data: {
+      orderId: order.id,
+      paymentId: payment.id,
+      actorType: 'CUSTOMER',
+      action: 'ATTEMPT_INITIATED',
+      details: {
+        merchantTxnRef,
+        amount: authoritativeAmount,
+        amountPaise,
+        provider: provider.providerName,
+      },
+    },
+  });
+
+  // Ensure order payment method is recorded as UPI_INTENT
+  await prisma.order.update({
+    where: { id: order.id },
+    data: { paymentMethod: 'UPI_INTENT' },
+  });
+
+  logger.info('UPI Intent generated successfully:', {
+    orderId: order.id,
+    paymentId: payment.id,
+    merchantTxnRef,
+    amount: authoritativeAmount,
+    provider: provider.providerName,
+  });
+
+  res.json({
+    success: true,
+    data: {
+      paymentId: payment.id,
+      orderId: order.id,
+      attemptId: attempt.id,
+      txnRef: merchantTxnRef,
+      amount: authoritativeAmount,
+      currency: 'INR',
+      merchantVpa,
+      merchantName,
+      upiIntentUrl: intentResult.intentUrl,
+      qrPayload: intentResult.qrPayload,
+      expiresAt: intentResult.expiresAt,
+    },
+    message: 'UPI payment attempt created successfully.',
+  });
+} catch (error) {
+  next(error);
+}
 }
 
 /**
@@ -477,32 +477,32 @@ export async function getOrderPaymentDetails(
         amountPaise: payment?.amountPaise || Math.round(order.total * 100),
         payment: payment
           ? {
-              id: payment.id,
-              method: payment.method,
-              status: payment.status,
-              amount: payment.amount,
-              amountPaise: payment.amountPaise || Math.round(payment.amount * 100),
-              merchantRef: latestAttempt?.merchantRef || payment.txnRef,
-              txnRef: payment.txnRef || latestAttempt?.merchantRef,
-              providerTxnId: payment.providerTxnId || null,
-              utr: payment.providerTxnId || null,
-              utrStatus: payment.providerTxnId ? 'CONFIRMED' : 'AWAITING_BANK_REFERENCE',
-              paidAt: payment.paidAt,
-            }
+            id: payment.id,
+            method: payment.method,
+            status: payment.status,
+            amount: payment.amount,
+            amountPaise: payment.amountPaise || Math.round(payment.amount * 100),
+            merchantRef: latestAttempt?.merchantRef || payment.txnRef,
+            txnRef: payment.txnRef || latestAttempt?.merchantRef,
+            providerTxnId: payment.providerTxnId || null,
+            utr: payment.providerTxnId || null,
+            utrStatus: payment.providerTxnId ? 'CONFIRMED' : 'AWAITING_BANK_REFERENCE',
+            paidAt: payment.paidAt,
+          }
           : null,
         activeAttempt: latestAttempt
           ? {
-              id: latestAttempt.id,
-              merchantRef: latestAttempt.merchantRef,
-              amount: latestAttempt.amount,
-              amountPaise: latestAttempt.amountPaise || Math.round(latestAttempt.amount * 100),
-              currency: latestAttempt.currency,
-              status: latestAttempt.status,
-              intentUrl: latestAttempt.intentUrl,
-              qrPayload: latestAttempt.qrPayload,
-              expiresAt: latestAttempt.expiresAt,
-              isExpired: new Date() > latestAttempt.expiresAt,
-            }
+            id: latestAttempt.id,
+            merchantRef: latestAttempt.merchantRef,
+            amount: latestAttempt.amount,
+            amountPaise: latestAttempt.amountPaise || Math.round(latestAttempt.amount * 100),
+            currency: latestAttempt.currency,
+            status: latestAttempt.status,
+            intentUrl: latestAttempt.intentUrl,
+            qrPayload: latestAttempt.qrPayload,
+            expiresAt: latestAttempt.expiresAt,
+            isExpired: new Date() > latestAttempt.expiresAt,
+          }
           : null,
       },
     });

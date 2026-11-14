@@ -104,7 +104,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
   });
 
   const restaurant = menuData?.restaurant;
-  
+
 
   const [manualTableNumber, setManualTableNumber] = useState(tableNumber || '');
 
@@ -178,7 +178,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
   };
 
   // Address queries & state
-  
+
   const { data: profileData, refetch: refetchProfile } = useQuery({
     queryKey: ['user-profile'],
     queryFn: async () => {
@@ -200,7 +200,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
 
   const [usePoints, setUsePoints] = useState(false);
 
-  
+
   const { items, couponCode, couponDiscount, clearCart, subtotal, total, removeItem, updateQuantity } = useCartStore();
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -520,7 +520,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
     setLoading(true);
     try {
       const token = tableToken || localStorage.getItem(`table_token_${restaurantSlug}`) || (manualTableNumber ? generateUniqueTableCode(restaurantSlug, manualTableNumber.trim()) : '');
-            const isOnline = selectedPayment === 'UPI_INTENT' || (selectedPayment as string) === 'RAZORPAY';
+      const isOnline = selectedPayment === 'UPI_INTENT' || (selectedPayment as string) === 'RAZORPAY';
       const effectiveMethod = selectedPayment === 'COD' ? 'COD' : selectedPayment === 'PAY_TO_WAITER' ? 'PAY_TO_WAITER' : 'UPI_INTENT';
 
       const response = await api.post('/orders/guest', {
@@ -695,7 +695,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
             <div className="flex justify-between text-muted-foreground">
               <span>GST (18%)</span><span suppressHydrationWarning>₹{gst.toFixed(2)}</span>
             </div>
-            
+
             {mounted && !addonOrderId && couponDiscount > 0 && (
               <div className="flex justify-between text-green-600">
                 <span>Coupon ({couponCode})</span><span>-₹{couponDiscount.toFixed(2)}</span>
@@ -729,11 +729,10 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
             <button
               type="button"
               onClick={() => setUsePoints(!usePoints)}
-              className={`px-4 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
-                usePoints
+              className={`px-4 py-1.5 rounded-xl text-xs font-semibold border transition-all ${usePoints
                   ? 'border-orange-500 bg-orange-500 text-white'
                   : 'border-border text-foreground hover:bg-muted'
-              }`}
+                }`}
             >
               {usePoints ? 'Redeemed' : 'Redeem'}
             </button>
@@ -769,54 +768,51 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                 disabled: isUpiRestricted,
               },
             ].map((method) => (
-                <button
-                  key={method.value}
-                  type="button"
-                  disabled={method.disabled}
-                  onClick={() => {
-                    if (!method.disabled) {
-                      setSelectedPayment(method.value as 'UPI_INTENT' | 'COD' | 'PAY_TO_WAITER');
-                    }
-                  }}
-                  className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all ${
-                    method.disabled
-                      ? 'opacity-50 cursor-not-allowed bg-muted/20 border-border/60'
-                      : selectedPayment === method.value
+              <button
+                key={method.value}
+                type="button"
+                disabled={method.disabled}
+                onClick={() => {
+                  if (!method.disabled) {
+                    setSelectedPayment(method.value as 'UPI_INTENT' | 'COD' | 'PAY_TO_WAITER');
+                  }
+                }}
+                className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all ${method.disabled
+                    ? 'opacity-50 cursor-not-allowed bg-muted/20 border-border/60'
+                    : selectedPayment === method.value
                       ? 'border-primary bg-primary/5'
                       : 'border-border hover:bg-muted/50 cursor-pointer'
                   }`}
-                >
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                    selectedPayment === method.value ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+              >
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${selectedPayment === method.value ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
                   }`}>
-                    {method.icon}
-                  </div>
-                  <div className="text-left flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-semibold text-sm">{method.label}</p>
-                      {method.disabled && (
-                        <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold px-2 py-0.5 rounded-full border border-amber-500/20">
-                          Unavailable
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">{method.sublabel}</p>
-                  </div>
-                  <div className={`w-4 h-4 rounded-full border-2 ${
-                    selectedPayment === method.value ? 'border-primary bg-primary' : 'border-muted-foreground'
-                  }`} />
-                </button>
-              ))}
-            </div>
-
-            {isUpiRestricted && (
-              <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
-                <span className="text-sm">💡</span>
-                <div>
-                  <strong>Notice:</strong> Online UPI intent is currently unavailable because this restaurant's UPI ID is a personal account. Bank link policies reject commercial app deep links to personal VPAs. Please choose <strong>Pay to Waiter</strong> or <strong>Pay on Counter</strong>.
+                  {method.icon}
                 </div>
+                <div className="text-left flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-sm">{method.label}</p>
+                    {method.disabled && (
+                      <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold px-2 py-0.5 rounded-full border border-amber-500/20">
+                        Unavailable
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">{method.sublabel}</p>
+                </div>
+                <div className={`w-4 h-4 rounded-full border-2 ${selectedPayment === method.value ? 'border-primary bg-primary' : 'border-muted-foreground'
+                  }`} />
+              </button>
+            ))}
+          </div>
+
+          {isUpiRestricted && (
+            <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+              <span className="text-sm">💡</span>
+              <div>
+                <strong>Notice:</strong> Online UPI intent is currently unavailable because this restaurant's UPI ID is a personal account. Bank link policies reject commercial app deep links to personal VPAs. Please choose <strong>Pay to Waiter</strong> or <strong>Pay on Counter</strong>.
               </div>
-            )}
+            </div>
+          )}
         </div>
 
         {selectedPayment === 'PAY_TO_WAITER' && (
@@ -938,32 +934,31 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                 <p className="text-xs text-muted-foreground">{activeUser.email}</p>
               </div>
             </div>
-                          <div className="mt-4">
-                <label className="text-xs font-semibold text-muted-foreground mb-1 flex items-center justify-between">
-                  <span>Table Number <span className="text-red-500">*</span></span>
-                  {hasTableToken || !!tableNumber ? (
-                    <span className="text-[10px] text-green-600 bg-green-500/10 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
-                      <Lock className="w-3 h-3" /> QR Verified (Locked)
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-full font-medium">
-                      Table QR Scan Required
-                    </span>
-                  )}
-                </label>
-                <input
-                  type="text"
-                  placeholder="Enter Table / Room Number (e.g. 5, Room 301)"
-                  value={manualTableNumber}
-                  readOnly={hasTableToken || !!tableNumber}
-                  onChange={(e) => !(hasTableToken || !!tableNumber) && handleTableNumberChange(e.target.value)}
-                  className={`w-full px-3.5 py-2.5 rounded-xl text-sm border-0 focus:outline-none text-foreground transition-all ${
-                    hasTableToken || !!tableNumber
-                      ? 'bg-muted/80 cursor-not-allowed font-semibold text-primary border border-primary/20 select-none'
-                      : 'bg-muted focus:ring-2 focus:ring-primary/20'
+            <div className="mt-4">
+              <label className="text-xs font-semibold text-muted-foreground mb-1 flex items-center justify-between">
+                <span>Table Number <span className="text-red-500">*</span></span>
+                {hasTableToken || !!tableNumber ? (
+                  <span className="text-[10px] text-green-600 bg-green-500/10 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                    <Lock className="w-3 h-3" /> QR Verified (Locked)
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-full font-medium">
+                    Table QR Scan Required
+                  </span>
+                )}
+              </label>
+              <input
+                type="text"
+                placeholder="Enter Table / Room Number (e.g. 5, Room 301)"
+                value={manualTableNumber}
+                readOnly={hasTableToken || !!tableNumber}
+                onChange={(e) => !(hasTableToken || !!tableNumber) && handleTableNumberChange(e.target.value)}
+                className={`w-full px-3.5 py-2.5 rounded-xl text-sm border-0 focus:outline-none text-foreground transition-all ${hasTableToken || !!tableNumber
+                    ? 'bg-muted/80 cursor-not-allowed font-semibold text-primary border border-primary/20 select-none'
+                    : 'bg-muted focus:ring-2 focus:ring-primary/20'
                   }`}
-                />
-              </div>
+              />
+            </div>
             <button
               onClick={onUserOrder}
               disabled={loading || items.length === 0}
@@ -1011,32 +1006,31 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
               </div>
             </div>
 
-                          <div>
-                <label className="text-sm font-medium mb-1.5 flex items-center justify-between">
-                  <span>Table / Room Number <span className="text-red-500">*</span></span>
-                  {hasTableToken ? (
-                    <span className="text-[10px] text-green-600 bg-green-500/10 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
-                      <Lock className="w-3 h-3" /> Scanned QR (Locked)
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-muted-foreground">
-                      Enter your table or room
-                    </span>
-                  )}
-                </label>
-                <input
-                  type="text"
-                  placeholder="Enter Table Number (e.g. 5, 11, Room 102)"
-                  value={manualTableNumber}
-                  readOnly={hasTableToken}
-                  onChange={(e) => !hasTableToken && handleTableNumberChange(e.target.value)}
-                  className={`w-full px-4 py-3 rounded-xl text-sm border-0 focus:outline-none text-foreground transition-all ${
-                    hasTableToken
-                      ? 'bg-muted/80 cursor-not-allowed font-semibold text-primary border border-primary/20 select-none'
-                      : 'bg-muted focus:ring-2 focus:ring-primary/20'
+            <div>
+              <label className="text-sm font-medium mb-1.5 flex items-center justify-between">
+                <span>Table / Room Number <span className="text-red-500">*</span></span>
+                {hasTableToken ? (
+                  <span className="text-[10px] text-green-600 bg-green-500/10 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                    <Lock className="w-3 h-3" /> Scanned QR (Locked)
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-muted-foreground">
+                    Enter your table or room
+                  </span>
+                )}
+              </label>
+              <input
+                type="text"
+                placeholder="Enter Table Number (e.g. 5, 11, Room 102)"
+                value={manualTableNumber}
+                readOnly={hasTableToken}
+                onChange={(e) => !hasTableToken && handleTableNumberChange(e.target.value)}
+                className={`w-full px-4 py-3 rounded-xl text-sm border-0 focus:outline-none text-foreground transition-all ${hasTableToken
+                    ? 'bg-muted/80 cursor-not-allowed font-semibold text-primary border border-primary/20 select-none'
+                    : 'bg-muted focus:ring-2 focus:ring-primary/20'
                   }`}
-                />
-              </div>
+              />
+            </div>
             <button
               type="submit"
               disabled={loading || items.length === 0}
@@ -1163,8 +1157,8 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                       {selectedPayment === 'PAY_TO_WAITER'
                         ? 'Pay to Waiter'
                         : selectedPayment === 'COD'
-                        ? 'Pay on Counter'
-                        : 'Pay via UPI'}
+                          ? 'Pay on Counter'
+                          : 'Pay via UPI'}
                     </span>
                   </div>
                   <div className="border-t border-border/50 pt-2 flex items-center justify-between font-bold text-sm">
@@ -1264,18 +1258,16 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                   <button
                     type="button"
                     onClick={() => setSelectedQrTab('dynamic')}
-                    className={`flex-1 py-2 font-semibold rounded-lg transition-all ${
-                      selectedQrTab === 'dynamic' ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:bg-muted/50'
-                    }`}
+                    className={`flex-1 py-2 font-semibold rounded-lg transition-all ${selectedQrTab === 'dynamic' ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:bg-muted/50'
+                      }`}
                   >
                     Auto Dynamic QR (₹{upiData.amount.toFixed(2)})
                   </button>
                   <button
                     type="button"
                     onClick={() => setSelectedQrTab('custom')}
-                    className={`flex-1 py-2 font-semibold rounded-lg transition-all ${
-                      selectedQrTab === 'custom' ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:bg-muted/50'
-                    }`}
+                    className={`flex-1 py-2 font-semibold rounded-lg transition-all ${selectedQrTab === 'custom' ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:bg-muted/50'
+                      }`}
                   >
                     Owner Uploaded QR Image
                   </button>
