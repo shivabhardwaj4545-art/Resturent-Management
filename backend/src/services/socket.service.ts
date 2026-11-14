@@ -152,6 +152,8 @@ export function emitOrderStatusUpdate(orderId: string, restaurantId: string, dat
   driverId?: string;
   driverName?: string;
   paidAt?: string;
+  paymentConfirmedAt?: string;
+  counterPaymentMethod?: string;
   items?: any;
 }): void {
   if (!io) return;

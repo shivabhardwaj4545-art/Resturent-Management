@@ -45,7 +45,7 @@ interface RazorpayOptions {
 const guestSchema = z.object({
   guestName: z.string().optional().or(z.literal('')),
   guestPhone: z.string().optional().or(z.literal('')),
-  paymentMethod: z.enum(['UPI_INTENT', 'RAZORPAY', 'COD', 'PAY_TO_WAITER']),
+  paymentMethod: z.enum(['UPI_INTENT', 'RAZORPAY', 'COD', 'PAY_TO_WAITER', 'PAY_AT_COUNTER']).default('PAY_AT_COUNTER'),
 });
 
 type GuestForm = z.infer<typeof guestSchema>;
@@ -204,7 +204,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
   const { items, couponCode, couponDiscount, clearCart, subtotal, total, removeItem, updateQuantity } = useCartStore();
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [selectedPayment, setSelectedPayment] = useState<'UPI_INTENT' | 'COD' | 'PAY_TO_WAITER'>('UPI_INTENT');
+  const [selectedPayment, setSelectedPayment] = useState<'PAY_AT_COUNTER' | 'PAY_TO_WAITER' | 'COD' | 'UPI_INTENT'>('PAY_AT_COUNTER');
   const [onlinePaymentType, setOnlinePaymentType] = useState<'DIRECT' | 'RAZORPAY'>('DIRECT');
 
   const isUpiRestricted = false;
@@ -262,7 +262,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
 
   const { register, handleSubmit, formState: { errors } } = useForm<GuestForm>({
     resolver: zodResolver(guestSchema),
-    defaultValues: { paymentMethod: 'RAZORPAY' },
+    defaultValues: { paymentMethod: 'PAY_AT_COUNTER' },
   });
 
   const loadRazorpay = (): Promise<boolean> => {
@@ -512,8 +512,10 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
     setLoading(true);
     try {
       const token = tableToken || localStorage.getItem(`table_token_${restaurantSlug}`) || (manualTableNumber ? generateUniqueTableCode(restaurantSlug, manualTableNumber.trim()) : '');
-      const isOnline = selectedPayment === 'UPI_INTENT' || (selectedPayment as string) === 'RAZORPAY';
-      const effectiveMethod = selectedPayment === 'COD' ? 'COD' : selectedPayment === 'PAY_TO_WAITER' ? 'PAY_TO_WAITER' : 'UPI_INTENT';
+      // Online payment is temporarily disabled on customer checkout.
+      // All orders are placed with offline counter payment and given a 4-digit verification code.
+      const isOnline = false;
+      const effectiveMethod = 'PAY_AT_COUNTER';
 
       const response = await api.post('/orders/guest', {
         guestName: formData.guestName?.trim() || 'Guest',
@@ -521,7 +523,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
         tableNumber: manualTableNumber ? manualTableNumber.trim() : '1',
         tableToken: token,
         paymentMethod: effectiveMethod,
-        isDirect: isOnline,
+        isDirect: false,
         couponCode: couponCode ?? undefined,
         restaurantSlug,
         cartItems: items.map((item) => ({
@@ -533,17 +535,13 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
       });
 
       const { order } = response.data.data as {
-        order: { id: string; total: number; razorpayOrderId: string | null };
+        order: { id: string; total: number; razorpayOrderId: string | null; verificationCode?: string };
       };
 
-      if (isOnline) {
-        await handleUpiIntentPayment(order.id);
-      } else {
-        saveOrderToRecent(order.id, restaurantSlug);
-        clearCart();
-        toast.success('Order placed successfully! 🎉');
-        router.push(`/r/${restaurantSlug}/order/${order.id}`);
-      }
+      saveOrderToRecent(order.id, restaurantSlug);
+      clearCart();
+      toast.success('Order placed successfully! 🎉 Show your 4-digit verification code at the counter.');
+      router.push(`/r/${restaurantSlug}/order/${order.id}`);
     } catch (err: any) {
       const responseCode = err.response?.data?.code;
       if (responseCode === 'ITEM_NOT_FOUND') {
@@ -571,14 +569,16 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
     setLoading(true);
     try {
       const token = tableToken || localStorage.getItem(`table_token_${restaurantSlug}`) || (manualTableNumber ? generateUniqueTableCode(restaurantSlug, manualTableNumber.trim()) : '');
-      const isOnline = selectedPayment === 'UPI_INTENT' || (selectedPayment as string) === 'RAZORPAY';
-      const effectiveMethod = selectedPayment === 'COD' ? 'COD' : selectedPayment === 'PAY_TO_WAITER' ? 'PAY_TO_WAITER' : 'UPI_INTENT';
+      // Online payment is temporarily disabled on customer checkout.
+      // All orders are placed with offline counter payment and given a 4-digit verification code.
+      const isOnline = false;
+      const effectiveMethod = 'PAY_AT_COUNTER';
 
       const response = await api.post('/orders', {
         tableNumber: manualTableNumber ? manualTableNumber.trim() : undefined,
         tableToken: token,
         paymentMethod: effectiveMethod,
-        isDirect: isOnline,
+        isDirect: false,
         couponCode: couponCode ?? undefined,
         restaurantSlug,
         useWallet: false,
@@ -592,19 +592,15 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
       });
 
       const { order } = response.data.data as {
-        order: { id: string; total: number; razorpayOrderId: string | null };
+        order: { id: string; total: number; razorpayOrderId: string | null; verificationCode?: string };
       };
 
-      if (isOnline) {
-        await handleUpiIntentPayment(order.id);
-      } else {
-        queryClient.invalidateQueries({ queryKey: ['user-profile'] });
-        queryClient.invalidateQueries({ queryKey: ['user-profile-loyalty'] });
-        saveOrderToRecent(order.id, restaurantSlug);
-        clearCart();
-        toast.success('Order placed! 🎉');
-        router.push(`/r/${restaurantSlug}/order/${order.id}`);
-      }
+      queryClient.invalidateQueries({ queryKey: ['user-profile'] });
+      queryClient.invalidateQueries({ queryKey: ['user-profile-loyalty'] });
+      saveOrderToRecent(order.id, restaurantSlug);
+      clearCart();
+      toast.success('Order placed! 🎉 Show your 4-digit verification code at the counter.');
+      router.push(`/r/${restaurantSlug}/order/${order.id}`);
     } catch (err: any) {
       const responseCode = err.response?.data?.code;
       if (responseCode === 'ITEM_NOT_FOUND') {
@@ -731,130 +727,37 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
           </div>
         )}
 
-        {/* Payment Method - 3 Options: Pay to Waiter, Pay on Counter, Pay via UPI */}
-        <div className="bg-card border border-border rounded-2xl p-4">
-          <h2 className="font-display font-semibold mb-3">Payment Method</h2>
-          <div className="space-y-2">
-            {[
-              {
-                value: 'PAY_TO_WAITER',
-                label: 'Pay to Waiter',
-                sublabel: 'Pay cash, UPI, or card to your waiter at your table',
-                icon: <User className="w-5 h-5 text-orange-500" />,
-                disabled: false,
-              },
-              {
-                value: 'COD',
-                label: 'Pay on Counter',
-                sublabel: 'Pay cash or card at the restaurant counter',
-                icon: <Banknote className="w-5 h-5 text-emerald-500" />,
-                disabled: false,
-              },
-              {
-                value: 'UPI_INTENT',
-                label: 'Pay via UPI',
-                sublabel: 'Instant UPI via Google Pay, PhonePe, Paytm, or QR scan',
-                icon: <Smartphone className="w-5 h-5 text-primary" />,
-                disabled: false,
-              },
-            ].map((method) => (
-              <button
-                key={method.value}
-                type="button"
-                disabled={method.disabled}
-                onClick={() => {
-                  if (!method.disabled) {
-                    setSelectedPayment(method.value as 'UPI_INTENT' | 'COD' | 'PAY_TO_WAITER');
-                  }
-                }}
-                className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all ${method.disabled
-                    ? 'opacity-50 cursor-not-allowed bg-muted/20 border-border/60'
-                    : selectedPayment === method.value
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border hover:bg-muted/50 cursor-pointer'
-                  }`}
-              >
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${selectedPayment === method.value ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
-                  }`}>
-                  {method.icon}
-                </div>
-                <div className="text-left flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="font-semibold text-sm">{method.label}</p>
-                    {method.disabled && (
-                      <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold px-2 py-0.5 rounded-full border border-amber-500/20">
-                        Unavailable
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">{method.sublabel}</p>
-                </div>
-                <div className={`w-4 h-4 rounded-full border-2 ${selectedPayment === method.value ? 'border-primary bg-primary' : 'border-muted-foreground'
-                  }`} />
-              </button>
-            ))}
+        {/* Payment Method - Offline Counter Payment */}
+        <div className="bg-card border border-border rounded-2xl p-4 space-y-3 shadow-xs">
+          <div className="flex items-center justify-between">
+            <h2 className="font-display font-semibold">Payment Method</h2>
+            <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+              Pay at Counter
+            </span>
+          </div>
+
+          <div className="w-full flex items-center gap-3 p-3.5 rounded-xl border-2 border-emerald-500/40 bg-emerald-500/5 transition-all">
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              <Banknote className="w-5 h-5" />
+            </div>
+            <div className="text-left flex-1">
+              <p className="font-bold text-sm text-foreground">Pay at Restaurant / Pay at Counter</p>
+              <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                Place your order now and complete your payment at the restaurant counter. Show your order verification code to the counter staff or waiter.
+              </p>
+            </div>
+            <div className="w-4 h-4 rounded-full border-2 border-emerald-500 bg-emerald-500 flex items-center justify-center">
+              <Check className="w-2.5 h-2.5 text-white" />
+            </div>
+          </div>
+
+          <div className="bg-muted/40 border border-border/70 rounded-xl p-3 text-xs text-muted-foreground leading-relaxed flex items-start gap-2">
+            <span className="text-base leading-none">ℹ️</span>
+            <span>
+              Your order will be prepared immediately upon placement. Please settle your bill at the counter or show your 4-digit code to your waiter.
+            </span>
           </div>
         </div>
-
-        {selectedPayment === 'PAY_TO_WAITER' && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-card border border-border rounded-2xl p-4 space-y-2 shadow-xs"
-          >
-            <div className="flex items-center gap-2 text-primary">
-              <User className="w-4 h-4" />
-              <h3 className="font-display font-semibold text-xs text-foreground">Pay to Waiter</h3>
-            </div>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Place your order now. Your waiter will serve your food and bring the bill to your table, where you can pay via Cash, Card, or UPI scan.
-            </p>
-          </motion.div>
-        )}
-
-        {selectedPayment === 'COD' && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-card border border-border rounded-2xl p-4 space-y-2 shadow-xs"
-          >
-            <div className="flex items-center gap-2 text-primary">
-              <Banknote className="w-4 h-4" />
-              <h3 className="font-display font-semibold text-xs text-foreground">Pay on Counter</h3>
-            </div>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Place your order now. You can settle the bill with cash or card directly at the restaurant counter.
-            </p>
-          </motion.div>
-        )}
-
-        {selectedPayment === 'UPI_INTENT' && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-card border border-border rounded-2xl p-4 space-y-2.5 shadow-sm"
-          >
-            <div className="flex items-center gap-2 text-primary">
-              <Smartphone className="w-4.5 h-4.5" />
-              <h3 className="font-display font-semibold text-xs text-foreground">Pay Online via UPI</h3>
-            </div>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              When you click <strong>Place Order</strong> below, a secure UPI payment window will open allowing you to pay <strong>₹{grandTotal.toFixed(2)}</strong> via Google Pay, PhonePe, Paytm, or QR scan.
-            </p>
-            {restaurant?.merchantName && (
-              <div className="flex items-center justify-between pt-1 border-t border-border/50 text-[11px]">
-                <span className="text-muted-foreground">Merchant / Payee Name:</span>
-                <span className="font-semibold text-foreground">{restaurant.merchantName}</span>
-              </div>
-            )}
-            {restaurant?.paymentUpiId && (
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-muted-foreground">Merchant UPI ID:</span>
-                <span className="font-mono font-medium text-foreground">{restaurant.paymentUpiId}</span>
-              </div>
-            )}
-          </motion.div>
-        )}
 
         {activeUser && activeUser.role !== 'CUSTOMER' ? (
           <div className="bg-card border border-border rounded-2xl p-6 text-center space-y-4 shadow-xl relative overflow-hidden">
@@ -1134,12 +1037,8 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Payment Method:</span>
-                    <span className="font-semibold text-foreground">
-                      {selectedPayment === 'PAY_TO_WAITER'
-                        ? 'Pay to Waiter'
-                        : selectedPayment === 'COD'
-                          ? 'Pay on Counter'
-                          : 'Pay via UPI'}
+                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                      Pay at Restaurant / Counter
                     </span>
                   </div>
                   <div className="border-t border-border/50 pt-2 flex items-center justify-between font-bold text-sm">

@@ -63,6 +63,12 @@ import {
   refreshMerchantStatus,
 } from '../controllers/owner.controller';
 import { upload, uploadDocument } from '../services/cloudinary.service';
+import {
+  lookupOrderByVerificationCode,
+  confirmCounterPayment,
+  getCounterPendingOrders,
+} from '../controllers/counter.controller';
+import { counterLookupLimiter } from '../middlewares/rateLimiter.middleware';
 
 const router = Router();
 
@@ -126,6 +132,11 @@ router.patch('/orders/:id/payment', confirmPayment);
 router.patch('/orders/:id/payment-reject', rejectPayment);
 router.delete('/orders/history/clear', clearOwnerOrderHistory);
 router.delete('/orders/:id', deleteOwnerOrder);
+
+// Counter Order Verification & Manual Payment Confirmation
+router.post('/counter/lookup', counterLookupLimiter, lookupOrderByVerificationCode);
+router.get('/counter/pending', getCounterPendingOrders);
+router.post('/counter/confirm-payment', confirmCounterPayment);
 router.get('/reviews', getRestaurantReviews);
 
 // Analytics

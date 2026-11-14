@@ -8,6 +8,7 @@ import { emitNewOrder, emitNotification, emitWaiterCall, emitOrderStatusUpdate, 
 import { sendOrderConfirmationEmail } from '../services/email.service';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { verifyTableSignature } from '../utils/tableSignature';
+import { generateOrderVerificationCode } from '../services/verificationCode.service';
 
 const GST_RATE = parseFloat(process.env.GST_RATE ?? '18') / 100;
 const DELIVERY_FEE = 40;
@@ -137,7 +138,7 @@ export async function placeGuestOrder(
       guestPhone: string;
       tableNumber?: string;
       tableToken?: string;
-      paymentMethod: 'RAZORPAY' | 'COD' | 'PAY_TO_WAITER';
+      paymentMethod: 'RAZORPAY' | 'COD' | 'PAY_TO_WAITER' | 'PAY_AT_COUNTER' | 'UPI_INTENT';
       isDirect?: boolean;
       couponCode?: string;
       restaurantSlug: string;
@@ -194,6 +195,7 @@ export async function placeGuestOrder(
     }
 
     const effectivePaymentMethod = (paymentMethod as string) === 'RAZORPAY' ? 'UPI_INTENT' : paymentMethod;
+    const verificationCode = await generateOrderVerificationCode(restaurant.id);
 
     const order = await prisma.$transaction(async (tx) => {
       const newOrder = await tx.order.create({
@@ -205,6 +207,7 @@ export async function placeGuestOrder(
           status: 'PENDING',
           paymentMethod: effectivePaymentMethod,
           paymentStatus: 'PENDING',
+          verificationCode,
           subtotal,
           gstAmount,
           deliveryFee,
@@ -315,7 +318,7 @@ export async function placeOrder(
       newAddress?: { label: string; flat: string; street: string; area: string; city: string; pincode: string; isDefault: boolean };
       tableNumber?: string;
       tableToken?: string;
-      paymentMethod: 'RAZORPAY' | 'COD' | 'WALLET' | 'PAY_TO_WAITER';
+      paymentMethod: 'RAZORPAY' | 'COD' | 'WALLET' | 'PAY_TO_WAITER' | 'PAY_AT_COUNTER' | 'UPI_INTENT';
       couponCode?: string;
       restaurantSlug: string;
       useWallet?: boolean;
@@ -453,6 +456,7 @@ export async function placeOrder(
     }
 
     const effectivePaymentMethod = (paymentMethod as string) === 'RAZORPAY' ? 'UPI_INTENT' : paymentMethod;
+    const verificationCode = await generateOrderVerificationCode(restaurant.id);
 
     const order = await prisma.$transaction(async (tx) => {
       const newOrder = await tx.order.create({
@@ -464,6 +468,7 @@ export async function placeOrder(
           status: 'PENDING',
           paymentMethod: effectivePaymentMethod,
           paymentStatus: 'PENDING',
+          verificationCode,
           subtotal,
           gstAmount,
           deliveryFee,
@@ -520,7 +525,7 @@ export async function placeOrder(
 
       // Award loyalty points (based on pointsPerSpendRupees)
       const pointsEarned = loyaltyEnabled ? Math.floor(finalTotal / pointsPerSpendRupees) : 0;
-      if (loyaltyEnabled && pointsEarned > 0 && paymentMethod !== 'COD' && paymentMethod !== 'PAY_TO_WAITER') {
+      if (loyaltyEnabled && pointsEarned > 0 && paymentMethod !== 'COD' && paymentMethod !== 'PAY_TO_WAITER' && paymentMethod !== 'PAY_AT_COUNTER') {
         await tx.user.update({
           where: { id: userId },
           data: { loyaltyPoints: { increment: pointsEarned } },

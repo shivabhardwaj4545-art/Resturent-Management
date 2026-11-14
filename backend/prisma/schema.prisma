@@ -43,6 +43,7 @@ enum PaymentMethod {
   WALLET
   PAY_TO_WAITER
   UPI_INTENT
+  PAY_AT_COUNTER
 }
 
 enum PaymentStatus {
@@ -375,6 +376,13 @@ model Order {
   couponId          String?
   razorpayOrderId   String?
   razorpayPaymentId String?
+
+  // Counter Payment & Order Verification
+  verificationCode     String?
+  paymentConfirmedBy   String?
+  paymentConfirmedAt   DateTime?
+  counterPaymentMethod String? // CASH, COUNTER_UPI, CARD
+
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
   deletedAt         DateTime?
@@ -403,6 +411,7 @@ model Order {
   refunds             PaymentRefund[]
 
   @@index([restaurantId])
+  @@index([restaurantId, verificationCode])
   @@index([userId])
   @@index([status])
   @@index([createdAt])

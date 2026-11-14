@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { WaiterBell } from '@/components/owner/WaiterBell';
 import { OwnerSidebar } from '@/components/owner/OwnerSidebar';
 import { isItemAddon } from '@/utils/orderAddon';
+import { CounterOrderVerification } from '@/components/owner/CounterOrderVerification';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
@@ -57,6 +58,10 @@ type Order = {
   lastAddOnAt?: string | null;
   paymentMethod: string;
   paymentStatus: string;
+  verificationCode?: string | null;
+  counterPaymentMethod?: string | null;
+  paymentConfirmedBy?: string | null;
+  paymentConfirmedAt?: string | null;
   subtotal: number;
   gstAmount: number;
   deliveryFee: number;
@@ -118,6 +123,7 @@ export function OwnerOrdersPage() {
   const router = useRouter();
   const qc = useQueryClient();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'orders' | 'counter'>('orders');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -268,8 +274,41 @@ export function OwnerOrdersPage() {
           </div>
         </header>
 
+        {/* Navigation Tabs: All Orders vs Counter Verification */}
+        <div className="flex items-center gap-2 px-3.5 sm:px-5 pt-2 pb-0 border-b border-border bg-card/60 shrink-0">
+          <button
+            onClick={() => setActiveTab('orders')}
+            className={`pb-2.5 px-3 text-xs sm:text-sm font-bold border-b-2 transition-all flex items-center gap-1.5 ${
+              activeTab === 'orders'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <ShoppingBag className="w-4 h-4" />
+            <span>All Orders</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('counter')}
+            className={`pb-2.5 px-3 text-xs sm:text-sm font-bold border-b-2 transition-all flex items-center gap-1.5 ${
+              activeTab === 'counter'
+                ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Banknote className="w-4 h-4" />
+            <span>Counter Order Verification</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-extrabold border border-emerald-500/20">
+              New
+            </span>
+          </button>
+        </div>
+
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-          {/* Filters */}
+          {activeTab === 'counter' ? (
+            <CounterOrderVerification />
+          ) : (
+            <>
+              {/* Filters */}
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1 min-w-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -312,6 +351,11 @@ export function OwnerOrdersPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3 flex-wrap">
                         <span className="font-mono font-bold text-sm">#{order.id.slice(-8).toUpperCase()}</span>
+                        {order.verificationCode && (
+                          <span className="text-xs px-2.5 py-0.5 rounded-full font-mono font-black bg-primary/10 text-primary border border-primary/20">
+                            CODE #{order.verificationCode}
+                          </span>
+                        )}
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[order.status] ?? ''}`}>{order.status}</span>
                         {order.tableNumber && (
                           <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -828,6 +872,8 @@ export function OwnerOrdersPage() {
                       <button disabled={page === data.pagination.totalPages} onClick={() => setPage(p => p + 1)} className="px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-muted disabled:opacity-40 transition-colors">Next</button>
                     </div>
                   )}
+            </>
+          )}
                 </div>
       </main>
     </div>

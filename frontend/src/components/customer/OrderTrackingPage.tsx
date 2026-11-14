@@ -91,6 +91,9 @@ interface Order {
   total: number;
   paymentMethod: string;
   paymentStatus: string;
+  verificationCode?: string | null;
+  paymentConfirmedAt?: string | null;
+  counterPaymentMethod?: string | null;
   guestName: string | null;
   tableNumber: string | null;
   addressId: string | null;
@@ -487,8 +490,8 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
                 ✅ Payment Confirmed
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 animate-pulse">
-                ⏳ Payment Pending
+              <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                ⏳ Payment Pending / Pay at Restaurant
               </span>
             )}
           </div>
@@ -496,6 +499,47 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
       </div>
 
       <div className="max-w-lg mx-auto px-4 space-y-5">
+        {/* 4-Digit Order Verification Code Card (Offline Counter Confirmation Flow) */}
+        <div className="bg-card border-2 border-primary/40 rounded-3xl p-6 text-center space-y-4 shadow-lg relative overflow-hidden">
+          <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-orange-500 via-amber-500 to-emerald-500" />
+
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+            <CheckCircle2 className="w-4 h-4" /> Order Placed Successfully!
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-xs uppercase tracking-widest font-extrabold text-muted-foreground">
+              ORDER VERIFICATION CODE
+            </p>
+            <div className="flex items-center justify-center gap-2 py-1">
+              <span className="text-5xl font-black font-mono tracking-widest text-primary drop-shadow-sm select-all">
+                #{order.verificationCode || order.id.slice(-4).toUpperCase()}
+              </span>
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-muted/40 border border-border/80 text-xs text-muted-foreground leading-relaxed space-y-1 text-center">
+            <p className="font-semibold text-foreground">
+              Please show this code to the restaurant counter staff or waiter to identify your order and confirm your payment.
+            </p>
+            <p className="text-[11px]">
+              Your order has been placed successfully. Please complete your payment at the restaurant counter.
+            </p>
+          </div>
+
+          <div className="pt-2 border-t border-border/60 flex items-center justify-between text-xs">
+            <span className="text-muted-foreground font-medium">Payment Status:</span>
+            {order.paymentStatus === 'PAID' ? (
+              <span className="font-extrabold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                ✅ Paid {order.counterPaymentMethod ? `(${order.counterPaymentMethod})` : ''}
+              </span>
+            ) : (
+              <span className="font-extrabold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                ⏳ Payment Pending / Pay at Restaurant
+              </span>
+            )}
+          </div>
+        </div>
         {/* Add-on Order Journey Banner */}
         {order.addOnStatus && (
           <div className={`border-2 rounded-2xl p-5 shadow-lg space-y-3 ${order.addOnStatus === 'CANCELLED'
@@ -596,8 +640,8 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
           )}
         </div>
 
-        {/* Direct Payment Card */}
-        {order.paymentStatus !== 'PAID' && order.paymentMethod === 'RAZORPAY' && (order.restaurant.paymentQrCode || order.restaurant.paymentUpiId || order.restaurant.paymentPhone || order.restaurant.bankAccountNumber) && (
+        {/* Direct Payment Card (Hidden when counter verification code flow is active) */}
+        {order.paymentStatus !== 'PAID' && order.paymentMethod === 'RAZORPAY' && !order.verificationCode && (order.restaurant.paymentQrCode || order.restaurant.paymentUpiId || order.restaurant.paymentPhone || order.restaurant.bankAccountNumber) && (
           <div className="bg-card border border-border rounded-2xl p-5 space-y-4 shadow-sm">
             <div className="flex items-center gap-2 border-b border-border pb-3">
               <CreditCard className="w-5 h-5 text-primary" style={{ color: themeColor }} />

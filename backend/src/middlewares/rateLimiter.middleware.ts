@@ -141,3 +141,10 @@ export const aiLimiter = createLimiter(
   10,
   'Too many AI requests. Please slow down.'
 );
+
+// Counter verification code lookup limiter: 30 attempts per minute
+export const counterLookupLimiter = createLimiter(
+  60 * 1000,
+  30,
+  'Too many verification code attempts. Please wait a moment.'
+);
