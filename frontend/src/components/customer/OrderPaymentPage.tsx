@@ -634,3 +634,4 @@ export function OrderPaymentPage({ restaurantSlug, orderId }: OrderPaymentPagePr
     </div>
   );
 }
+

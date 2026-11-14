@@ -8,3 +8,4 @@ export default async function PaymentRoute({ params }: PageProps) {
   const { slug, orderId } = await params;
   return <OrderPaymentPage orderId={orderId} restaurantSlug={slug} />;
 }
+

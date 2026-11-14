@@ -19,3 +19,4 @@ export const saveOrderToRecent = (orderId: string, restaurantSlug: string) => {
     console.error('Failed to save order to recent orders list', e);
   }
 };
+
