@@ -336,6 +336,21 @@ export async function getRestaurant(req: AuthenticatedRequest, res: Response, ne
         logger.warn('Failed to sort operating hours:', err);
       }
     }
+    if (restaurant && !restaurant.paymentUpiId) {
+      const upiAcc = await prisma.restaurantUpiAccount.findUnique({
+        where: { restaurantId: restaurant.id },
+      });
+      if (upiAcc && isValidUpiId(upiAcc.upiId)) {
+        const clean = upiAcc.upiId.toLowerCase().trim();
+        await prisma.restaurant.update({
+          where: { id: restaurant.id },
+          data: { paymentUpiId: clean, upiEnabled: true, paymentEnabled: true },
+        }).catch(() => null);
+        restaurant.paymentUpiId = clean;
+        restaurant.upiEnabled = true;
+        restaurant.paymentEnabled = true;
+      }
+    }
     if (restaurant && restaurant.paymentUpiId && !restaurant.upiEnabled) {
       await prisma.restaurant.update({
         where: { id: restaurant.id },
@@ -398,9 +413,13 @@ export async function updateRestaurant(req: AuthenticatedRequest, res: Response,
       }
     }
 
-    if (body.paymentUpiId && typeof body.paymentUpiId === 'string' && isValidUpiId(body.paymentUpiId)) {
-      body.upiEnabled = true;
-      body.paymentEnabled = true;
+    if (body.paymentUpiId && typeof body.paymentUpiId === 'string') {
+      const cleanUpi = body.paymentUpiId.trim().toLowerCase();
+      if (isValidUpiId(cleanUpi)) {
+        body.paymentUpiId = cleanUpi;
+        body.upiEnabled = true;
+        body.paymentEnabled = true;
+      }
     }
 
     const updated = await prisma.restaurant.update({
@@ -2514,14 +2533,23 @@ export async function getOwnerUpiAccount(
       throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
     }
 
+    const effectiveUpi = restaurant.paymentUpiId || restaurant.upiAccount?.upiId || '';
+    if (effectiveUpi && !restaurant.paymentUpiId) {
+      await prisma.restaurant.update({
+        where: { id: restaurant.id },
+        data: { paymentUpiId: effectiveUpi, upiEnabled: true, paymentEnabled: true },
+      }).catch(() => null);
+      restaurant.paymentUpiId = effectiveUpi;
+    }
+
     res.json({
       success: true,
       data: {
         restaurantId: restaurant.id,
         restaurantName: restaurant.name,
         paymentEnabled: restaurant.paymentEnabled,
-        upiEnabled: Boolean(restaurant.paymentUpiId ? true : (restaurant.upiEnabled ?? true)),
-        paymentUpiId: restaurant.paymentUpiId,
+        upiEnabled: Boolean(effectiveUpi ? true : (restaurant.upiEnabled ?? true)),
+        paymentUpiId: effectiveUpi,
         upiAccount: restaurant.upiAccount
           ? {
               ...restaurant.upiAccount,

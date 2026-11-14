@@ -43,13 +43,30 @@ export async function createUpiIntent(
 
     const restaurant = order.restaurant;
 
-    // Check restaurant UPI account eligibility (personal P2P vs commercial merchant)
-      let upiAccount = await prisma.restaurantUpiAccount.findUnique({
-        where: { restaurantId: restaurant.id },
-      });
+    // Check restaurant UPI account eligibility and resolve authoritative VPA
+    let upiAccount = await prisma.restaurantUpiAccount.findUnique({
+      where: { restaurantId: restaurant.id },
+    });
+    const paymentAccount = await prisma.restaurantPaymentAccount.findUnique({
+      where: { restaurantId: restaurant.id },
+    });
 
-    if (restaurant.paymentUpiId && isValidUpiId(restaurant.paymentUpiId)) {
-      const cleanUpi = restaurant.paymentUpiId.toLowerCase().trim();
+    let candidateUpi = restaurant.paymentUpiId?.trim() || upiAccount?.upiId?.trim() || paymentAccount?.upiVpa?.trim() || '';
+    if (candidateUpi && isValidUpiId(candidateUpi)) {
+      candidateUpi = candidateUpi.toLowerCase();
+      if (restaurant.paymentUpiId !== candidateUpi || !restaurant.upiEnabled) {
+        await prisma.restaurant.update({
+          where: { id: restaurant.id },
+          data: { paymentUpiId: candidateUpi, upiEnabled: true, paymentEnabled: true },
+        }).catch(() => null);
+        restaurant.paymentUpiId = candidateUpi;
+        (restaurant as any).upiEnabled = true;
+        (restaurant as any).paymentEnabled = true;
+      }
+    }
+
+    if (candidateUpi && isValidUpiId(candidateUpi)) {
+      const cleanUpi = candidateUpi.toLowerCase().trim();
       if (!upiAccount || upiAccount.merchantEligibilityStatus !== 'MERCHANT_APPROVED' || upiAccount.verificationStatus !== 'VERIFIED') {
         upiAccount = await prisma.restaurantUpiAccount.upsert({
           where: { restaurantId: restaurant.id },
@@ -98,7 +115,7 @@ export async function createUpiIntent(
     throw new AppError('UPI payments are disabled for this restaurant.', 400, 'UPI_DISABLED');
   }
 
-  let merchantVpa = restaurant.paymentUpiId;
+  let merchantVpa = restaurant.paymentUpiId || candidateUpi;
   if (!merchantVpa || !isValidUpiId(merchantVpa)) {
     const fallbackUpi = process.env.PLATFORM_DEFAULT_UPI_ID || 'ezrestro@upi';
     merchantVpa = isValidUpiId(fallbackUpi) ? fallbackUpi : 'teamezrestro@upi';
@@ -126,7 +143,13 @@ export async function createUpiIntent(
   });
 
   const activeAttempt = existingPayment?.attempts?.[0];
-  const isAttemptValid = activeAttempt && activeAttempt.expiresAt > new Date();
+  const isVpaMatch = Boolean(
+    activeAttempt?.intentUrl &&
+    merchantVpa &&
+    (activeAttempt.intentUrl.includes(`pa=${merchantVpa}`) ||
+     activeAttempt.intentUrl.includes(`pa=${encodeURIComponent(merchantVpa)}`))
+  );
+  const isAttemptValid = activeAttempt && activeAttempt.expiresAt > new Date() && isVpaMatch;
 
   if (existingPayment && activeAttempt && isAttemptValid && !forceNew) {
     res.json({
@@ -451,6 +474,29 @@ export async function getOrderPaymentDetails(
     const payment = order.payment;
     const latestAttempt = payment?.attempts?.[0];
 
+    let merchantVpa = order.restaurant.paymentUpiId;
+    if (!merchantVpa || !isValidUpiId(merchantVpa)) {
+      const upiAcc = await prisma.restaurantUpiAccount.findUnique({
+        where: { restaurantId: order.restaurant.id },
+      });
+      if (upiAcc && isValidUpiId(upiAcc.upiId)) {
+        merchantVpa = upiAcc.upiId;
+      } else {
+        const payAcc = await prisma.restaurantPaymentAccount.findUnique({
+          where: { restaurantId: order.restaurant.id },
+        });
+        if (payAcc && isValidUpiId(payAcc.upiVpa)) {
+          merchantVpa = payAcc.upiVpa;
+        }
+      }
+      if (merchantVpa && isValidUpiId(merchantVpa)) {
+        await prisma.restaurant.update({
+          where: { id: order.restaurant.id },
+          data: { paymentUpiId: merchantVpa.toLowerCase().trim(), upiEnabled: true, paymentEnabled: true },
+        }).catch(() => null);
+      }
+    }
+
     res.json({
       success: true,
       data: {
@@ -459,7 +505,7 @@ export async function getOrderPaymentDetails(
         restaurantSlug: order.restaurant.slug,
         restaurantName: order.restaurant.name,
         merchantName: order.restaurant.merchantName || order.restaurant.name,
-        merchantVpa: order.restaurant.paymentUpiId,
+        merchantVpa: merchantVpa || order.restaurant.paymentUpiId || 'teamezrestro@upi',
         orderStatus: order.status,
         paymentStatus: order.paymentStatus,
         total: order.total,

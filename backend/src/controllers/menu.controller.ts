@@ -50,11 +50,14 @@ export async function getPublicRestaurants(
 
 function formatRestaurantForMenu(r: any) {
   if (!r) return r;
+  const upiId = r.paymentUpiId || r.upiAccount?.upiId || null;
   return {
     ...r,
-    upiEnabled: Boolean(r.paymentUpiId || r.upiEnabled),
+    paymentUpiId: upiId,
+    upiEnabled: Boolean(upiId || r.upiEnabled),
     paymentEnabled: r.paymentEnabled !== false,
     upiAccount: {
+      upiId,
       verificationStatus: 'VERIFIED',
       merchantEligibilityStatus: 'MERCHANT_APPROVED',
       accountType: 'MERCHANT',
@@ -120,6 +123,7 @@ export async function getRestaurantMenu(
         platformType: true,
         upiAccount: {
           select: {
+            upiId: true,
             verificationStatus: true,
             merchantEligibilityStatus: true,
             accountType: true,
@@ -171,6 +175,15 @@ export async function getRestaurantMenu(
           merchantName: true,
           featureFlags: true,
           platformType: true,
+          upiAccount: {
+            select: {
+              upiId: true,
+              verificationStatus: true,
+              merchantEligibilityStatus: true,
+              accountType: true,
+              restrictionReason: true,
+            },
+          },
         },
       });
 
