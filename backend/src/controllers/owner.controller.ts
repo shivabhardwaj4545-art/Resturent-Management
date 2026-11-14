@@ -1176,6 +1176,8 @@ export async function confirmPayment(req: AuthenticatedRequest, res: Response, n
     const pointsPerSpendRupees = Number(loyaltyVal.pointsPerSpendRupees) || 10;
 
     const pointsEarned = loyaltyEnabled ? Math.floor(Number(order.total) / pointsPerSpendRupees) : 0;
+    const instrument = (req.body?.instrument || 'CASH').toUpperCase();
+    const now = new Date();
 
     await prisma.$transaction(async (tx) => {
       await tx.order.update({
@@ -1185,7 +1187,26 @@ export async function confirmPayment(req: AuthenticatedRequest, res: Response, n
 
       await tx.payment.updateMany({
         where: { orderId: id },
-        data: { status: 'PAID' },
+        data: {
+          status: 'PAID',
+          paidAt: now,
+          providerTxnId: `OFFLINE_${instrument}_${Date.now()}`,
+        },
+      });
+
+      await tx.paymentAuditLog.create({
+        data: {
+          orderId: id,
+          actorType: 'EMPLOYEE',
+          actorId: req.user!.id,
+          actorName: req.user?.email || 'Restaurant Staff',
+          action: 'CASH_CONFIRMED',
+          details: {
+            instrument,
+            amount: order.total,
+            confirmedAt: now.toISOString(),
+          },
+        },
       });
 
       if (order.userId && pointsEarned > 0) {

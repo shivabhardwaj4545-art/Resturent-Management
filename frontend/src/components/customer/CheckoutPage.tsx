@@ -44,7 +44,7 @@ interface RazorpayOptions {
 const guestSchema = z.object({
   guestName: z.string().optional().or(z.literal('')),
   guestPhone: z.string().optional().or(z.literal('')),
-  paymentMethod: z.enum(['RAZORPAY', 'COD', 'PAY_TO_WAITER']),
+  paymentMethod: z.enum(['UPI_INTENT', 'RAZORPAY', 'COD', 'PAY_TO_WAITER']),
 });
 
 type GuestForm = z.infer<typeof guestSchema>;
@@ -150,8 +150,6 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
   } | null>(null);
   const [upiQrCodeDataUrl, setUpiQrCodeDataUrl] = useState<string>('');
   const [isCheckingUpiStatus, setIsCheckingUpiStatus] = useState<boolean>(false);
-  const [isSubmittingPayment, setIsSubmittingPayment] = useState<boolean>(false);
-  const [userUtr, setUserUtr] = useState<string>('');
 
   const formatCardNumber = (value: string) => {
     const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
@@ -205,7 +203,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
   const { items, couponCode, couponDiscount, clearCart, subtotal, total, removeItem, updateQuantity } = useCartStore();
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [selectedPayment, setSelectedPayment] = useState<'RAZORPAY' | 'COD' | 'PAY_TO_WAITER'>('RAZORPAY');
+  const [selectedPayment, setSelectedPayment] = useState<'UPI_INTENT' | 'COD' | 'PAY_TO_WAITER'>('UPI_INTENT');
   const [onlinePaymentType, setOnlinePaymentType] = useState<'DIRECT' | 'RAZORPAY'>('DIRECT');
 
   useEffect(() => {
@@ -385,26 +383,50 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
     }
   };
 
-  const handleCustomerConfirmPayment = async () => {
-    if (!upiData) return;
-    setIsSubmittingPayment(true);
+  const getAppDeepLink = (app: 'gpay' | 'phonepe' | 'paytm' | 'all', url: string) => {
+    if (!url) return '';
+    if (app === 'gpay') return url.replace(/^upi:\/\/pay/, 'tez://upi/pay');
+    if (app === 'phonepe') return url.replace(/^upi:\/\/pay/, 'phonepe://pay');
+    if (app === 'paytm') return url.replace(/^upi:\/\/pay/, 'paytmmp://pay');
+    return url;
+  };
+
+  const handleCheckPaymentStatus = async (manual = false) => {
+    if (!upiData?.paymentId) return;
+    setIsCheckingUpiStatus(true);
     try {
-      await api.post('/payments/verify-upi', {
-        paymentId: upiData.paymentId,
-        orderId: upiData.orderId,
-        providerTxnId: userUtr.trim() || `UPI-${Date.now()}`,
-        receivedAmount: upiData.amount,
-      });
-      saveOrderToRecent(upiData.orderId, restaurantSlug);
-      clearCart();
-      setShowUpiModal(false);
-      toast.success('Payment confirmed & Order sent to kitchen! 🎉');
-      router.push(`/r/${restaurantSlug}/order/${upiData.orderId}`);
+      const res = await api.get(`/payments/${upiData.paymentId}/status`, { skipToast: true } as any);
+      const data = res.data?.data;
+      const status = data?.status || data?.orderPaymentStatus;
+      if (status === 'PAID') {
+        saveOrderToRecent(upiData.orderId, restaurantSlug);
+        clearCart();
+        setShowUpiModal(false);
+        toast.success('Payment Verified & Order Confirmed! 🎉');
+        router.push(`/r/${restaurantSlug}/order/${upiData.orderId}`);
+      } else if (manual) {
+        toast.info('Payment verification in progress. Please approve the request in your UPI app.');
+      }
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.response?.data?.message || 'Failed to verify payment.';
-      toast.error(msg);
+      if (manual) {
+        toast.error('Could not check payment status. Please try again.');
+      }
     } finally {
-      setIsSubmittingPayment(false);
+      setIsCheckingUpiStatus(false);
+    }
+  };
+
+  const handleCancelOrder = async () => {
+    if (!upiData?.orderId) {
+      setShowUpiModal(false);
+      return;
+    }
+    try {
+      await api.post(`/payments/orders/${upiData.orderId}/cancel`);
+      setShowUpiModal(false);
+      toast.info('Order payment attempt cancelled.');
+    } catch {
+      setShowUpiModal(false);
     }
   };
 
@@ -415,32 +437,10 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
   useEffect(() => {
     if (!showUpiModal || !upiData?.paymentId) return;
 
-    const checkStatus = async () => {
-      try {
-        setIsCheckingUpiStatus(true);
-        const res = await api.get(`/payments/${upiData.paymentId}/status`, { skipToast: true } as any);
-        const status = res.data?.data?.status || res.data?.data?.orderPaymentStatus;
-        if (status === 'PAID') {
-          saveOrderToRecent(upiData.orderId, restaurantSlug);
-          clearCart();
-          setShowUpiModal(false);
-          toast.success('Payment Verified & Order Confirmed! 🎉');
-          router.push(`/r/${restaurantSlug}/order/${upiData.orderId}`);
-        }
-      } catch (err: any) {
-        // Silently catch 429 or network blips so user isn't interrupted
-        if (err?.response?.status !== 429) {
-          console.debug('Polling payment status:', err?.message);
-        }
-      } finally {
-        setIsCheckingUpiStatus(false);
-      }
-    };
-
-    checkStatus();
-    const interval = setInterval(checkStatus, 4000);
+    handleCheckPaymentStatus(false);
+    const interval = setInterval(() => handleCheckPaymentStatus(false), 3000);
     return () => clearInterval(interval);
-  }, [showUpiModal, upiData, restaurantSlug, router, clearCart]);
+  }, [showUpiModal, upiData?.paymentId]);
 
 
   // Order Confirmation & Review Modal state
@@ -496,13 +496,16 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
     setLoading(true);
     try {
       const token = tableToken || localStorage.getItem(`table_token_${restaurantSlug}`) || (manualTableNumber ? generateUniqueTableCode(restaurantSlug, manualTableNumber.trim()) : '');
-            const response = await api.post('/orders/guest', {
+            const isOnline = selectedPayment === 'UPI_INTENT' || (selectedPayment as string) === 'RAZORPAY';
+      const effectiveMethod = selectedPayment === 'COD' ? 'COD' : selectedPayment === 'PAY_TO_WAITER' ? 'PAY_TO_WAITER' : 'UPI_INTENT';
+
+      const response = await api.post('/orders/guest', {
         guestName: formData.guestName?.trim() || 'Guest',
         guestPhone: formData.guestPhone?.trim() || '',
         tableNumber: manualTableNumber ? manualTableNumber.trim() : '1',
         tableToken: token,
-        paymentMethod: selectedPayment,
-        isDirect: selectedPayment === 'RAZORPAY' && onlinePaymentType === 'DIRECT',
+        paymentMethod: effectiveMethod,
+        isDirect: isOnline,
         couponCode: couponCode ?? undefined,
         restaurantSlug,
         cartItems: items.map((item) => ({
@@ -517,18 +520,8 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
         order: { id: string; total: number; razorpayOrderId: string | null };
       };
 
-      if (selectedPayment === 'RAZORPAY') {
-        if (order.razorpayOrderId) {
-          await handleRazorpayPayment(
-            order.id,
-            order.razorpayOrderId,
-            order.total,
-            formData.guestName?.trim() || 'Guest',
-            formData.guestPhone?.trim() || ''
-          );
-        } else {
-          await handleUpiIntentPayment(order.id);
-        }
+      if (isOnline) {
+        await handleUpiIntentPayment(order.id);
       } else {
         saveOrderToRecent(order.id, restaurantSlug);
         clearCart();
@@ -562,11 +555,14 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
     setLoading(true);
     try {
       const token = tableToken || localStorage.getItem(`table_token_${restaurantSlug}`) || (manualTableNumber ? generateUniqueTableCode(restaurantSlug, manualTableNumber.trim()) : '');
+      const isOnline = selectedPayment === 'UPI_INTENT' || (selectedPayment as string) === 'RAZORPAY';
+      const effectiveMethod = selectedPayment === 'COD' ? 'COD' : selectedPayment === 'PAY_TO_WAITER' ? 'PAY_TO_WAITER' : 'UPI_INTENT';
+
       const response = await api.post('/orders', {
         tableNumber: manualTableNumber ? manualTableNumber.trim() : undefined,
         tableToken: token,
-        paymentMethod: selectedPayment,
-        isDirect: selectedPayment === 'RAZORPAY' && onlinePaymentType === 'DIRECT',
+        paymentMethod: effectiveMethod,
+        isDirect: isOnline,
         couponCode: couponCode ?? undefined,
         restaurantSlug,
         useWallet: false,
@@ -583,18 +579,8 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
         order: { id: string; total: number; razorpayOrderId: string | null };
       };
 
-      if (selectedPayment === 'RAZORPAY') {
-        if (order.razorpayOrderId) {
-          await handleRazorpayPayment(
-            order.id,
-            order.razorpayOrderId,
-            order.total,
-            activeUser?.name || 'Customer',
-            activeUser?.phone || ''
-          );
-        } else {
-          await handleUpiIntentPayment(order.id);
-        }
+      if (isOnline) {
+        await handleUpiIntentPayment(order.id);
       } else {
         queryClient.invalidateQueries({ queryKey: ['user-profile'] });
         queryClient.invalidateQueries({ queryKey: ['user-profile-loyalty'] });
@@ -748,7 +734,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                 icon: <Banknote className="w-5 h-5 text-emerald-500" />,
               },
               {
-                value: 'RAZORPAY',
+                value: 'UPI_INTENT',
                 label: 'Pay via UPI',
                 sublabel: 'Instant UPI via Google Pay, PhonePe, Paytm, or QR scan',
                 icon: <Smartphone className="w-5 h-5 text-primary" />,
@@ -757,7 +743,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                 <button
                   key={method.value}
                   type="button"
-                  onClick={() => setSelectedPayment(method.value as 'RAZORPAY' | 'COD' | 'PAY_TO_WAITER')}
+                  onClick={() => setSelectedPayment(method.value as 'UPI_INTENT' | 'COD' | 'PAY_TO_WAITER')}
                   className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all ${
                     selectedPayment === method.value
                       ? 'border-primary bg-primary/5'
@@ -813,7 +799,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
           </motion.div>
         )}
 
-        {selectedPayment === 'RAZORPAY' && (
+        {selectedPayment === 'UPI_INTENT' && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1274,13 +1260,41 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                   </div>
                 )}
 
-                {/* Open UPI App Button */}
+                {/* Quick App Launch Buttons for Mobile */}
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <a
+                    href={getAppDeepLink('gpay', upiData.upiIntentUrl)}
+                    className="py-2.5 px-3 rounded-xl bg-muted/60 hover:bg-muted border border-border/80 text-foreground font-semibold text-xs transition-all flex items-center justify-center gap-2"
+                  >
+                    <span>Google Pay</span>
+                  </a>
+                  <a
+                    href={getAppDeepLink('phonepe', upiData.upiIntentUrl)}
+                    className="py-2.5 px-3 rounded-xl bg-muted/60 hover:bg-muted border border-border/80 text-foreground font-semibold text-xs transition-all flex items-center justify-center gap-2"
+                  >
+                    <span>PhonePe</span>
+                  </a>
+                  <a
+                    href={getAppDeepLink('paytm', upiData.upiIntentUrl)}
+                    className="py-2.5 px-3 rounded-xl bg-muted/60 hover:bg-muted border border-border/80 text-foreground font-semibold text-xs transition-all flex items-center justify-center gap-2"
+                  >
+                    <span>Paytm</span>
+                  </a>
+                  <a
+                    href={upiData.upiIntentUrl}
+                    className="py-2.5 px-3 rounded-xl bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary font-bold text-xs transition-all flex items-center justify-center gap-2"
+                  >
+                    <span>Other UPI App</span>
+                  </a>
+                </div>
+
+                {/* Primary Launch Button */}
                 <a
                   href={upiData.upiIntentUrl}
                   className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20"
                 >
                   <Smartphone className="w-4 h-4" />
-                  Open UPI App to Pay ₹{upiData.amount.toFixed(0)}
+                  Open Default UPI App to Pay ₹{upiData.amount.toFixed(0)}
                 </a>
 
                 {/* Details Copy Bar */}
@@ -1304,53 +1318,41 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                   </div>
                 </div>
 
-                {/* Confirm Payment Action for Customer */}
-                <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-left space-y-2.5">
-                  <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                    <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">Done with your payment?</span>
+                {/* Real-time Verification Status Box */}
+                <div className="p-4 bg-primary/5 border border-primary/20 rounded-2xl text-left space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary flex-shrink-0">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-xs text-foreground">Waiting for Bank Payment Confirmation...</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {isCheckingUpiStatus ? 'Contacting bank payment gateway...' : 'Checking automatically every 3 seconds.'}
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    Once paid in Google Pay / PhonePe / Paytm, click below to confirm. Your order will be sent to the restaurant kitchen immediately!
-                  </p>
-                  <input
-                    type="text"
-                    placeholder="Enter 12-digit UTR / Ref No (Optional)"
-                    value={userUtr}
-                    onChange={(e) => setUserUtr(e.target.value)}
-                    className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/30 text-foreground"
-                  />
+
                   <button
                     type="button"
-                    onClick={handleCustomerConfirmPayment}
-                    disabled={isSubmittingPayment}
-                    className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-md disabled:opacity-60 cursor-pointer"
+                    onClick={() => handleCheckPaymentStatus(true)}
+                    disabled={isCheckingUpiStatus}
+                    className="w-full py-2.5 px-3 rounded-xl bg-card border border-border hover:bg-muted font-semibold text-xs transition-all flex items-center justify-center gap-2 text-foreground disabled:opacity-60 cursor-pointer"
                   >
-                    {isSubmittingPayment ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Check className="w-4 h-4" />
-                    )}
-                    <span>{isSubmittingPayment ? 'Confirming with Kitchen...' : 'I Have Paid (Confirm & Send Order)'}</span>
+                    {isCheckingUpiStatus ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5 text-primary" />}
+                    <span>I Have Paid (Refresh Status)</span>
                   </button>
-                </div>
-
-                {/* Real-time Verification Status Box */}
-                <div className="p-3.5 bg-primary/5 border border-primary/20 rounded-2xl flex items-center gap-3 text-left">
-                  <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary flex-shrink-0">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-xs text-foreground">Listening for payment confirmation...</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      {isCheckingUpiStatus ? 'Checking transaction status...' : 'Auto-updates when payment is verified or confirmed above.'}
-                    </p>
-                  </div>
                 </div>
               </div>
 
               {/* Footer */}
               <div className="p-4 border-t border-border flex gap-3 bg-muted/10 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={handleCancelOrder}
+                  className="py-3 px-4 rounded-xl border border-rose-500/30 text-rose-500 font-semibold text-xs hover:bg-rose-500/10 transition-colors cursor-pointer text-center"
+                >
+                  Cancel Order
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -1359,7 +1361,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                     setShowUpiModal(false);
                     router.push(`/r/${restaurantSlug}/order/${upiData.orderId}`);
                   }}
-                  className="flex-1 py-3 rounded-xl border border-border font-semibold text-sm hover:bg-muted transition-colors text-foreground cursor-pointer text-center"
+                  className="flex-1 py-3 rounded-xl border border-border font-semibold text-xs hover:bg-muted transition-colors text-foreground cursor-pointer text-center"
                 >
                   Close & View Order
                 </button>

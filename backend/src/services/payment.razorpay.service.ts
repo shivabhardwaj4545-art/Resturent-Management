@@ -120,3 +120,44 @@ export async function initiateRefund(
     amount: refund.amount as number,
   };
 }
+
+export async function createRazorpaySubscription(params: {
+  planId: string;
+  totalCount: number;
+  quantity?: number;
+  customerNotify?: 0 | 1;
+  notes?: Record<string, string>;
+}): Promise<{ id: string; plan_id: string; status: string; short_url?: string }> {
+  try {
+    const rz = getRazorpay();
+    const sub = await (rz as any).subscriptions.create({
+      plan_id: params.planId,
+      total_count: params.totalCount,
+      quantity: params.quantity ?? 1,
+      customer_notify: params.customerNotify ?? 1,
+      notes: params.notes || {},
+    });
+    return {
+      id: sub.id,
+      plan_id: sub.plan_id,
+      status: sub.status,
+      short_url: sub.short_url,
+    };
+  } catch (err: any) {
+    logger.warn('Failed to create Razorpay recurring subscription:', err?.message || err);
+    throw new AppError(err?.error?.description || err.message || 'Failed to initialize subscription.', 500, 'SUBSCRIPTION_CREATION_FAILED');
+  }
+}
+
+export async function fetchRazorpaySubscription(subscriptionId: string): Promise<any> {
+  const rz = getRazorpay();
+  return (rz as any).subscriptions.fetch(subscriptionId);
+}
+
+export async function cancelRazorpaySubscription(
+  subscriptionId: string,
+  cancelAtCycleEnd = false
+): Promise<any> {
+  const rz = getRazorpay();
+  return (rz as any).subscriptions.cancel(subscriptionId, cancelAtCycleEnd);
+}

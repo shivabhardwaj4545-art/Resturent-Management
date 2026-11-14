@@ -25,6 +25,7 @@ import kitchenRoutes from './routes/kitchen.routes';
 import webhookRoutes from './routes/webhook.routes';
 import chatRoutes from './routes/chat.routes';
 import paymentRoutes from './routes/payment.routes';
+import saasRoutes from './routes/saas.routes';
 import { getSocketServer } from './services/socket.service';
 
 const app = express();
@@ -172,6 +173,7 @@ app.use(`${API}/admin`, adminRoutes);
 app.use(`${API}/chat`, chatRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use(`${API}/payments`, paymentRoutes);
+app.use(`${API}/saas`, saasRoutes);
 app.use(`${API}/webhooks`, webhookRoutes);
 
 // ── 404 Handler ───────────────────────────────────────────────

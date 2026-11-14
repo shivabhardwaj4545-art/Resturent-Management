@@ -19,6 +19,11 @@ enum UserRole {
   RESTAURANT_OWNER
   SUPER_ADMIN
   KITCHEN
+  GUEST
+  FRONT_DESK
+  HOUSEKEEPING
+  MANAGER
+  ACCOUNTANT
 }
 
 enum OrderStatus {
@@ -478,12 +483,79 @@ model Payment {
   updatedAt         DateTime      @updatedAt
 
   // Relations
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order     Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  attempts  PaymentAttempt[]
+  auditLogs PaymentAuditLog[]
 
   @@index([orderId])
   @@index([txnRef])
   @@index([razorpayOrderId])
   @@map("payments")
+}
+
+model PaymentAttempt {
+  id           String   @id @default(cuid())
+  orderId      String
+  restaurantId String
+  paymentId    String?
+  merchantRef  String   @unique
+  providerRef  String?
+  provider     String   @default("MOCK_UPI")
+  amount       Float
+  currency     String   @default("INR")
+  status       String   @default("PENDING") // PENDING, SUCCESS, FAILED, EXPIRED
+  intentUrl    String?
+  qrPayload    String?
+  expiresAt    DateTime
+  metadata     Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  payment      Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([restaurantId])
+  @@index([merchantRef])
+  @@index([status])
+  @@map("payment_attempts")
+}
+
+model PaymentWebhookEvent {
+  id           String   @id @default(cuid())
+  provider     String
+  eventId      String?
+  merchantRef  String?
+  providerRef  String?
+  eventType    String?
+  headers      Json?
+  payload      Json
+  status       String   @default("PROCESSED") // PROCESSED, FAILED, DUPLICATE
+  errorMessage String?
+  createdAt    DateTime @default(now())
+
+  @@index([provider, eventId])
+  @@index([merchantRef])
+  @@index([providerRef])
+  @@map("payment_webhook_events")
+}
+
+model PaymentAuditLog {
+  id        String   @id @default(cuid())
+  orderId   String
+  paymentId String?
+  actorType String   // SYSTEM, EMPLOYEE, ADMIN, CUSTOMER, WEBHOOK
+  actorId   String?
+  actorName String?
+  action    String   // ATTEMPT_INITIATED, STATUS_CHECKED, VERIFIED_PAID, CASH_CONFIRMED, CANCELLED, RECONCILED
+  details   Json?
+  createdAt DateTime @default(now())
+
+  payment   Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([paymentId])
+  @@index([actorType, actorId])
+  @@map("payment_audit_logs")
 }
 
 model Review {
@@ -609,28 +681,71 @@ model SubscriptionPlan {
 }
 
 model RestaurantSubscription {
-  id                String   @id @default(cuid())
-  restaurantId      String
-  planId            String
-  startsAt          DateTime
-  expiresAt         DateTime
-  isActive          Boolean  @default(true)
-  amount            Float    @default(0)
-  paymentStatus     String   @default("PAID") // PAID, PENDING, FAILED
-  paymentMethod     String   @default("RAZORPAY") // RAZORPAY, MANUAL_ADMIN, FREE
-  razorpayOrderId   String?
-  razorpayPaymentId String?
-  razorpaySignature String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                      String   @id @default(cuid())
+  restaurantId            String
+  planId                  String
+  startsAt                DateTime
+  expiresAt               DateTime
+  isActive                Boolean  @default(true)
+  amount                  Float    @default(0)
+  paymentStatus           String   @default("PAID") // PAID, PENDING, FAILED
+  paymentMethod           String   @default("RAZORPAY") // RAZORPAY, MANUAL_ADMIN, FREE
+  razorpayOrderId         String?
+  razorpayPaymentId       String?
+  razorpaySignature       String?
+  razorpaySubscriptionId  String?
+  razorpayPlanId          String?
+  billingCycle            String?  @default("MONTHLY") // MONTHLY, YEARLY
+  status                  String   @default("ACTIVE") // ACTIVE, PENDING, CANCELLED, EXPIRED, HALTED
+  cancelledAt             DateTime?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
   // Relations
-  restaurant Restaurant       @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  plan       SubscriptionPlan @relation(fields: [planId], references: [id])
+  restaurant   Restaurant                @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  plan         SubscriptionPlan          @relation(fields: [planId], references: [id])
+  transactions SubscriptionTransaction[]
+  auditLogs    SubscriptionAuditLog[]
 
   @@index([restaurantId])
   @@index([isActive, expiresAt])
+  @@index([razorpaySubscriptionId])
   @@map("restaurant_subscriptions")
+}
+
+model SubscriptionTransaction {
+  id                String   @id @default(cuid())
+  subscriptionId    String
+  restaurantId      String
+  amount            Float
+  currency          String   @default("INR")
+  razorpayPaymentId String?
+  razorpayOrderId   String?
+  status            String   @default("SUCCESS") // SUCCESS, FAILED, PENDING
+  paidAt            DateTime?
+  rawResponse       Json?
+  createdAt         DateTime @default(now())
+
+  subscription      RestaurantSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
+  @@index([restaurantId])
+  @@index([razorpayPaymentId])
+  @@map("subscription_transactions")
+}
+
+model SubscriptionAuditLog {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  action         String   // CREATED, ACTIVATED, RENEWED, HALTED, CANCELLED
+  actorId        String?
+  details        Json?
+  createdAt      DateTime @default(now())
+
+  subscription   RestaurantSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
+  @@map("subscription_audit_logs")
 }
 
 model DirectMessage {
