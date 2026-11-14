@@ -20,3 +20,4 @@ router.get('/subscriptions/current', authenticate, getCurrentSubscription);
 router.post('/subscriptions/:id/cancel', authenticate, cancelSaasSubscription);
 
 export default router;
+
