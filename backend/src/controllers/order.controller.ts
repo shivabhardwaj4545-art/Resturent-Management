@@ -525,47 +525,47 @@ export async function placeOrder(
 
       // Award loyalty points (based on pointsPerSpendRupees)
       const pointsEarned = loyaltyEnabled ? Math.floor(finalTotal / pointsPerSpendRupees) : 0;
-      if (loyaltyEnabled && pointsEarned > 0 && paymentMethod !== 'COD' && paymentMethod !== 'PAY_TO_WAITER' && paymentMethod !== 'PAY_AT_COUNTER') {
-        await tx.user.update({
-          where: { id: userId },
-          data: { loyaltyPoints: { increment: pointsEarned } },
-        });
-        await tx.loyaltyTransaction.create({
+        if (loyaltyEnabled && pointsEarned > 0 && paymentMethod !== 'COD' && paymentMethod !== 'PAY_TO_WAITER' && paymentMethod !== 'PAY_AT_COUNTER') {
+          await tx.user.update({
+            where: { id: userId },
+            data: { loyaltyPoints: { increment: pointsEarned } },
+          });
+          await tx.loyaltyTransaction.create({
+            data: {
+              userId,
+              orderId: newOrder.id,
+              points: pointsEarned,
+              type: 'EARNED',
+            },
+          });
+        }
+
+        // Update coupon usage
+        if (couponId) {
+          await tx.coupon.update({
+            where: { id: couponId },
+            data: { usedCount: { increment: 1 } },
+          });
+          await tx.couponUsage.create({
+            data: { couponId, userId, orderId: newOrder.id },
+          });
+        }
+
+        // Create payment record
+        await tx.payment.create({
           data: {
-            userId,
             orderId: newOrder.id,
-            points: pointsEarned,
-            type: 'EARNED',
+            method: effectivePaymentMethod,
+            status: 'PENDING',
+            amount: finalTotal,
           },
         });
-      }
 
-      // Update coupon usage
-      if (couponId) {
-        await tx.coupon.update({
-          where: { id: couponId },
-          data: { usedCount: { increment: 1 } },
-        });
-        await tx.couponUsage.create({
-          data: { couponId, userId, orderId: newOrder.id },
-        });
-      }
+        // Clear cart
+        await tx.cartItem.deleteMany({ where: { userId } });
 
-      // Create payment record
-      await tx.payment.create({
-        data: {
-          orderId: newOrder.id,
-          method: effectivePaymentMethod,
-          status: 'PENDING',
-          amount: finalTotal,
-        },
+        return newOrder;
       });
-
-      // Clear cart
-      await tx.cartItem.deleteMany({ where: { userId } });
-
-      return newOrder;
-    });
 
     // Fetch updated user profile to get real-time points
     const updatedUser = await prisma.user.findUnique({
@@ -789,7 +789,7 @@ export async function verifyPayment(
         title: 'New Paid Order Confirmed! 🎉',
         message: `Order #${order.id.slice(-8).toUpperCase()} paid online via UPI (₹${order.total.toFixed(2)})!`,
       },
-    }).catch(() => {});
+    }).catch(() => { });
 
     res.json({
       success: true,

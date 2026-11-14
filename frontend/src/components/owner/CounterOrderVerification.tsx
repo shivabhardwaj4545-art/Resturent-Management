@@ -244,13 +244,12 @@ export function CounterOrderVerification() {
                     key={k}
                     type="button"
                     onClick={() => handleKeypadPress(k)}
-                    className={`h-12 rounded-xl text-base font-bold transition-all flex items-center justify-center active:scale-95 ${
-                      k === 'C'
+                    className={`h-12 rounded-xl text-base font-bold transition-all flex items-center justify-center active:scale-95 ${k === 'C'
                         ? 'bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20'
                         : k === 'BS'
-                        ? 'bg-muted hover:bg-muted/80 text-muted-foreground'
-                        : 'bg-muted/60 hover:bg-muted text-foreground border border-border/50'
-                    }`}
+                          ? 'bg-muted hover:bg-muted/80 text-muted-foreground'
+                          : 'bg-muted/60 hover:bg-muted text-foreground border border-border/50'
+                      }`}
                   >
                     {k === 'BS' ? '⌫' : k}
                   </button>
@@ -286,11 +285,10 @@ export function CounterOrderVerification() {
                         lookupMutation.mutate(po.verificationCode);
                       }
                     }}
-                    className={`w-full text-left p-3 rounded-2xl border transition-all flex items-center justify-between ${
-                      selectedOrder?.id === po.id
+                    className={`w-full text-left p-3 rounded-2xl border transition-all flex items-center justify-between ${selectedOrder?.id === po.id
                         ? 'border-primary bg-primary/5'
                         : 'border-border/60 hover:bg-muted/40'
-                    }`}
+                      }`}
                   >
                     <div className="space-y-0.5">
                       <div className="flex items-center gap-2">
@@ -362,11 +360,10 @@ export function CounterOrderVerification() {
 
                 <div className="flex sm:flex-col items-center sm:items-end justify-between gap-1">
                   <span
-                    className={`px-3 py-1 rounded-full text-xs font-bold border ${
-                      selectedOrder.paymentStatus === 'PAID'
+                    className={`px-3 py-1 rounded-full text-xs font-bold border ${selectedOrder.paymentStatus === 'PAID'
                         ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
                         : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
-                    }`}
+                      }`}
                   >
                     {selectedOrder.paymentStatus === 'PAID' ? '✅ PAID' : '⏳ PAYMENT PENDING'}
                   </span>
@@ -484,11 +481,10 @@ export function CounterOrderVerification() {
                           key={m.value}
                           type="button"
                           onClick={() => setSelectedInstrument(m.value as any)}
-                          className={`p-3 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1 ${
-                            active
+                          className={`p-3 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1 ${active
                               ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shadow-xs'
                               : 'border-border/70 bg-card hover:bg-muted text-muted-foreground'
-                          }`}
+                            }`}
                         >
                           <Icon className="w-4 h-4" />
                           <span>{m.label}</span>

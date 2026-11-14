@@ -490,408 +490,408 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
                 ✅ Payment Confirmed
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                ⏳ Payment Pending / Pay at Restaurant
-              </span>
+                <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                  ⏳ Payment Pending / Pay at Restaurant
+                </span>
             )}
-          </div>
+              </div>
         </div>
-      </div>
+        </div>
 
-      <div className="max-w-lg mx-auto px-4 space-y-5">
-        {/* 4-Digit Order Verification Code Card (Offline Counter Confirmation Flow) */}
-        <div className="bg-card border-2 border-primary/40 rounded-3xl p-6 text-center space-y-4 shadow-lg relative overflow-hidden">
-          <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-orange-500 via-amber-500 to-emerald-500" />
+        <div className="max-w-lg mx-auto px-4 space-y-5">
+          {/* 4-Digit Order Verification Code Card (Offline Counter Confirmation Flow) */}
+          <div className="bg-card border-2 border-primary/40 rounded-3xl p-6 text-center space-y-4 shadow-lg relative overflow-hidden">
+            <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-orange-500 via-amber-500 to-emerald-500" />
 
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-            <CheckCircle2 className="w-4 h-4" /> Order Placed Successfully!
-          </div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+              <CheckCircle2 className="w-4 h-4" /> Order Placed Successfully!
+            </div>
 
-          <div className="space-y-1">
-            <p className="text-xs uppercase tracking-widest font-extrabold text-muted-foreground">
-              ORDER VERIFICATION CODE
-            </p>
-            <div className="flex items-center justify-center gap-2 py-1">
-              <span className="text-5xl font-black font-mono tracking-widest text-primary drop-shadow-sm select-all">
-                #{order.verificationCode || order.id.slice(-4).toUpperCase()}
-              </span>
+            <div className="space-y-1">
+              <p className="text-xs uppercase tracking-widest font-extrabold text-muted-foreground">
+                ORDER VERIFICATION CODE
+              </p>
+              <div className="flex items-center justify-center gap-2 py-1">
+                <span className="text-5xl font-black font-mono tracking-widest text-primary drop-shadow-sm select-all">
+                  #{order.verificationCode || order.id.slice(-4).toUpperCase()}
+                </span>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-muted/40 border border-border/80 text-xs text-muted-foreground leading-relaxed space-y-1 text-center">
+              <p className="font-semibold text-foreground">
+                Please show this code to the restaurant counter staff or waiter to identify your order and confirm your payment.
+              </p>
+              <p className="text-[11px]">
+                Your order has been placed successfully. Please complete your payment at the restaurant counter.
+              </p>
+            </div>
+
+            <div className="pt-2 border-t border-border/60 flex items-center justify-between text-xs">
+              <span className="text-muted-foreground font-medium">Payment Status:</span>
+              {order.paymentStatus === 'PAID' ? (
+                <span className="font-extrabold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                  ✅ Paid {order.counterPaymentMethod ? `(${order.counterPaymentMethod})` : ''}
+                </span>
+              ) : (
+                <span className="font-extrabold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                  ⏳ Payment Pending / Pay at Restaurant
+                </span>
+              )}
             </div>
           </div>
-
-          <div className="p-3.5 rounded-2xl bg-muted/40 border border-border/80 text-xs text-muted-foreground leading-relaxed space-y-1 text-center">
-            <p className="font-semibold text-foreground">
-              Please show this code to the restaurant counter staff or waiter to identify your order and confirm your payment.
-            </p>
-            <p className="text-[11px]">
-              Your order has been placed successfully. Please complete your payment at the restaurant counter.
-            </p>
-          </div>
-
-          <div className="pt-2 border-t border-border/60 flex items-center justify-between text-xs">
-            <span className="text-muted-foreground font-medium">Payment Status:</span>
-            {order.paymentStatus === 'PAID' ? (
-              <span className="font-extrabold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                ✅ Paid {order.counterPaymentMethod ? `(${order.counterPaymentMethod})` : ''}
-              </span>
-            ) : (
-              <span className="font-extrabold text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                ⏳ Payment Pending / Pay at Restaurant
-              </span>
-            )}
-          </div>
-        </div>
-        {/* Add-on Order Journey Banner */}
-        {order.addOnStatus && (
-          <div className={`border-2 rounded-2xl p-5 shadow-lg space-y-3 ${order.addOnStatus === 'CANCELLED'
+          {/* Add-on Order Journey Banner */}
+          {order.addOnStatus && (
+            <div className={`border-2 rounded-2xl p-5 shadow-lg space-y-3 ${order.addOnStatus === 'CANCELLED'
               ? 'bg-red-500/10 border-red-500/30'
               : 'bg-gradient-to-r from-blue-500/10 via-amber-500/10 to-emerald-500/10 border-blue-500/30'
-            }`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 font-display font-bold text-sm text-foreground">
-                <Sparkles className={`w-5 h-5 ${order.addOnStatus === 'CANCELLED' ? 'text-red-500' : 'text-blue-500 animate-pulse'}`} />
-                <span>⚡ Add-on Items Journey</span>
+              }`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-display font-bold text-sm text-foreground">
+                  <Sparkles className={`w-5 h-5 ${order.addOnStatus === 'CANCELLED' ? 'text-red-500' : 'text-blue-500 animate-pulse'}`} />
+                  <span>⚡ Add-on Items Journey</span>
+                </div>
+                <span className={`px-3 py-1 rounded-full text-xs font-extrabold text-white shadow-sm ${order.addOnStatus === 'CANCELLED' ? 'bg-red-500' : 'bg-blue-500'
+                  }`}>
+                  {order.addOnStatus === 'CANCELLED' ? '🚫 Add-ons Cancelled' : order.addOnStatus === 'PREPARING' ? '👨‍🍳 Preparing Add-ons' : order.addOnStatus === 'READY' ? '🍽️ Ready to Serve' : '✅ Add-ons Served'}
+                </span>
               </div>
-              <span className={`px-3 py-1 rounded-full text-xs font-extrabold text-white shadow-sm ${order.addOnStatus === 'CANCELLED' ? 'bg-red-500' : 'bg-blue-500'
-                }`}>
-                {order.addOnStatus === 'CANCELLED' ? '🚫 Add-ons Cancelled' : order.addOnStatus === 'PREPARING' ? '👨‍🍳 Preparing Add-ons' : order.addOnStatus === 'READY' ? '🍽️ Ready to Serve' : '✅ Add-ons Served'}
-              </span>
+              <p className="text-xs text-muted-foreground">
+                {order.addOnStatus === 'CANCELLED'
+                  ? 'Your add-on items have been cancelled by the restaurant.'
+                  : order.addOnStatus === 'PREPARING'
+                    ? 'The kitchen has received your add-on items and is preparing them right now!'
+                    : order.addOnStatus === 'READY'
+                      ? 'Your add-on items are ready and will be served to your table shortly!'
+                      : 'Your add-on items have been served. Enjoy your meal!'}
+              </p>
+              {/* Add-on Progress Steps */}
+              {order.addOnStatus !== 'CANCELLED' && (
+                <div className="grid grid-cols-3 gap-2 pt-2 text-center text-[11px] font-bold">
+                  <div className={`p-2 rounded-xl border transition-all ${order.addOnStatus === 'PREPARING' ? 'bg-blue-500 text-white border-blue-600 shadow-md scale-105' : 'bg-muted/50 text-muted-foreground border-border'}`}>
+                    1. Preparing
+                  </div>
+                  <div className={`p-2 rounded-xl border transition-all ${order.addOnStatus === 'READY' ? 'bg-amber-500 text-white border-amber-600 shadow-md scale-105' : 'bg-muted/50 text-muted-foreground border-border'}`}>
+                    2. Ready to Serve
+                  </div>
+                  <div className={`p-2 rounded-xl border transition-all ${order.addOnStatus === 'DELIVERED' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md scale-105' : 'bg-muted/50 text-muted-foreground border-border'}`}>
+                    3. Served
+                  </div>
+                </div>
+              )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              {order.addOnStatus === 'CANCELLED'
-                ? 'Your add-on items have been cancelled by the restaurant.'
-                : order.addOnStatus === 'PREPARING'
-                  ? 'The kitchen has received your add-on items and is preparing them right now!'
-                  : order.addOnStatus === 'READY'
-                    ? 'Your add-on items are ready and will be served to your table shortly!'
-                    : 'Your add-on items have been served. Enjoy your meal!'}
-            </p>
-            {/* Add-on Progress Steps */}
-            {order.addOnStatus !== 'CANCELLED' && (
-              <div className="grid grid-cols-3 gap-2 pt-2 text-center text-[11px] font-bold">
-                <div className={`p-2 rounded-xl border transition-all ${order.addOnStatus === 'PREPARING' ? 'bg-blue-500 text-white border-blue-600 shadow-md scale-105' : 'bg-muted/50 text-muted-foreground border-border'}`}>
-                  1. Preparing
-                </div>
-                <div className={`p-2 rounded-xl border transition-all ${order.addOnStatus === 'READY' ? 'bg-amber-500 text-white border-amber-600 shadow-md scale-105' : 'bg-muted/50 text-muted-foreground border-border'}`}>
-                  2. Ready to Serve
-                </div>
-                <div className={`p-2 rounded-xl border transition-all ${order.addOnStatus === 'DELIVERED' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md scale-105' : 'bg-muted/50 text-muted-foreground border-border'}`}>
-                  3. Served
-                </div>
+          )}
+
+          {/* Status tracker */}
+          <div className="bg-card border border-border rounded-2xl p-5">
+            <h2 className="font-display font-semibold mb-5">
+              {isCancelled ? '❌ Order Cancelled' : isCompleted ? completedLabel : trackingLabel}
+            </h2>
+
+            {!isCancelled && (
+              <div className="space-y-4">
+                {steps.map((step, idx) => {
+                  const isStepCompleted = idx <= stepIndex;
+                  const isActive = idx === stepIndex;
+
+                  return (
+                    <div key={step.key} className="flex items-center gap-3">
+                      <div
+                        className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${isStepCompleted
+                          ? 'text-white shadow-lg'
+                          : 'bg-muted text-muted-foreground'
+                          }`}
+                        style={isStepCompleted ? { backgroundColor: themeColor } : {}}
+                      >
+                        {step.icon}
+                      </div>
+
+                      <div className="flex-1">
+                        <p
+                          className={`font-medium text-sm ${isActive || isStepCompleted
+                            ? 'text-foreground'
+                            : 'text-muted-foreground'
+                            }`}
+                        >
+                          {step.label}
+                        </p>
+                        {isActive && !isCompleted && (
+                          <motion.p
+                            animate={{ opacity: [1, 0.5, 1] }}
+                            transition={{ repeat: Infinity, duration: 1.5 }}
+                            className="text-xs"
+                            style={{ color: themeColor }}
+                          >
+                            In progress...
+                          </motion.p>
+                        )}
+                      </div>
+
+                      {isStepCompleted && (
+                        <CheckCircle2
+                          className="w-4 h-4 flex-shrink-0"
+                          style={{ color: themeColor }}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
-        )}
 
-        {/* Status tracker */}
-        <div className="bg-card border border-border rounded-2xl p-5">
-          <h2 className="font-display font-semibold mb-5">
-            {isCancelled ? '❌ Order Cancelled' : isCompleted ? completedLabel : trackingLabel}
-          </h2>
-
-          {!isCancelled && (
-            <div className="space-y-4">
-              {steps.map((step, idx) => {
-                const isStepCompleted = idx <= stepIndex;
-                const isActive = idx === stepIndex;
-
-                return (
-                  <div key={step.key} className="flex items-center gap-3">
-                    <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${isStepCompleted
-                          ? 'text-white shadow-lg'
-                          : 'bg-muted text-muted-foreground'
-                        }`}
-                      style={isStepCompleted ? { backgroundColor: themeColor } : {}}
-                    >
-                      {step.icon}
-                    </div>
-
-                    <div className="flex-1">
-                      <p
-                        className={`font-medium text-sm ${isActive || isStepCompleted
-                            ? 'text-foreground'
-                            : 'text-muted-foreground'
-                          }`}
-                      >
-                        {step.label}
-                      </p>
-                      {isActive && !isCompleted && (
-                        <motion.p
-                          animate={{ opacity: [1, 0.5, 1] }}
-                          transition={{ repeat: Infinity, duration: 1.5 }}
-                          className="text-xs"
-                          style={{ color: themeColor }}
-                        >
-                          In progress...
-                        </motion.p>
-                      )}
-                    </div>
-
-                    {isStepCompleted && (
-                      <CheckCircle2
-                        className="w-4 h-4 flex-shrink-0"
-                        style={{ color: themeColor }}
-                      />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Direct Payment Card (Hidden when counter verification code flow is active) */}
+            {/* Direct Payment Card (Hidden when counter verification code flow is active) */ }
         {order.paymentStatus !== 'PAID' && order.paymentMethod === 'RAZORPAY' && !order.verificationCode && (order.restaurant.paymentQrCode || order.restaurant.paymentUpiId || order.restaurant.paymentPhone || order.restaurant.bankAccountNumber) && (
-          <div className="bg-card border border-border rounded-2xl p-5 space-y-4 shadow-sm">
-            <div className="flex items-center gap-2 border-b border-border pb-3">
-              <CreditCard className="w-5 h-5 text-primary" style={{ color: themeColor }} />
-              <h3 className="font-display font-semibold text-sm">Direct Payment Details</h3>
-            </div>
-
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Please transfer the total amount of <strong className="text-foreground">₹{order.total.toFixed(2)}</strong> directly to the restaurant owner using the details below:
-            </p>
-
-            {order.restaurant.paymentQrCode && (
-              <div className="flex flex-col items-center justify-center p-3 bg-white rounded-2xl border border-border max-w-[200px] mx-auto">
-                <img
-                  src={getImageUrl(order.restaurant.paymentQrCode)}
-                  alt="Restaurant Payment QR"
-                  className="w-40 h-40 object-contain"
-                />
-                <span className="text-[10px] text-gray-500 mt-1 font-semibold">Scan to Pay</span>
+            <div className="bg-card border border-border rounded-2xl p-5 space-y-4 shadow-sm">
+              <div className="flex items-center gap-2 border-b border-border pb-3">
+                <CreditCard className="w-5 h-5 text-primary" style={{ color: themeColor }} />
+                <h3 className="font-display font-semibold text-sm">Direct Payment Details</h3>
               </div>
-            )}
 
-            <div className="space-y-2.5 text-xs">
-              {order.restaurant.paymentUpiId && (
-                <div className="flex items-center justify-between p-2.5 bg-muted/40 rounded-xl">
-                  <div>
-                    <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">UPI ID</span>
-                    <span className="font-mono font-medium text-foreground">{order.restaurant.paymentUpiId}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(order.restaurant.paymentUpiId || '');
-                      toast.success('UPI ID copied!');
-                    }}
-                    className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
-                    title="Copy UPI ID"
-                    style={{ color: themeColor }}
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Please transfer the total amount of <strong className="text-foreground">₹{order.total.toFixed(2)}</strong> directly to the restaurant owner using the details below:
+              </p>
+
+              {order.restaurant.paymentQrCode && (
+                <div className="flex flex-col items-center justify-center p-3 bg-white rounded-2xl border border-border max-w-[200px] mx-auto">
+                  <img
+                    src={getImageUrl(order.restaurant.paymentQrCode)}
+                    alt="Restaurant Payment QR"
+                    className="w-40 h-40 object-contain"
+                  />
+                  <span className="text-[10px] text-gray-500 mt-1 font-semibold">Scan to Pay</span>
                 </div>
               )}
 
-              {order.restaurant.paymentPhone && (
-                <div className="flex items-center justify-between p-2.5 bg-muted/40 rounded-xl">
-                  <div>
-                    <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Phone for Payment</span>
-                    <span className="font-mono font-medium text-foreground">{order.restaurant.paymentPhone}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(order.restaurant.paymentPhone || '');
-                      toast.success('Phone number copied!');
-                    }}
-                    className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
-                    title="Copy Phone"
-                    style={{ color: themeColor }}
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
-
-              {order.restaurant.bankAccountNumber && (
-                <div className="p-3 bg-muted/20 border border-border/60 rounded-xl space-y-2">
-                  <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Bank Account Details</span>
-
-                  <div className="grid grid-cols-2 gap-2 text-[11px]">
-                    {order.restaurant.bankAccountHolder && (
-                      <div>
-                        <span className="text-muted-foreground block">Holder Name</span>
-                        <span className="font-medium text-foreground">{order.restaurant.bankAccountHolder}</span>
-                      </div>
-                    )}
-                    {order.restaurant.bankName && (
-                      <div>
-                        <span className="text-muted-foreground block">Bank Name</span>
-                        <span className="font-medium text-foreground">{order.restaurant.bankName}</span>
-                      </div>
-                    )}
-                    <div className="col-span-2 flex items-center justify-between border-t border-border/50 pt-1.5 mt-1">
-                      <div>
-                        <span className="text-muted-foreground block">Account Number</span>
-                        <span className="font-mono font-medium text-foreground">{order.restaurant.bankAccountNumber}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(order.restaurant.bankAccountNumber || '');
-                          toast.success('Account number copied!');
-                        }}
-                        className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
-                        title="Copy Account Number"
-                        style={{ color: themeColor }}
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
+              <div className="space-y-2.5 text-xs">
+                {order.restaurant.paymentUpiId && (
+                  <div className="flex items-center justify-between p-2.5 bg-muted/40 rounded-xl">
+                    <div>
+                      <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">UPI ID</span>
+                      <span className="font-mono font-medium text-foreground">{order.restaurant.paymentUpiId}</span>
                     </div>
-                    {order.restaurant.bankIfsc && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(order.restaurant.paymentUpiId || '');
+                        toast.success('UPI ID copied!');
+                      }}
+                      className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
+                      title="Copy UPI ID"
+                      style={{ color: themeColor }}
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                {order.restaurant.paymentPhone && (
+                  <div className="flex items-center justify-between p-2.5 bg-muted/40 rounded-xl">
+                    <div>
+                      <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Phone for Payment</span>
+                      <span className="font-mono font-medium text-foreground">{order.restaurant.paymentPhone}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(order.restaurant.paymentPhone || '');
+                        toast.success('Phone number copied!');
+                      }}
+                      className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
+                      title="Copy Phone"
+                      style={{ color: themeColor }}
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                {order.restaurant.bankAccountNumber && (
+                  <div className="p-3 bg-muted/20 border border-border/60 rounded-xl space-y-2">
+                    <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Bank Account Details</span>
+
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      {order.restaurant.bankAccountHolder && (
+                        <div>
+                          <span className="text-muted-foreground block">Holder Name</span>
+                          <span className="font-medium text-foreground">{order.restaurant.bankAccountHolder}</span>
+                        </div>
+                      )}
+                      {order.restaurant.bankName && (
+                        <div>
+                          <span className="text-muted-foreground block">Bank Name</span>
+                          <span className="font-medium text-foreground">{order.restaurant.bankName}</span>
+                        </div>
+                      )}
                       <div className="col-span-2 flex items-center justify-between border-t border-border/50 pt-1.5 mt-1">
                         <div>
-                          <span className="text-muted-foreground block">IFSC Code</span>
-                          <span className="font-mono font-medium text-foreground">{order.restaurant.bankIfsc}</span>
+                          <span className="text-muted-foreground block">Account Number</span>
+                          <span className="font-mono font-medium text-foreground">{order.restaurant.bankAccountNumber}</span>
                         </div>
                         <button
                           type="button"
                           onClick={() => {
-                            navigator.clipboard.writeText(order.restaurant.bankIfsc || '');
-                            toast.success('IFSC Code copied!');
+                            navigator.clipboard.writeText(order.restaurant.bankAccountNumber || '');
+                            toast.success('Account number copied!');
                           }}
                           className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
-                          title="Copy IFSC Code"
+                          title="Copy Account Number"
                           style={{ color: themeColor }}
                         >
                           <Copy className="w-3.5 h-3.5" />
                         </button>
                       </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="p-3 rounded-xl text-[11px] leading-relaxed font-medium bg-muted/50 border border-border">
-              Your order has been placed. Once you complete the payment, the restaurant owner will manually confirm and mark the order as PAID.
-            </div>
-          </div>
-        )}
-
-        {/* Order items */}
-        <div className="bg-card border border-border rounded-2xl p-4">
-          <h2 className="font-display font-semibold mb-3">Your Order</h2>
-          <div className="space-y-2">
-                  {order.items.map((item) => {
-                    const isAddon = isItemAddon(item, order);
-                    return (
-                      <div
-                        key={item.id}
-                        className={`space-y-0.5 border-b border-border/50 pb-2 last:border-0 last:pb-0 ${isAddon ? 'bg-amber-500/5 -mx-2 px-2 py-1.5 rounded-xl border border-amber-500/20' : ''
-                          }`}
-                      >
-                        <div className="flex justify-between text-sm items-center gap-2">
-                          <span className="flex items-center gap-1.5 flex-wrap">
-                            <span className={isAddon ? 'font-bold text-foreground' : ''}>{item.menuItem.name}</span>
-                            {isAddon && (
-                              <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/25 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                                ⚡ ADD-ON
-                              </span>
-                            )}
-                            {item.variant && (
-                              <span className="text-muted-foreground"> ({item.variant.name})</span>
-                            )}
-                            <span className="text-muted-foreground"> × {item.quantity}</span>
-                          </span>
-                          <span className={isAddon ? 'font-bold text-amber-600 dark:text-amber-400' : ''}>
-                            ₹{(item.unitPrice * item.quantity).toFixed(0)}
-                          </span>
-                        </div>
-                        {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
-                          <div className="text-[11px] text-muted-foreground pl-2">
-                            + {item.addOns.map((ao: any) => ao.name).join(', ')}
+                      {order.restaurant.bankIfsc && (
+                        <div className="col-span-2 flex items-center justify-between border-t border-border/50 pt-1.5 mt-1">
+                          <div>
+                            <span className="text-muted-foreground block">IFSC Code</span>
+                            <span className="font-mono font-medium text-foreground">{order.restaurant.bankIfsc}</span>
                           </div>
-                        )}
-                      </div>
-                );
-            })}
-                <div className="border-t border-border pt-3 space-y-1.5 text-sm">
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>Subtotal</span>
-                    <span>₹{order.subtotal.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>GST (18%)</span>
-                    <span>₹{order.gstAmount.toFixed(2)}</span>
-                  </div>
-                  {order.deliveryFee > 0 && (
-                    <div className="flex justify-between text-muted-foreground">
-                      <span>Delivery Fee</span>
-                      <span>₹{order.deliveryFee.toFixed(2)}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(order.restaurant.bankIfsc || '');
+                              toast.success('IFSC Code copied!');
+                            }}
+                            className="p-2 bg-muted hover:bg-muted-foreground/10 rounded-lg text-primary transition-all flex items-center justify-center"
+                            title="Copy IFSC Code"
+                            style={{ color: themeColor }}
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {order.packagingFee > 0 && (
-                    <div className="flex justify-between text-muted-foreground">
-                      <span>Packaging Fee</span>
-                      <span>₹{order.packagingFee.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {order.discount > 0 && (
-                    <div className="flex justify-between text-green-600 font-medium">
-                      <span>Discount</span>
-                      <span>-₹{order.discount.toFixed(2)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between items-center font-bold text-base border-t border-border pt-2">
-                    <div>
-                      <span className="block">{order.paymentStatus === 'PAID' ? 'Total Paid' : 'Total Amount'}</span>
-                      <span className={`text-xs block font-extrabold ${order.paymentStatus === 'PAID' ? 'text-emerald-600' : 'text-amber-600 dark:text-amber-400 animate-pulse'}`}>
-                        {order.paymentStatus === 'PAID' ? '✅ Payment Confirmed' : '⏳ Payment Pending'}
-                      </span>
-                    </div>
-                    <span className="text-lg">₹{order.total.toFixed(2)}</span>
-                  </div>
-                </div>
-                {!['DELIVERED', 'CANCELLED'].includes(order.status) && (
-                  <div className="space-y-2 mt-3">
-                    {order.paymentStatus !== 'PAID' && order.tableNumber && (
-                      <button
-                        onClick={async () => {
-                          try {
-                            const token = typeof window !== 'undefined' ? localStorage.getItem(`table_token_${restaurantSlug}`) || '' : '';
-                            await api.post(`/menu/${restaurantSlug}/call-waiter`, {
-                              tableNumber: order.tableNumber,
-                              tableToken: token,
-                              type: 'payment',
-                              amount: order.total,
-                              paymentMethod: order.paymentMethod,
-                            });
-                            const isRoomOrder = Boolean(order.tableNumber && (order.tableNumber.toLowerCase().includes('room') || order.tableNumber.toLowerCase().includes('suite')));
-                            const locLabel = isRoomOrder
-                              ? (order.tableNumber?.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`)
-                              : (order.tableNumber?.toLowerCase().startsWith('table') ? order.tableNumber : `Table ${order.tableNumber}`);
-                            toast.success(`${isRoomOrder ? '🛎️ Room service call for payment sent for ' : '🙋 Call Waiter for Payment sent for '}${locLabel}!`);
-                          } catch (err: any) {
-                            const isServerDown = err.code === 'ERR_NETWORK' || !err.response || err.response?.status >= 500;
-                            if (!isServerDown) {
-                              toast.error(err.response?.data?.error || 'Could not call staff for payment.');
-                            }
-                          }
-                        }}
-                        className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center justify-center gap-1.5 shadow-sm"
-                      >
-                        <span>
-                          {order.tableNumber && (order.tableNumber.toLowerCase().includes('room') || order.tableNumber.toLowerCase().includes('suite'))
-                            ? `🛎️ Call Room Service for Payment (${order.tableNumber.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`})`
-                            : `🙋 Call Waiter for Payment (${order.tableNumber?.toLowerCase().startsWith('table') ? order.tableNumber : `Table ${order.tableNumber}`})`}
-                        </span>
-                      </button>
-                    )}
-                    <button
-                      onClick={handleAddMoreItems}
-                      className="w-full py-2.5 px-4 border border-dashed rounded-xl text-xs font-semibold hover:bg-muted transition-colors flex items-center justify-center gap-1.5"
-                      style={{ color: themeColor, borderColor: themeColor }}
-                    >
-                      <span>➕ Add More Items (Roti, Paneer, etc.)</span>
-                    </button>
                   </div>
                 )}
               </div>
-        </div>
+
+              <div className="p-3 rounded-xl text-[11px] leading-relaxed font-medium bg-muted/50 border border-border">
+                Your order has been placed. Once you complete the payment, the restaurant owner will manually confirm and mark the order as PAID.
+              </div>
+            </div>
+          )}
+
+          {/* Order items */}
+          <div className="bg-card border border-border rounded-2xl p-4">
+            <h2 className="font-display font-semibold mb-3">Your Order</h2>
+            <div className="space-y-2">
+              {order.items.map((item) => {
+                const isAddon = isItemAddon(item, order);
+                return (
+                  <div
+                    key={item.id}
+                    className={`space-y-0.5 border-b border-border/50 pb-2 last:border-0 last:pb-0 ${isAddon ? 'bg-amber-500/5 -mx-2 px-2 py-1.5 rounded-xl border border-amber-500/20' : ''
+                      }`}
+                  >
+                    <div className="flex justify-between text-sm items-center gap-2">
+                      <span className="flex items-center gap-1.5 flex-wrap">
+                        <span className={isAddon ? 'font-bold text-foreground' : ''}>{item.menuItem.name}</span>
+                        {isAddon && (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/25 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                            ⚡ ADD-ON
+                          </span>
+                        )}
+                        {item.variant && (
+                          <span className="text-muted-foreground"> ({item.variant.name})</span>
+                        )}
+                        <span className="text-muted-foreground"> × {item.quantity}</span>
+                      </span>
+                      <span className={isAddon ? 'font-bold text-amber-600 dark:text-amber-400' : ''}>
+                        ₹{(item.unitPrice * item.quantity).toFixed(0)}
+                      </span>
+                    </div>
+                    {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
+                      <div className="text-[11px] text-muted-foreground pl-2">
+                        + {item.addOns.map((ao: any) => ao.name).join(', ')}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <div className="border-t border-border pt-3 space-y-1.5 text-sm">
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Subtotal</span>
+                  <span>₹{order.subtotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>GST (18%)</span>
+                  <span>₹{order.gstAmount.toFixed(2)}</span>
+                </div>
+                {order.deliveryFee > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Delivery Fee</span>
+                    <span>₹{order.deliveryFee.toFixed(2)}</span>
+                  </div>
+                )}
+                {order.packagingFee > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Packaging Fee</span>
+                    <span>₹{order.packagingFee.toFixed(2)}</span>
+                  </div>
+                )}
+                {order.discount > 0 && (
+                  <div className="flex justify-between text-green-600 font-medium">
+                    <span>Discount</span>
+                    <span>-₹{order.discount.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center font-bold text-base border-t border-border pt-2">
+                  <div>
+                    <span className="block">{order.paymentStatus === 'PAID' ? 'Total Paid' : 'Total Amount'}</span>
+                    <span className={`text-xs block font-extrabold ${order.paymentStatus === 'PAID' ? 'text-emerald-600' : 'text-amber-600 dark:text-amber-400 animate-pulse'}`}>
+                      {order.paymentStatus === 'PAID' ? '✅ Payment Confirmed' : '⏳ Payment Pending'}
+                    </span>
+                  </div>
+                  <span className="text-lg">₹{order.total.toFixed(2)}</span>
+                </div>
+              </div>
+              {!['DELIVERED', 'CANCELLED'].includes(order.status) && (
+                <div className="space-y-2 mt-3">
+                  {order.paymentStatus !== 'PAID' && order.tableNumber && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          const token = typeof window !== 'undefined' ? localStorage.getItem(`table_token_${restaurantSlug}`) || '' : '';
+                          await api.post(`/menu/${restaurantSlug}/call-waiter`, {
+                            tableNumber: order.tableNumber,
+                            tableToken: token,
+                            type: 'payment',
+                            amount: order.total,
+                            paymentMethod: order.paymentMethod,
+                          });
+                          const isRoomOrder = Boolean(order.tableNumber && (order.tableNumber.toLowerCase().includes('room') || order.tableNumber.toLowerCase().includes('suite')));
+                          const locLabel = isRoomOrder
+                            ? (order.tableNumber?.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`)
+                            : (order.tableNumber?.toLowerCase().startsWith('table') ? order.tableNumber : `Table ${order.tableNumber}`);
+                          toast.success(`${isRoomOrder ? '🛎️ Room service call for payment sent for ' : '🙋 Call Waiter for Payment sent for '}${locLabel}!`);
+                        } catch (err: any) {
+                          const isServerDown = err.code === 'ERR_NETWORK' || !err.response || err.response?.status >= 500;
+                          if (!isServerDown) {
+                            toast.error(err.response?.data?.error || 'Could not call staff for payment.');
+                          }
+                        }
+                      }}
+                      className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                    >
+                      <span>
+                        {order.tableNumber && (order.tableNumber.toLowerCase().includes('room') || order.tableNumber.toLowerCase().includes('suite'))
+                          ? `🛎️ Call Room Service for Payment (${order.tableNumber.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`})`
+                          : `🙋 Call Waiter for Payment (${order.tableNumber?.toLowerCase().startsWith('table') ? order.tableNumber : `Table ${order.tableNumber}`})`}
+                      </span>
+                    </button>
+                  )}
+                  <button
+                    onClick={handleAddMoreItems}
+                    className="w-full py-2.5 px-4 border border-dashed rounded-xl text-xs font-semibold hover:bg-muted transition-colors flex items-center justify-center gap-1.5"
+                    style={{ color: themeColor, borderColor: themeColor }}
+                  >
+                    <span>➕ Add More Items (Roti, Paneer, etc.)</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Rating — shown when order is completed */}
           {(order.review || (showRating || isCompleted)) && (

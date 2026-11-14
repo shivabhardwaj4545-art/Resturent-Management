@@ -278,22 +278,20 @@ export function OwnerOrdersPage() {
         <div className="flex items-center gap-2 px-3.5 sm:px-5 pt-2 pb-0 border-b border-border bg-card/60 shrink-0">
           <button
             onClick={() => setActiveTab('orders')}
-            className={`pb-2.5 px-3 text-xs sm:text-sm font-bold border-b-2 transition-all flex items-center gap-1.5 ${
-              activeTab === 'orders'
+            className={`pb-2.5 px-3 text-xs sm:text-sm font-bold border-b-2 transition-all flex items-center gap-1.5 ${activeTab === 'orders'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
+              }`}
           >
             <ShoppingBag className="w-4 h-4" />
             <span>All Orders</span>
           </button>
           <button
             onClick={() => setActiveTab('counter')}
-            className={`pb-2.5 px-3 text-xs sm:text-sm font-bold border-b-2 transition-all flex items-center gap-1.5 ${
-              activeTab === 'counter'
+            className={`pb-2.5 px-3 text-xs sm:text-sm font-bold border-b-2 transition-all flex items-center gap-1.5 ${activeTab === 'counter'
                 ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
+              }`}
           >
             <Banknote className="w-4 h-4" />
             <span>Counter Order Verification</span>
@@ -309,191 +307,140 @@ export function OwnerOrdersPage() {
           ) : (
             <>
               {/* Filters */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1 min-w-0">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                placeholder="Search order ID or customer..." className="w-full pl-9 pr-4 py-2.5 bg-card border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
-            </div>
-            <div className="flex gap-2 items-center overflow-x-auto no-scrollbar pb-1 min-w-0 max-w-full">
-              {ORDER_STATUSES.map((s) => (
-                <button key={s} onClick={() => { setStatusFilter(s); setPage(1); }}
-                  className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${statusFilter === s ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-card border border-border text-muted-foreground hover:bg-muted'}`}>
-                  {s}
-                </button>
-              ))}
-              <button
-                onClick={() => {
-                  if (confirm(`Are you sure you want to clear order history for status "${statusFilter}"? This will delete these order records.`)) {
-                    clearHistoryMutation.mutate();
-                  }
-                }}
-                disabled={clearHistoryMutation.isPending || !data?.data.orders.length}
-                className="flex items-center gap-1 px-3 py-2 bg-red-500/10 text-red-600 hover:bg-red-500/20 dark:bg-red-950/40 dark:hover:bg-red-950/60 dark:text-red-400 border border-red-200 dark:border-red-900/50 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-colors disabled:opacity-50"
-                title="Delete completed/cancelled order history"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Clear History</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Orders */}
-          {isLoading ? (
-            <div className="space-y-3">{[1, 2, 3, 4].map(i => <div key={i} className="h-24 skeleton rounded-2xl" />)}</div>
-          ) : (
-            <div className="space-y-3">
-              {data?.data.orders.map((order) => (
-                <motion.div key={order.id} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
-                  className="bg-card border border-border rounded-2xl overflow-hidden">
-                  <div className="flex items-center gap-4 p-4 cursor-pointer hover:bg-muted/30 transition-colors"
-                    onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <span className="font-mono font-bold text-sm">#{order.id.slice(-8).toUpperCase()}</span>
-                        {order.verificationCode && (
-                          <span className="text-xs px-2.5 py-0.5 rounded-full font-mono font-black bg-primary/10 text-primary border border-primary/20">
-                            CODE #{order.verificationCode}
-                          </span>
-                        )}
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[order.status] ?? ''}`}>{order.status}</span>
-                        {order.tableNumber && (
-                          <span className="text-xs text-muted-foreground flex items-center gap-1">
-                            <MapPin className="w-3 h-3" />
-                            {order.tableNumber.toLowerCase().includes('room') || order.tableNumber.toLowerCase().includes('suite')
-                              ? (order.tableNumber.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`)
-                              : (order.tableNumber.toLowerCase().startsWith('table') ? order.tableNumber : `Table ${order.tableNumber}`)}
-                          </span>
-                        )}
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${order.paymentMethod === 'RAZORPAY' ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-400 dark:border-purple-900/30' :
-                            order.paymentMethod === 'WALLET' ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-900/30' :
-                              order.paymentMethod === 'PAY_TO_WAITER' ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400 dark:border-blue-900/30' :
-                                'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-900/30'
-                          }`}>
-                          {order.paymentMethod === 'RAZORPAY' ? 'Online' : order.paymentMethod === 'WALLET' ? 'Wallet' : order.paymentMethod === 'PAY_TO_WAITER' ? 'Pay to Waiter' : 'Pay on Counter'}
-                        </span>
-                        {order.addOnStatus && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
-                            <Sparkles className="w-2.5 h-2.5 animate-pulse text-amber-500" />
-                            Add-on: {order.addOnStatus}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                        <User className="w-3 h-3" />
-                        {order.guestName ?? order.user?.name ?? 'Guest'} •
-                        {' '}{order.items.slice(0, 2).map(i => i.menuItem.name).join(', ')}
-                        {order.items.length > 2 && ` +${order.items.length - 2} more`}
-                      </p>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="font-bold">₹{formatAmount(order.total)}</p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1 justify-end">
-                        <Clock className="w-3 h-3" />
-                        {formatTime(order.createdAt)}
-                      </p>
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (confirm(`Are you sure you want to delete order #${order.id.slice(-8).toUpperCase()}?`)) {
-                          deleteOrderMutation.mutate(order.id);
-                        }
-                      }}
-                      disabled={deleteOrderMutation.isPending}
-                      className="p-1.5 text-muted-foreground hover:text-red-600 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
-                      title="Delete Order"
-                    >
-                      <Trash2 className="w-4 h-4" />
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1 min-w-0">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                    placeholder="Search order ID or customer..." className="w-full pl-9 pr-4 py-2.5 bg-card border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                </div>
+                <div className="flex gap-2 items-center overflow-x-auto no-scrollbar pb-1 min-w-0 max-w-full">
+                  {ORDER_STATUSES.map((s) => (
+                    <button key={s} onClick={() => { setStatusFilter(s); setPage(1); }}
+                      className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${statusFilter === s ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-card border border-border text-muted-foreground hover:bg-muted'}`}>
+                      {s}
                     </button>
-                    <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${expandedOrder === order.id ? 'rotate-180' : ''}`} />
-                  </div>
+                  ))}
+                  <button
+                    onClick={() => {
+                      if (confirm(`Are you sure you want to clear order history for status "${statusFilter}"? This will delete these order records.`)) {
+                        clearHistoryMutation.mutate();
+                      }
+                    }}
+                    disabled={clearHistoryMutation.isPending || !data?.data.orders.length}
+                    className="flex items-center gap-1 px-3 py-2 bg-red-500/10 text-red-600 hover:bg-red-500/20 dark:bg-red-950/40 dark:hover:bg-red-950/60 dark:text-red-400 border border-red-200 dark:border-red-900/50 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-colors disabled:opacity-50"
+                    title="Delete completed/cancelled order history"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Clear History</span>
+                  </button>
+                </div>
+              </div>
 
-                  {expandedOrder === order.id && (
-                    <div className="px-5 pb-5 border-t border-border pt-4 bg-muted/10">
-                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+              {/* Orders */}
+              {isLoading ? (
+                <div className="space-y-3">{[1, 2, 3, 4].map(i => <div key={i} className="h-24 skeleton rounded-2xl" />)}</div>
+              ) : (
+                <div className="space-y-3">
+                  {data?.data.orders.map((order) => (
+                    <motion.div key={order.id} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
+                      className="bg-card border border-border rounded-2xl overflow-hidden">
+                      <div className="flex items-center gap-4 p-4 cursor-pointer hover:bg-muted/30 transition-colors"
+                        onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <span className="font-mono font-bold text-sm">#{order.id.slice(-8).toUpperCase()}</span>
+                            {order.verificationCode && (
+                              <span className="text-xs px-2.5 py-0.5 rounded-full font-mono font-black bg-primary/10 text-primary border border-primary/20">
+                                CODE #{order.verificationCode}
+                              </span>
+                            )}
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[order.status] ?? ''}`}>{order.status}</span>
+                            {order.tableNumber && (
+                              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                <MapPin className="w-3 h-3" />
+                                {order.tableNumber.toLowerCase().includes('room') || order.tableNumber.toLowerCase().includes('suite')
+                                  ? (order.tableNumber.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`)
+                                  : (order.tableNumber.toLowerCase().startsWith('table') ? order.tableNumber : `Table ${order.tableNumber}`)}
+                              </span>
+                            )}
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${order.paymentMethod === 'RAZORPAY' ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-400 dark:border-purple-900/30' :
+                              order.paymentMethod === 'WALLET' ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-900/30' :
+                                order.paymentMethod === 'PAY_TO_WAITER' ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400 dark:border-blue-900/30' :
+                                  'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-900/30'
+                              }`}>
+                              {order.paymentMethod === 'RAZORPAY' ? 'Online' : order.paymentMethod === 'WALLET' ? 'Wallet' : order.paymentMethod === 'PAY_TO_WAITER' ? 'Pay to Waiter' : 'Pay on Counter'}
+                            </span>
+                            {order.addOnStatus && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                                <Sparkles className="w-2.5 h-2.5 animate-pulse text-amber-500" />
+                                Add-on: {order.addOnStatus}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                            <User className="w-3 h-3" />
+                            {order.guestName ?? order.user?.name ?? 'Guest'} •
+                            {' '}{order.items.slice(0, 2).map(i => i.menuItem.name).join(', ')}
+                            {order.items.length > 2 && ` +${order.items.length - 2} more`}
+                          </p>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="font-bold">₹{formatAmount(order.total)}</p>
+                          <p className="text-xs text-muted-foreground flex items-center gap-1 justify-end">
+                            <Clock className="w-3 h-3" />
+                            {formatTime(order.createdAt)}
+                          </p>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm(`Are you sure you want to delete order #${order.id.slice(-8).toUpperCase()}?`)) {
+                              deleteOrderMutation.mutate(order.id);
+                            }
+                          }}
+                          disabled={deleteOrderMutation.isPending}
+                          className="p-1.5 text-muted-foreground hover:text-red-600 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
+                          title="Delete Order"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                        <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${expandedOrder === order.id ? 'rotate-180' : ''}`} />
+                      </div>
 
-                        {/* Left Pane - Items and Billing Details (spans 2 columns on large screens) */}
-                        <div className="lg:col-span-2 space-y-5">
+                      {expandedOrder === order.id && (
+                        <div className="px-5 pb-5 border-t border-border pt-4 bg-muted/10">
+                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
-                          {/* Order Items Section - Clearly Differentiates Initial Items vs Add-on Items */}
-                                    {(() => {
-                                      const initialItems = order.items.filter((item) => !isItemAddon(item, order));
-                                      const addonItems = order.items.filter((item) => isItemAddon(item, order));
-                                      const hasAddons = addonItems.length > 0;
+                            {/* Left Pane - Items and Billing Details (spans 2 columns on large screens) */}
+                            <div className="lg:col-span-2 space-y-5">
 
-                                      return (
-                                        <div className="space-y-4">
-                                          {/* 1. Initial Order Items */}
-                                          <div className="space-y-1.5">
-                                            <div className="flex items-center justify-between">
-                                              <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                                                <Utensils className="w-3.5 h-3.5" />
-                                                {hasAddons ? `Initial Order Items (${initialItems.length})` : 'Order Items'}
-                                              </p>
-                                              {hasAddons && (
-                                                <span className="text-[11px] font-medium text-muted-foreground">
-                                                  Ordered {formatTime(order.createdAt)}
-                                                </span>
-                                              )}
-                                            </div>
-                                            <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border shadow-2xs">
-                                              {initialItems.map((item, idx) => (
-                                                <div key={idx} className="flex items-center justify-between p-3 text-sm">
-                                                  <div className="flex-1">
-                                                    <span className="font-medium text-foreground">{item.menuItem.name}</span>
-                                                    <span className="text-xs text-muted-foreground ml-2">
-                                                      ({item.quantity} × ₹{formatAmount(item.unitPrice || (item.subtotal / item.quantity))})
-                                                    </span>
-                                                    {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
-                                                      <div className="text-[11px] text-muted-foreground mt-0.5 ml-2">
-                                                        + {item.addOns.map((ao: any) => ao.name).join(', ')}
-                                                      </div>
-                                                    )}
-                                                  </div>
-                                                  <span className="font-semibold text-foreground">₹{formatAmount(item.subtotal)}</span>
-                                                </div>
-                                              ))}
-                                            </div>
-                                          </div>
+                              {/* Order Items Section - Clearly Differentiates Initial Items vs Add-on Items */}
+                              {(() => {
+                                const initialItems = order.items.filter((item) => !isItemAddon(item, order));
+                                const addonItems = order.items.filter((item) => isItemAddon(item, order));
+                                const hasAddons = addonItems.length > 0;
 
-                                  {/* 2. Add-on Items Section (Distinctive highlighted styling) */}
-                                  {hasAddons && (
-                                    <div className="space-y-2 p-3.5 rounded-2xl bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-transparent border-2 border-amber-500/30 dark:border-amber-500/25 shadow-xs">
-                                      <div className="flex items-center justify-between flex-wrap gap-2">
-                                        <div className="flex items-center gap-2">
-                                          <span className="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
-                                            <Sparkles className="w-3.5 h-3.5" />
-                                          </span>
-                                          <div>
-                                            <p className="font-black text-xs text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-                                              ⚡ Add-on Items ({addonItems.length})
-                                            </p>
-                                            {order.lastAddOnAt && (
-                                              <p className="text-[10px] text-muted-foreground font-medium">
-                                                Added {formatTime(order.lastAddOnAt)}
-                                              </p>
-                                            )}
-                                          </div>
-                                        </div>
-                                        {order.addOnStatus && (
-                                          <span className="text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider bg-amber-500 text-slate-950 shadow-xs">
-                                            {order.addOnStatus}
+                                return (
+                                  <div className="space-y-4">
+                                    {/* 1. Initial Order Items */}
+                                    <div className="space-y-1.5">
+                                      <div className="flex items-center justify-between">
+                                        <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                                          <Utensils className="w-3.5 h-3.5" />
+                                          {hasAddons ? `Initial Order Items (${initialItems.length})` : 'Order Items'}
+                                        </p>
+                                        {hasAddons && (
+                                          <span className="text-[11px] font-medium text-muted-foreground">
+                                            Ordered {formatTime(order.createdAt)}
                                           </span>
                                         )}
                                       </div>
-
-                                      <div className="bg-card/90 border border-amber-500/30 rounded-xl overflow-hidden divide-y divide-amber-500/15">
-                                        {addonItems.map((item, idx) => (
-                                          <div key={idx} className="flex items-center justify-between p-3 text-sm bg-amber-500/5">
+                                      <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border shadow-2xs">
+                                        {initialItems.map((item, idx) => (
+                                          <div key={idx} className="flex items-center justify-between p-3 text-sm">
                                             <div className="flex-1">
-                                              <div className="flex items-center gap-2 flex-wrap">
-                                                <span className="font-bold text-foreground">{item.menuItem.name}</span>
-                                                <span className="px-1.5 py-0.5 rounded text-[9px] font-black tracking-wider uppercase bg-amber-500/25 text-amber-600 dark:text-amber-300 border border-amber-500/40">
-                                                  ⚡ ADD-ON
-                                                </span>
-                                              </div>
-                                              <span className="text-xs text-muted-foreground">
+                                              <span className="font-medium text-foreground">{item.menuItem.name}</span>
+                                              <span className="text-xs text-muted-foreground ml-2">
                                                 ({item.quantity} × ₹{formatAmount(item.unitPrice || (item.subtotal / item.quantity))})
                                               </span>
                                               {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
@@ -502,17 +449,68 @@ export function OwnerOrdersPage() {
                                                 </div>
                                               )}
                                             </div>
-                                            <span className="font-bold text-amber-600 dark:text-amber-400">
-                                              ₹{formatAmount(item.subtotal)}
-                                            </span>
+                                            <span className="font-semibold text-foreground">₹{formatAmount(item.subtotal)}</span>
                                           </div>
                                         ))}
                                       </div>
                                     </div>
-                                  )}
-                                </div>
-                              );
-                          })()}
+
+                                    {/* 2. Add-on Items Section (Distinctive highlighted styling) */}
+                                    {hasAddons && (
+                                      <div className="space-y-2 p-3.5 rounded-2xl bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-transparent border-2 border-amber-500/30 dark:border-amber-500/25 shadow-xs">
+                                        <div className="flex items-center justify-between flex-wrap gap-2">
+                                          <div className="flex items-center gap-2">
+                                            <span className="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
+                                              <Sparkles className="w-3.5 h-3.5" />
+                                            </span>
+                                            <div>
+                                              <p className="font-black text-xs text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                                                ⚡ Add-on Items ({addonItems.length})
+                                              </p>
+                                              {order.lastAddOnAt && (
+                                                <p className="text-[10px] text-muted-foreground font-medium">
+                                                  Added {formatTime(order.lastAddOnAt)}
+                                                </p>
+                                              )}
+                                            </div>
+                                          </div>
+                                          {order.addOnStatus && (
+                                            <span className="text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider bg-amber-500 text-slate-950 shadow-xs">
+                                              {order.addOnStatus}
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        <div className="bg-card/90 border border-amber-500/30 rounded-xl overflow-hidden divide-y divide-amber-500/15">
+                                          {addonItems.map((item, idx) => (
+                                            <div key={idx} className="flex items-center justify-between p-3 text-sm bg-amber-500/5">
+                                              <div className="flex-1">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                  <span className="font-bold text-foreground">{item.menuItem.name}</span>
+                                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-black tracking-wider uppercase bg-amber-500/25 text-amber-600 dark:text-amber-300 border border-amber-500/40">
+                                                    ⚡ ADD-ON
+                                                  </span>
+                                                </div>
+                                                <span className="text-xs text-muted-foreground">
+                                                  ({item.quantity} × ₹{formatAmount(item.unitPrice || (item.subtotal / item.quantity))})
+                                                </span>
+                                                {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
+                                                  <div className="text-[11px] text-muted-foreground mt-0.5 ml-2">
+                                                    + {item.addOns.map((ao: any) => ao.name).join(', ')}
+                                                  </div>
+                                                )}
+                                              </div>
+                                              <span className="font-bold text-amber-600 dark:text-amber-400">
+                                                ₹{formatAmount(item.subtotal)}
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
 
                               {/* Sub-grid: Customer info and Receipt Billing */}
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -620,9 +618,9 @@ export function OwnerOrdersPage() {
                                 <div className="flex gap-2 flex-wrap">
                                   {/* Payment Method Badge */}
                                   <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${order.paymentMethod === 'RAZORPAY' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300' :
-                                      order.paymentMethod === 'WALLET' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' :
-                                        order.paymentMethod === 'PAY_TO_WAITER' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' :
-                                          'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
+                                    order.paymentMethod === 'WALLET' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' :
+                                      order.paymentMethod === 'PAY_TO_WAITER' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' :
+                                        'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
                                     }`}>
                                     {order.paymentMethod === 'RAZORPAY' ? <CreditCard className="w-3 h-3" /> :
                                       order.paymentMethod === 'WALLET' ? <Wallet className="w-3 h-3" /> :
@@ -633,9 +631,9 @@ export function OwnerOrdersPage() {
 
                                   {/* Payment Status Badge */}
                                   <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${order.paymentStatus === 'PAID' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
-                                      order.paymentStatus === 'FAILED' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' :
-                                        order.paymentStatus === 'REFUNDED' ? 'bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-300' :
-                                          'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                                    order.paymentStatus === 'FAILED' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' :
+                                      order.paymentStatus === 'REFUNDED' ? 'bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-300' :
+                                        'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
                                     }`}>
                                     {order.paymentStatus}
                                   </span>
@@ -687,8 +685,8 @@ export function OwnerOrdersPage() {
                                 {/* Add-on Order Journey Banner & Actions */}
                                 {(order as any).addOnStatus && (
                                   <div className={`rounded-xl p-3.5 space-y-2.5 my-2 border ${(order as any).addOnStatus === 'CANCELLED'
-                                      ? 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-900/50'
-                                      : 'bg-blue-50/70 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900/50'
+                                    ? 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-900/50'
+                                    : 'bg-blue-50/70 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900/50'
                                     }`}>
                                     <div className="flex items-center justify-between border-b border-border/40 pb-2">
                                       <div className={`flex items-center gap-1.5 font-bold text-xs ${(order as any).addOnStatus === 'CANCELLED' ? 'text-red-700 dark:text-red-300' : 'text-blue-700 dark:text-blue-300'
@@ -766,8 +764,8 @@ export function OwnerOrdersPage() {
                                       <button key={next} onClick={() => updateStatusMutation.mutate({ id: order.id, status: next })}
                                         disabled={updateStatusMutation.isPending}
                                         className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all disabled:opacity-50 flex items-center gap-1 shadow-sm ${next === 'CANCELLED'
-                                            ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200'
-                                            : 'bg-primary text-primary-foreground hover:bg-primary/95 hover:shadow-md'
+                                          ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200'
+                                          : 'bg-primary text-primary-foreground hover:bg-primary/95 hover:shadow-md'
                                           }`}>
                                         {next !== 'CANCELLED' && <Check className="w-3 h-3" />}
                                         Mark as {next === 'DELIVERED' ? 'SERVED' : next}
@@ -853,29 +851,29 @@ export function OwnerOrdersPage() {
 
                           </div>
                         </div>
-                  )}
-                      </motion.div>
-              ))}
-                      {data?.data.orders.length === 0 && (
-                        <div className="text-center py-20 text-muted-foreground">
-                          <ShoppingBag className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                          <p>No orders found</p>
-                        </div>
                       )}
+                    </motion.div>
+                  ))}
+                  {data?.data.orders.length === 0 && (
+                    <div className="text-center py-20 text-muted-foreground">
+                      <ShoppingBag className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                      <p>No orders found</p>
                     </div>
                   )}
+                </div>
+              )}
 
-                  {data && data.pagination.totalPages > 1 && (
-                    <div className="flex items-center justify-end gap-2">
-                      <button disabled={page === 1} onClick={() => setPage(p => p - 1)} className="px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-muted disabled:opacity-40 transition-colors">Previous</button>
-                      <span className="text-sm">{page} / {data.pagination.totalPages}</span>
-                      <button disabled={page === data.pagination.totalPages} onClick={() => setPage(p => p + 1)} className="px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-muted disabled:opacity-40 transition-colors">Next</button>
-                    </div>
-                  )}
+              {data && data.pagination.totalPages > 1 && (
+                <div className="flex items-center justify-end gap-2">
+                  <button disabled={page === 1} onClick={() => setPage(p => p - 1)} className="px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-muted disabled:opacity-40 transition-colors">Previous</button>
+                  <span className="text-sm">{page} / {data.pagination.totalPages}</span>
+                  <button disabled={page === data.pagination.totalPages} onClick={() => setPage(p => p + 1)} className="px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-muted disabled:opacity-40 transition-colors">Next</button>
+                </div>
+              )}
             </>
           )}
-                </div>
+        </div>
       </main>
     </div>
-        );
+  );
 }

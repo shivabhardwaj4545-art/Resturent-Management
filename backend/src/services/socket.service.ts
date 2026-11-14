@@ -298,7 +298,7 @@ export function emitWaiterCall(
           data: payload,
         });
       }
-    }).catch(() => {});
+    }).catch(() => { });
   }
 }
 
