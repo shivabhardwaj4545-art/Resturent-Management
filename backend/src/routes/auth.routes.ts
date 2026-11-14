@@ -15,7 +15,12 @@ import {
 } from '../controllers/auth.controller';
 import { validate } from '../middlewares/validate.middleware';
 import { authenticate } from '../middlewares/auth.middleware';
-import { authLimiter, passwordResetLimiter } from '../middlewares/rateLimiter.middleware';
+import {
+  loginIpLimiter,
+  registerLimiter,
+  refreshTokenLimiter,
+  passwordResetLimiter,
+} from '../middlewares/rateLimiter.middleware';
 import {
   registerSchema,
   loginSchema,
@@ -40,7 +45,7 @@ const router = Router();
  *     summary: Register a new user
  *     tags: [Auth]
  */
-router.post('/register', authLimiter, validate(registerSchema), register);
+router.post('/register', registerLimiter, validate(registerSchema), register);
 
 /**
  * @swagger
@@ -49,7 +54,7 @@ router.post('/register', authLimiter, validate(registerSchema), register);
  *     summary: Login with email and password
  *     tags: [Auth]
  */
-router.post('/login', authLimiter, validate(loginSchema), login);
+router.post('/login', loginIpLimiter, validate(loginSchema), login);
 
 /**
  * @swagger
@@ -90,7 +95,7 @@ router.post('/reset-password', validate(resetPasswordSchema), resetPassword);
  *     summary: Refresh access token using refresh token cookie
  *     tags: [Auth]
  */
-router.post('/refresh', authLimiter, refreshToken);
+router.post('/refresh', refreshTokenLimiter, refreshToken);
 
 /**
  * @swagger

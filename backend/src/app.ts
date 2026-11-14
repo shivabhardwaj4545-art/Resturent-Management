@@ -30,6 +30,12 @@ import { getSocketServer } from './services/socket.service';
 
 const app = express();
 
+// ── Trust Proxy Configuration ────────────────────────────────
+// Safely trust reverse proxy hops (Docker network, Coolify, Traefik, Nginx, Next.js rewrite proxy)
+// while preventing spoofed external X-Forwarded-For headers
+const trustProxyConfig = process.env.TRUST_PROXY || 'loopback, linklocal, uniquelocal';
+app.set('trust proxy', trustProxyConfig);
+
 // ── Security Headers ──────────────────────────────────────────
 app.use(
   helmet({

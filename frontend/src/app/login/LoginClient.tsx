@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Eye, EyeOff, Mail, Lock, Loader2, QrCode, Shield, Store, Smartphone } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, Loader2, QrCode, Shield, Store, Smartphone, ShieldAlert } from 'lucide-react';
 import api, { API_BASE_URL } from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
 import { toast } from 'sonner';
@@ -29,10 +29,19 @@ export default function LoginClient() {
   const [activeTab, setActiveTab] = useState<'CUSTOMER' | 'PARTNER'>(isPartnerFromUrl ? 'PARTNER' : 'CUSTOMER');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState<number>(0);
 
   const { setUser, user, isAuthenticated } = useAuthStore();
 
   const activeRestaurantSlug = restaurantSlugFromUrl;
+
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+    const interval = setInterval(() => {
+      setCooldownSeconds(prev => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [cooldownSeconds]);
 
   useEffect(() => {
     const errorParam = searchParams.get('error');
@@ -69,6 +78,7 @@ export default function LoginClient() {
   });
 
   const onSubmit = async (data: LoginForm) => {
+    if (loading || cooldownSeconds > 0) return;
 
     setLoading(true);
     try {
@@ -118,8 +128,17 @@ export default function LoginClient() {
 
       toast.success(`Welcome back, ${user.name}! 👋`);
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Login failed. Please check your credentials.';
-      toast.error(msg);
+      if (err.response?.status === 429) {
+        const retryAfterHeader = err.response?.headers?.['retry-after'];
+        const retryAfterData = err.response?.data?.retryAfter;
+        const waitSec = Math.max(1, parseInt(retryAfterData || retryAfterHeader || '60', 10));
+        setCooldownSeconds(waitSec);
+        const msg = err.response?.data?.error || `Too many attempts. Please wait ${waitSec} seconds before trying again.`;
+        toast.error(msg);
+      } else {
+        const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Login failed. Please check your credentials.';
+        toast.error(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -203,6 +222,14 @@ export default function LoginClient() {
               </div>
             ) : (
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                {cooldownSeconds > 0 && (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center gap-2.5 text-xs text-amber-600 dark:text-amber-400">
+                    <ShieldAlert className="w-4 h-4 shrink-0 text-amber-500" />
+                    <span>
+                      Too many login attempts. Please wait <strong>{cooldownSeconds}s</strong> before trying again.
+                    </span>
+                  </div>
+                )}
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block">Email</label>
                   <div className="relative">
@@ -210,8 +237,9 @@ export default function LoginClient() {
                     <input
                       {...register('email')}
                       type="email"
+                      disabled={loading || cooldownSeconds > 0}
                       placeholder="you@example.com"
-                      className="w-full pl-9 pr-4 py-3 bg-muted border border-border rounded-xl text-foreground placeholder:text-muted-foreground text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-500/50"
+                      className="w-full pl-9 pr-4 py-3 bg-muted border border-border rounded-xl text-foreground placeholder:text-muted-foreground text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-500/50 disabled:opacity-50"
                     />
                   </div>
                   {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email.message}</p>}
@@ -224,13 +252,15 @@ export default function LoginClient() {
                     <input
                       {...register('password')}
                       type={showPassword ? 'text' : 'password'}
+                      disabled={loading || cooldownSeconds > 0}
                       placeholder="••••••••"
-                      className="w-full pl-9 pr-10 py-3 bg-muted border border-border rounded-xl text-foreground placeholder:text-muted-foreground text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-500/50"
+                      className="w-full pl-9 pr-10 py-3 bg-muted border border-border rounded-xl text-foreground placeholder:text-muted-foreground text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-500/50 disabled:opacity-50"
                     />
                     <button
                       type="button"
+                      disabled={loading || cooldownSeconds > 0}
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground disabled:opacity-50"
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -249,11 +279,15 @@ export default function LoginClient() {
 
                 <button
                   type="submit"
-                  disabled={loading}
-                  className="w-full py-3.5 rounded-xl text-white font-semibold bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 transition-all shadow-lg shadow-orange-500/20 disabled:opacity-60 flex items-center justify-center gap-2"
+                  disabled={loading || cooldownSeconds > 0}
+                  className="w-full py-3.5 rounded-xl text-white font-semibold bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 transition-all shadow-lg shadow-orange-500/20 disabled:opacity-60 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
                 >
                   {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-                  {loading ? 'Signing in...' : 'Sign In'}
+                  {loading
+                    ? 'Signing in...'
+                    : cooldownSeconds > 0
+                      ? `Please wait ${cooldownSeconds}s...`
+                      : 'Sign In'}
                 </button>
               </form>
             )}

@@ -25,6 +25,12 @@ import {
   revokeAllUserRefreshTokens,
   REFRESH_TOKEN_COOKIE_NAME,
 } from '../services/refreshToken.service';
+import {
+  checkAccountLoginCooldown,
+  recordFailedLoginAttempt,
+  recordSuccessfulLogin,
+} from '../services/loginSecurity.service';
+import { logAuthAudit } from '../utils/authAudit.logger';
 
 // ── Register ──────────────────────────────────────────────────
 
@@ -182,6 +188,22 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
     }
 
     const normalizedEmail = email.toLowerCase().trim();
+    const ipAddress = req.ip || (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+    const userAgent = (req.headers['user-agent'] as string) || 'Web Browser';
+    const correlationId = (req.headers['x-request-id'] as string) || undefined;
+
+    // Check progressive account-level cooldown (protects against distributed brute-force)
+    const { inCooldown, retryAfterSeconds } = await checkAccountLoginCooldown(normalizedEmail);
+    if (inCooldown) {
+      res.setHeader('Retry-After', String(retryAfterSeconds));
+      res.status(429).json({
+        success: false,
+        error: `Too many failed login attempts for this account. Please wait ${retryAfterSeconds} seconds before trying again.`,
+        code: 'ACCOUNT_RATE_LIMITED',
+        retryAfter: retryAfterSeconds,
+      });
+      return;
+    }
 
     // 1. Try scoped email first if restaurantSlug is provided
     let user = restaurantSlug
@@ -213,6 +235,22 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
     }
 
     if (!user || !user.passwordHash) {
+      const { cooldownSeconds } = await recordFailedLoginAttempt(
+        normalizedEmail,
+        String(ipAddress),
+        userAgent,
+        correlationId
+      );
+      if (cooldownSeconds > 0) {
+        res.setHeader('Retry-After', String(cooldownSeconds));
+        res.status(429).json({
+          success: false,
+          error: `Too many failed login attempts. Account temporarily locked for ${Math.ceil(cooldownSeconds / 60)} minute(s).`,
+          code: 'ACCOUNT_RATE_LIMITED',
+          retryAfter: cooldownSeconds,
+        });
+        return;
+      }
       throw new AppError('Invalid email or password.', 401, 'INVALID_CREDENTIALS');
     }
 
@@ -230,6 +268,22 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
 
     const isValidPassword = await bcrypt.compare(password, user.passwordHash);
     if (!isValidPassword) {
+      const { cooldownSeconds } = await recordFailedLoginAttempt(
+        normalizedEmail,
+        String(ipAddress),
+        userAgent,
+        correlationId
+      );
+      if (cooldownSeconds > 0) {
+        res.setHeader('Retry-After', String(cooldownSeconds));
+        res.status(429).json({
+          success: false,
+          error: `Too many failed login attempts. Account temporarily locked for ${Math.ceil(cooldownSeconds / 60)} minute(s).`,
+          code: 'ACCOUNT_RATE_LIMITED',
+          retryAfter: cooldownSeconds,
+        });
+        return;
+      }
       throw new AppError('Invalid email or password.', 401, 'INVALID_CREDENTIALS');
     }
 
@@ -270,8 +324,6 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
 
     // Create new active session record
     const sessionId = crypto.randomUUID();
-    const userAgent = req.headers['user-agent'] || 'Web Browser';
-    const ipAddress = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
     try {
       await (prisma as any).activeSession.create({
         data: {
@@ -302,6 +354,9 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
     setRefreshTokenCookie(res, rawToken);
 
     const accessToken = generateAccessToken(tokenPayload);
+
+    // Reset failed login attempts and clear temporary cooldown upon verified authentication
+    await recordSuccessfulLogin(normalizedEmail, String(ipAddress), user.id, userAgent, correlationId);
 
     res.json({
       success: true,
@@ -402,6 +457,14 @@ export async function forgotPassword(
       });
     }
 
+    logAuthAudit({
+      event: 'PASSWORD_RESET_REQUESTED',
+      email: normalizedEmail,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'] as string,
+      reason: user ? 'Reset token issued' : 'User not found (generic message returned)',
+    });
+
     res.json({
       success: true,
       data: null,
@@ -461,6 +524,15 @@ export async function resetPassword(
     });
     clearRefreshTokenCookie(res);
 
+    logAuthAudit({
+      event: 'PASSWORD_RESET_COMPLETED',
+      userId: user.id,
+      email: user.email,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'] as string,
+      reason: 'Password successfully changed and all sessions revoked.',
+    });
+
     res.json({
       success: true,
       data: null,
@@ -498,6 +570,14 @@ export async function refreshToken(req: Request, res: Response, next: NextFuncti
         email: user.email.includes(':') ? user.email.split(':')[1] : user.email,
       };
 
+      logAuthAudit({
+        event: 'REFRESH_TOKEN_ROTATED',
+        userId: user.id,
+        email: user.email,
+        ip: req.ip,
+        userAgent: req.headers['user-agent'] as string,
+      });
+
       res.json({
         success: true,
         data: { accessToken, user: cleanUser },
@@ -534,6 +614,13 @@ export async function logout(req: Request, res: Response, next: NextFunction): P
     }
 
     clearRefreshTokenCookie(res);
+
+    logAuthAudit({
+      event: 'LOGOUT',
+      ip: req.ip,
+      userAgent: req.headers['user-agent'] as string,
+    });
+
     res.json({ success: true, data: null, message: 'Logged out successfully' });
   } catch (error) {
     next(error);
