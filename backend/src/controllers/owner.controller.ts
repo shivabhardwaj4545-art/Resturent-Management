@@ -417,6 +417,38 @@ export async function updateRestaurant(req: AuthenticatedRequest, res: Response,
           merchantEligibilityStatus: 'MERCHANT_APPROVED',
         },
       }).catch((e) => logger.warn('[updateRestaurant] Failed to sync upiAccount:', e));
+
+      await prisma.restaurantPaymentAccount.upsert({
+        where: { restaurantId: restaurant.id },
+        create: {
+          restaurantId: restaurant.id,
+          upiVpa: cleanUpi,
+          payeeName: body.merchantName || updated.merchantName || updated.name,
+          businessName: body.merchantName || updated.merchantName || updated.name,
+          accountType: 'MERCHANT',
+          vpaStatus: 'VALID',
+          merchantStatus: 'ACTIVE',
+          providerId: 'DIRECT_UPI',
+          providerMerchantId: `DIRECT-${cleanUpi.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 16)}`,
+          mcc: '5812',
+          settlementStatus: 'APPROVED',
+          verificationMode: 'DIRECT_VPA_WITHOUT_AUTOMATIC_PROVIDER_VERIFICATION',
+          paymentEnabled: true,
+          verifiedAt: new Date(),
+          metadata: { mode: 'DIRECT_VPA_WITHOUT_AUTOMATIC_PROVIDER_VERIFICATION' },
+        },
+        update: {
+          upiVpa: cleanUpi,
+          payeeName: body.merchantName || updated.merchantName || updated.name,
+          businessName: body.merchantName || updated.merchantName || updated.name,
+          vpaStatus: 'VALID',
+          merchantStatus: 'ACTIVE',
+          settlementStatus: 'APPROVED',
+          verificationMode: 'DIRECT_VPA_WITHOUT_AUTOMATIC_PROVIDER_VERIFICATION',
+          paymentEnabled: true,
+          verifiedAt: new Date(),
+        },
+      }).catch((e) => logger.warn('[updateRestaurant] Failed to sync paymentAccount:', e));
     }
 
     if (updated.operatingHours) {
@@ -2555,6 +2587,10 @@ export async function registerOwnerUpiAccount(
     const now = new Date();
 
     const [savedAccount, savedConfig] = await prisma.$transaction(async (tx) => {
+      const isVerified = verificationResult.isValidSyntax;
+      const statusValue = isVerified ? 'VERIFIED' : 'REJECTED';
+      const eligibilityValue = isVerified ? 'MERCHANT_APPROVED' : 'RESTRICTED';
+
       const upiAcc = await tx.restaurantUpiAccount.upsert({
         where: { restaurantId: restaurant.id },
         create: {
@@ -2565,12 +2601,12 @@ export async function registerOwnerUpiAccount(
           businessName: verificationResult.businessName || businessName || restaurant.name,
           bankName: verificationResult.bankName || bankName || null,
           providerId: provider.providerName,
-          providerMerchantId: verificationResult.providerMerchantId || null,
-          verificationStatus: verificationResult.verificationStatus,
-          merchantEligibilityStatus: verificationResult.merchantEligibilityStatus,
+          providerMerchantId: verificationResult.providerMerchantId || `DIRECT-${normalizedUpi.replace(/[^a-zA-Z0-9]/g, '').slice(0, 16).toUpperCase()}`,
+          verificationStatus: statusValue,
+          merchantEligibilityStatus: eligibilityValue,
           restrictionReason: verificationResult.restrictionReason || null,
-          verifiedAt: verificationResult.verificationStatus === 'VERIFIED' ? now : null,
-          approvedAt: verificationResult.merchantEligibilityStatus === 'MERCHANT_APPROVED' ? now : null,
+          verifiedAt: isVerified ? now : null,
+          approvedAt: isVerified ? now : null,
           metadata: verificationResult.rawResponse || {},
         },
         update: {
@@ -2580,12 +2616,12 @@ export async function registerOwnerUpiAccount(
           businessName: verificationResult.businessName || businessName || restaurant.name,
           bankName: verificationResult.bankName || bankName || null,
           providerId: provider.providerName,
-          providerMerchantId: verificationResult.providerMerchantId || null,
-          verificationStatus: verificationResult.verificationStatus,
-          merchantEligibilityStatus: verificationResult.merchantEligibilityStatus,
+          providerMerchantId: verificationResult.providerMerchantId || `DIRECT-${normalizedUpi.replace(/[^a-zA-Z0-9]/g, '').slice(0, 16).toUpperCase()}`,
+          verificationStatus: statusValue,
+          merchantEligibilityStatus: eligibilityValue,
           restrictionReason: verificationResult.restrictionReason || null,
-          verifiedAt: verificationResult.verificationStatus === 'VERIFIED' ? now : null,
-          approvedAt: verificationResult.merchantEligibilityStatus === 'MERCHANT_APPROVED' ? now : null,
+          verifiedAt: isVerified ? now : null,
+          approvedAt: isVerified ? now : null,
           metadata: verificationResult.rawResponse || {},
         },
       });
@@ -2596,16 +2632,16 @@ export async function registerOwnerUpiAccount(
           restaurantId: restaurant.id,
           providerId: provider.providerName,
           merchantId: verificationResult.providerMerchantId || null,
-          intentEnabled: verificationResult.intentEnabled,
-          dynamicQrEnabled: verificationResult.dynamicQrEnabled,
-          productionEnabled: verificationResult.merchantEligibilityStatus === 'MERCHANT_APPROVED',
+          intentEnabled: isVerified,
+          dynamicQrEnabled: isVerified,
+          productionEnabled: isVerified,
         },
         update: {
           providerId: provider.providerName,
           merchantId: verificationResult.providerMerchantId || null,
-          intentEnabled: verificationResult.intentEnabled,
-          dynamicQrEnabled: verificationResult.dynamicQrEnabled,
-          productionEnabled: verificationResult.merchantEligibilityStatus === 'MERCHANT_APPROVED',
+          intentEnabled: isVerified,
+          dynamicQrEnabled: isVerified,
+          productionEnabled: isVerified,
         },
       });
 
@@ -2615,26 +2651,30 @@ export async function registerOwnerUpiAccount(
         data: {
           paymentUpiId: normalizedUpi,
           merchantName: verificationResult.businessName || businessName || restaurant.name,
-          upiEnabled: verificationResult.intentEnabled,
+          upiEnabled: isVerified,
           paymentEnabled: true,
         },
       });
 
-      // Record audit log
-      await tx.paymentAuditLog.create({
-        data: {
-          orderId: restaurant.id,
-          actorType: 'OWNER',
-          actorId: req.user!.id,
-          action: 'REGISTER_UPI_ACCOUNT',
-          details: {
-            accountType: cleanAccountType,
-            verificationStatus: verificationResult.verificationStatus,
-            merchantEligibilityStatus: verificationResult.merchantEligibilityStatus,
-            restrictionReason: verificationResult.restrictionReason,
+      // Record audit log safely without undefined properties
+      try {
+        await tx.paymentAuditLog.create({
+          data: {
+            orderId: restaurant.id,
+            actorType: 'OWNER',
+            actorId: req.user!.id,
+            action: 'REGISTER_UPI_ACCOUNT',
+            details: {
+              accountType: cleanAccountType,
+              verificationStatus: statusValue,
+              merchantEligibilityStatus: eligibilityValue,
+              restrictionReason: verificationResult.restrictionReason || null,
+            },
           },
-        },
-      });
+        });
+      } catch (logErr) {
+        logger.warn('[registerOwnerUpiAccount] Failed to create audit log:', logErr);
+      }
 
       return [upiAcc, payCfg];
     });

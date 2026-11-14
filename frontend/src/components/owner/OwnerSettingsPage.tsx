@@ -461,19 +461,22 @@ export function OwnerSettingsPage() {
         bankName: form.bankName || undefined,
       });
 
-      setLastVerifiedUpi(cleanUpi.toLowerCase());
+      const confirmedUpi = res.data?.data?.upiAccount?.upiId || cleanUpi;
+      setLastVerifiedUpi(confirmedUpi.toLowerCase());
       setForm((prev) => ({
         ...prev,
-        paymentUpiId: cleanUpi,
+        paymentUpiId: confirmedUpi,
         upiEnabled: true,
       }));
 
       toast.success(res.data?.message || '🎉 UPI ID verified and activated for payments!');
-      await refetchUpiAccount();
-      await refetchStages();
-      await qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
-      await qc.invalidateQueries({ queryKey: ['owner-upi-account'] });
-      await qc.invalidateQueries({ queryKey: ['owner-payment-stages'] });
+      await Promise.allSettled([
+        refetchUpiAccount(),
+        refetchStages(),
+        qc.invalidateQueries({ queryKey: ['owner-restaurant'] }),
+        qc.invalidateQueries({ queryKey: ['owner-upi-account'] }),
+        qc.invalidateQueries({ queryKey: ['owner-payment-stages'] }),
+      ]);
     } catch (err: any) {
       toast.error(err.response?.data?.error || err.message || 'Failed to verify UPI account.');
     } finally {

@@ -57,7 +57,7 @@ export class MerchantAccountService {
       vpaStatus = 'UNRESOLVED';
     } else if (!isValidSyntax) {
       vpaStatus = 'INVALID';
-    } else if (vpaStatus === 'UNRESOLVED' && upiAcc?.verificationStatus === 'VERIFIED') {
+    } else if (vpaStatus === 'UNRESOLVED' && (upiAcc?.verificationStatus === 'VERIFIED' || isValidSyntax)) {
       vpaStatus = 'VALID';
     }
 
@@ -72,13 +72,17 @@ export class MerchantAccountService {
       payeeNameMatched = pClean.includes(bClean) || bClean.includes(pClean) || pClean.length > 2;
     }
 
+    const isDirectVpa = !payAcc?.verificationMode || payAcc?.verificationMode === 'DIRECT_VPA_WITHOUT_AUTOMATIC_PROVIDER_VERIFICATION';
+
     let merchantStatus: MerchantLifecycleStatus =
       (payAcc?.merchantStatus as MerchantLifecycleStatus) ||
-      (upiAcc?.merchantEligibilityStatus === 'MERCHANT_APPROVED' ? 'MERCHANT_APPROVED' : 'NOT_SUBMITTED');
+      (upiAcc?.merchantEligibilityStatus === 'MERCHANT_APPROVED' ? (isDirectVpa ? 'ACTIVE' : 'MERCHANT_APPROVED') : (isDirectVpa && isValidSyntax ? 'ACTIVE' : 'NOT_SUBMITTED'));
 
     const providerMerchantId = payAcc?.providerMerchantId || upiAcc?.providerMerchantId || null;
     const mcc = payAcc?.mcc || '5812';
-    const settlementStatus: SettlementStatus = (payAcc?.settlementStatus as SettlementStatus) || 'PENDING';
+    const settlementStatus: SettlementStatus = isDirectVpa && isValidSyntax
+      ? 'APPROVED'
+      : ((payAcc?.settlementStatus as SettlementStatus) || 'PENDING');
     const verificationMode: VerificationMode =
       (payAcc?.verificationMode as VerificationMode) || 'DIRECT_VPA_WITHOUT_AUTOMATIC_PROVIDER_VERIFICATION';
 
@@ -175,14 +179,16 @@ export class MerchantAccountService {
 
     const now = new Date();
     const vpaStatus: VpaResolutionStatus = verificationResult.isValidSyntax ? 'VALID' : 'INVALID';
-    const merchantStatus: MerchantLifecycleStatus =
-      verificationResult.merchantEligibilityStatus === 'MERCHANT_APPROVED' ? 'MERCHANT_APPROVED' : 'MERCHANT_PENDING';
-    const settlementStatus: SettlementStatus =
-      params.bankAccountNumber && params.bankIfsc ? 'APPROVED' : 'PENDING';
+    const merchantStatus: MerchantLifecycleStatus = isDirectMode
+      ? 'ACTIVE'
+      : (verificationResult.merchantEligibilityStatus === 'MERCHANT_APPROVED' ? 'MERCHANT_APPROVED' : 'MERCHANT_PENDING');
+    const settlementStatus: SettlementStatus = isDirectMode
+      ? 'APPROVED'
+      : (params.bankAccountNumber && params.bankIfsc ? 'APPROVED' : 'PENDING');
 
     const paymentEnabled = Boolean(
       vpaStatus === 'VALID' &&
-      merchantStatus === 'MERCHANT_APPROVED' &&
+      (merchantStatus === 'ACTIVE' || merchantStatus === 'MERCHANT_APPROVED') &&
       settlementStatus === 'APPROVED'
     );
 

@@ -1,16 +1,10 @@
 /**
  * Utility for generating robust, cross-platform UPI Intent links
- * Supports Android Chrome Intent syntax, iOS custom URI schemes, and standard NPCI upi:// protocol.
+ * Supports Google Pay (tez://), PhonePe (phonepe://), Paytm (paytmmp://),
+ * BHIM (bhim://), and standard universal NPCI upi:// protocols across mobile devices.
  */
 
 export type UpiAppType = 'gpay' | 'phonepe' | 'paytm' | 'bhim' | 'generic';
-
-const ANDROID_PACKAGES: Record<Exclude<UpiAppType, 'generic'>, string> = {
-  gpay: 'com.google.android.apps.nbu.paisa.user',
-  phonepe: 'com.phonepe.app',
-  paytm: 'net.one97.paytm',
-  bhim: 'in.org.npci.upiapp',
-};
 
 export function getCleanUpiParams(rawUrl: string): string {
   if (!rawUrl) return '';
@@ -21,36 +15,20 @@ export function buildAppUpiUrl(app: UpiAppType, upiUrl: string): string {
   if (!upiUrl) return '';
 
   const params = getCleanUpiParams(upiUrl);
-  const isBrowser = typeof window !== 'undefined' && typeof navigator !== 'undefined';
-  const isAndroid = isBrowser && /Android/i.test(navigator.userAgent);
-  const isIOS = isBrowser && /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-  if (app === 'generic') {
-    // Pure standard NPCI URI invokes native Android/iOS system UPI chooser
-    return `upi://pay?${params}`;
+  switch (app) {
+    case 'gpay':
+      return `tez://upi/pay?${params}`;
+    case 'phonepe':
+      return `phonepe://pay?${params}`;
+    case 'paytm':
+      return `paytmmp://pay?${params}`;
+    case 'bhim':
+      return `bhim://upi/pay?${params}`;
+    case 'generic':
+    default:
+      return `upi://pay?${params}`;
   }
-
-  // Android Chrome Intent Protocol for specific apps
-  if (isAndroid) {
-    if (app in ANDROID_PACKAGES) {
-      const pkg = ANDROID_PACKAGES[app as keyof typeof ANDROID_PACKAGES];
-      // Intent URL allows directly targeting the installed UPI app on Android
-      return `intent://pay?${params}#Intent;scheme=upi;package=${pkg};end`;
-    }
-    return `upi://pay?${params}`;
-  }
-
-  // iOS App-specific URI schemes
-  if (isIOS) {
-    if (app === 'gpay') return `gpay://upi/pay?${params}`;
-    if (app === 'phonepe') return `phonepe://pay?${params}`;
-    if (app === 'paytm') return `paytmmp://pay?${params}`;
-    if (app === 'bhim') return `bhim://upi/pay?${params}`;
-    return `upi://pay?${params}`;
-  }
-
-  // Default / fallback
-  return `upi://pay?${params}`;
 }
 
 export function triggerUpiLaunch(app: UpiAppType, upiUrl: string) {
@@ -60,15 +38,16 @@ export function triggerUpiLaunch(app: UpiAppType, upiUrl: string) {
 
   try {
     window.location.href = targetUrl;
-    // Fallback to standard UPI link if package-specific intent fails after 1.5 seconds
-    if (app !== 'generic') {
+    // Fallback to standard UPI link if app-specific custom scheme doesn't open within 1.2 seconds
+    if (app !== 'generic' && targetUrl !== fallbackUrl) {
       setTimeout(() => {
-        if (document.hasFocus()) {
+        if (typeof document !== 'undefined' && document.hasFocus()) {
           window.location.href = fallbackUrl;
         }
-      }, 1500);
+      }, 1200);
     }
   } catch {
     window.location.href = fallbackUrl;
   }
 }
+
