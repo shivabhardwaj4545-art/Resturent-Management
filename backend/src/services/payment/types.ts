@@ -40,6 +40,7 @@ export interface UpiVerificationResult {
   amount: number;
   paidAt: Date;
   payerVpa?: string;
+  utr?: string;
   responseCode?: string;
   rawResponse: any;
 }
@@ -50,6 +51,7 @@ export interface UpiStatusResult {
   providerTxnRef?: string;
   amount?: number;
   paidAt?: Date;
+  utr?: string;
   rawResponse?: any;
 }
 
@@ -61,7 +63,44 @@ export interface UpiWebhookResult {
   amount: number;
   status: 'SUCCESS' | 'FAILED' | 'PENDING';
   paidAt: Date;
+  utr?: string;
   rawPayload: any;
+}
+
+// ── Separate Verification Stages ─────────────────────────────────────
+
+export type VpaResolutionStatus = 'VALID' | 'INVALID' | 'UNRESOLVED' | 'RESTRICTED';
+
+export type MerchantLifecycleStatus =
+  | 'NOT_SUBMITTED'
+  | 'SUBMITTED'
+  | 'KYC_PENDING'
+  | 'KYC_REJECTED'
+  | 'MERCHANT_PENDING'
+  | 'MERCHANT_APPROVED'
+  | 'SETTLEMENT_PENDING'
+  | 'PAYMENT_TEST_PENDING'
+  | 'ACTIVE'
+  | 'SUSPENDED';
+
+export type SettlementStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export type VerificationMode =
+  | 'DIRECT_VPA_WITHOUT_AUTOMATIC_PROVIDER_VERIFICATION'
+  | 'AUTHORIZED_BANK_OR_ACQUIRER_VERIFICATION';
+
+export interface VerificationStagesState {
+  isValidSyntax: boolean;
+  vpaStatus: VpaResolutionStatus;
+  payeeName: string | null;
+  payeeNameMatched: boolean;
+  merchantStatus: MerchantLifecycleStatus;
+  providerMerchantId: string | null;
+  mcc: string | null;
+  settlementStatus: SettlementStatus;
+  verificationMode: VerificationMode;
+  paymentEnabled: boolean;
+  stageSummary: string;
 }
 
 export interface VerifyUpiAccountParams {
@@ -81,6 +120,10 @@ export interface VerifyUpiAccountResult {
   providerMerchantId?: string;
   verificationStatus: 'VERIFIED' | 'REJECTED' | 'FAILED' | 'PENDING_VERIFICATION';
   merchantEligibilityStatus: 'MERCHANT_APPROVED' | 'RESTRICTED' | 'PENDING_APPROVAL';
+  vpaStatus?: VpaResolutionStatus;
+  merchantStatus?: MerchantLifecycleStatus;
+  mcc?: string;
+  settlementStatus?: SettlementStatus;
   restrictionReason?: string;
   intentEnabled: boolean;
   dynamicQrEnabled: boolean;
@@ -100,6 +143,63 @@ export interface CheckMerchantEligibilityResult {
   dynamicQrEnabled: boolean;
   restrictionReason?: string;
   recommendedAction?: string;
+}
+
+// ── Merchant Onboarding & Lifecycle ──────────────────────────────────
+
+export interface MerchantOnboardingParams {
+  restaurantId: string;
+  legalBusinessName: string;
+  businessStructure?: 'PROPRIETORSHIP' | 'PARTNERSHIP' | 'LLP' | 'PRIVATE_LIMITED';
+  contactPhone?: string;
+  contactEmail?: string;
+  businessAddress?: string;
+  panNumber?: string;
+  gstin?: string;
+  bankAccountNumber?: string;
+  bankIfsc?: string;
+  bankAccountHolder?: string;
+  upiVpa: string;
+}
+
+export interface MerchantOnboardingResult {
+  onboardingRef: string;
+  provider: string;
+  status: MerchantLifecycleStatus;
+  kycStatus: 'PENDING' | 'SUBMITTED' | 'VERIFIED' | 'REJECTED';
+  providerMerchantId?: string;
+  mcc?: string;
+  settlementStatus: SettlementStatus;
+  rejectionReason?: string;
+  rawResponse?: any;
+}
+
+export interface MerchantStatusLookupResult {
+  onboardingRef: string;
+  merchantStatus: MerchantLifecycleStatus;
+  kycStatus: 'PENDING' | 'SUBMITTED' | 'VERIFIED' | 'REJECTED';
+  providerMerchantId?: string;
+  mcc?: string;
+  settlementStatus: SettlementStatus;
+  isActive: boolean;
+  rawResponse?: any;
+}
+
+export interface MerchantSettlementConfigParams {
+  restaurantId: string;
+  bankAccountNumber: string;
+  bankIfsc: string;
+  bankAccountHolder: string;
+  providerMerchantId?: string;
+}
+
+export interface MerchantSettlementConfigResult {
+  isApproved: boolean;
+  settlementStatus: SettlementStatus;
+  settlementAccountRef?: string;
+  bankName?: string;
+  failureReason?: string;
+  rawResponse?: any;
 }
 
 export interface UpiRefundParams {
@@ -173,6 +273,21 @@ export interface IUpiPaymentProvider {
    * Validates and parses incoming server-to-server webhook notifications
    */
   parseWebhook(rawBody: string, headers: Record<string, string>): Promise<UpiWebhookResult>;
+
+  /**
+   * Initiates multi-merchant onboarding with acquiring bank / payment provider
+   */
+  onboardMerchant?(params: MerchantOnboardingParams): Promise<MerchantOnboardingResult>;
+
+  /**
+   * Looks up real-time merchant status with acquiring provider
+   */
+  getMerchantStatus?(merchantId: string, onboardingRef?: string): Promise<MerchantStatusLookupResult>;
+
+  /**
+   * Verifies merchant bank settlement configuration
+   */
+  verifySettlementConfig?(params: MerchantSettlementConfigParams): Promise<MerchantSettlementConfigResult>;
 
   /**
    * Processes a customer refund or payment reversal through acquiring bank

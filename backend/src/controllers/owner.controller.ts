@@ -16,6 +16,7 @@ import { sendKitchenStaffWelcomeEmail } from '../services/email.service';
 import { checkRestaurantSubscriptionExpiry } from '../jobs/subscription.job';
 import { UpiProviderRegistry } from '../services/payment/UpiProviderRegistry';
 import { isValidUpiId } from '../services/payment.upi.service';
+import { MerchantAccountService } from '../services/merchant.account.service';
 
 async function getOwnerRestaurant(ownerId: string) {
   let restaurant = await prisma.restaurant.findFirst({
@@ -2638,6 +2639,18 @@ export async function registerOwnerUpiAccount(
       return [upiAcc, payCfg];
     });
 
+    // Also sync the dedicated RestaurantPaymentAccount multi-stage record
+    await MerchantAccountService.registerPaymentAccount({
+      restaurantId: restaurant.id,
+      upiVpa: normalizedUpi,
+      payeeName: accountHolderName,
+      businessName: businessName || restaurant.name,
+      accountType: cleanAccountType,
+      bankAccountNumber: restaurant.bankAccountNumber || undefined,
+      bankIfsc: restaurant.bankIfsc || undefined,
+      bankAccountHolder: restaurant.bankAccountHolder || undefined,
+    }).catch((e) => logger.warn('Failed to mirror payment account:', e));
+
     await cacheDelPattern(`menu:${restaurant.slug}*`);
 
     res.json({
@@ -2649,7 +2662,145 @@ export async function registerOwnerUpiAccount(
       data: {
         upiAccount: savedAccount,
         paymentConfiguration: savedConfig,
+        stages: await MerchantAccountService.getPaymentAccountStages(restaurant.id),
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Multi-Stage Payment Account & Onboarding Controller Endpoints
+ */
+
+export async function getPaymentAccountStages(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const stages = await MerchantAccountService.getPaymentAccountStages(restaurant.id);
+    const paymentAccount = await prisma.restaurantPaymentAccount.findUnique({
+      where: { restaurantId: restaurant.id },
+    });
+    const onboarding = await prisma.merchantOnboardingRecord.findFirst({
+      where: { restaurantId: restaurant.id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        stages,
+        paymentAccount,
+        onboarding,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function registerPaymentAccount(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const { upiVpa, payeeName, businessName, accountType, bankAccountNumber, bankIfsc, bankAccountHolder, providerId } = req.body;
+
+    if (!upiVpa) {
+      throw new AppError('UPI VPA is required.', 400, 'UPI_VPA_REQUIRED');
+    }
+
+    const result = await MerchantAccountService.registerPaymentAccount({
+      restaurantId: restaurant.id,
+      upiVpa,
+      payeeName,
+      businessName: businessName || restaurant.name,
+      accountType: accountType || 'MERCHANT',
+      bankAccountNumber,
+      bankIfsc,
+      bankAccountHolder,
+      providerId,
+    });
+
+    res.json({
+      success: true,
+      message: 'Restaurant payment account successfully registered and verified.',
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function submitMerchantOnboarding(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const {
+      legalBusinessName,
+      businessStructure,
+      contactPhone,
+      contactEmail,
+      businessAddress,
+      panNumber,
+      gstin,
+      bankAccountNumber,
+      bankIfsc,
+      bankAccountHolder,
+      upiVpa,
+    } = req.body;
+
+    if (!legalBusinessName || !upiVpa) {
+      throw new AppError('Legal business name and UPI VPA are required for onboarding.', 400, 'MISSING_ONBOARDING_FIELDS');
+    }
+
+    const result = await MerchantAccountService.submitMerchantOnboarding({
+      restaurantId: restaurant.id,
+      legalBusinessName,
+      businessStructure,
+      contactPhone,
+      contactEmail,
+      businessAddress,
+      panNumber,
+      gstin,
+      bankAccountNumber,
+      bankIfsc,
+      bankAccountHolder,
+      upiVpa,
+    });
+
+    res.json({
+      success: true,
+      message: 'Merchant onboarding application submitted to acquiring provider.',
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function refreshMerchantStatus(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const stages = await MerchantAccountService.refreshMerchantStatus(restaurant.id);
+
+    res.json({
+      success: true,
+      message: 'Merchant acquiring status refreshed with provider.',
+      data: { stages },
     });
   } catch (error) {
     next(error);

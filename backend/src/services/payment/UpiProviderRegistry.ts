@@ -1,5 +1,6 @@
 import { IUpiPaymentProvider } from './types';
 import { DirectVpaProvider } from './providers/DirectVpaProvider';
+import { SetuUpiProvider } from './providers/SetuUpiProvider';
 import { MockUpiProvider } from './providers/MockUpiProvider';
 import { BankUpiProvider } from './providers/BankUpiProvider';
 import { logger } from '../../utils/logger';
@@ -10,10 +11,14 @@ export class UpiProviderRegistry {
 
   static {
     const directProvider = new DirectVpaProvider();
+    const setuProvider = new SetuUpiProvider();
     // Register built-in providers
     this.registerProvider('direct_upi', directProvider);
     this.registerProvider('direct_vpa', directProvider);
     this.registerProvider('direct', directProvider);
+    this.registerProvider('setu', setuProvider);
+    this.registerProvider('setu_upi', setuProvider);
+    this.registerProvider('pine_labs', setuProvider);
     this.registerProvider('mock', new MockUpiProvider());
     this.registerProvider('bank', new BankUpiProvider());
     this.registerProvider('hdfc', new BankUpiProvider({ mcc: '5812' }));

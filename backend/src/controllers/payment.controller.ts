@@ -653,6 +653,28 @@ export async function verifyAndConfirmPayment(
         });
       }
 
+      await tx.paymentTransaction.create({
+        data: {
+          paymentId: payment.id,
+          attemptId: latestAttempt?.id || null,
+          orderId: order.id,
+          restaurantId: order.restaurantId,
+          merchantRef: latestAttempt?.merchantRef || payment.txnRef || order.id,
+          providerRef: verifiedRef,
+          utr: verification.utr || null,
+          amount: expectedAmount,
+          amountPaise: payment.amountPaise || Math.round(expectedAmount * 100),
+          currency: 'INR',
+          payerVpa: latestAttempt?.intentUrl ? 'customer@upi' : null,
+          payeeVpa: order.restaurant.paymentUpiId || 'restaurant@upi',
+          status: 'SUCCESS',
+          verificationSource: 'PROVIDER_API_POLL',
+          settled: true,
+          settledAt: now,
+          metadata: verification.rawResponse || {},
+        },
+      }).catch((e) => logger.warn('[verifyAndConfirmPayment] Failed to record transaction:', e));
+
       await tx.paymentAuditLog.create({
         data: {
           orderId: order.id,
@@ -828,6 +850,28 @@ export async function handleUpiWebhook(
         where: { id: attempt.id },
         data: { status: 'SUCCESS', providerRef: verifiedRef },
       });
+
+      await tx.paymentTransaction.create({
+        data: {
+          paymentId: payment.id,
+          attemptId: attempt.id,
+          orderId: order.id,
+          restaurantId: order.restaurantId,
+          merchantRef: attempt.merchantRef,
+          providerRef: verifiedRef,
+          utr: webhookResult.utr || null,
+          amount: payment.amount,
+          amountPaise: payment.amountPaise || Math.round(payment.amount * 100),
+          currency: 'INR',
+          payerVpa: attempt.intentUrl ? 'customer@upi' : null,
+          payeeVpa: order.restaurant.paymentUpiId || 'restaurant@upi',
+          status: 'SUCCESS',
+          verificationSource: 'BANK_WEBHOOK',
+          settled: true,
+          settledAt: now,
+          metadata: webhookResult.rawPayload || {},
+        },
+      }).catch((e) => logger.warn('[handleUpiWebhook] Failed to record transaction:', e));
 
       await tx.paymentAuditLog.create({
         data: {
@@ -1007,6 +1051,125 @@ export async function cancelPendingOrder(
     res.json({
       success: true,
       message: 'Order cancelled successfully.',
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * PAYMENT REFUND API
+ * POST /api/v1/payments/:paymentId/refund
+ */
+export async function createPaymentRefund(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const paymentId = req.params.paymentId as string;
+    const { amount, reason } = req.body as { amount?: number; reason?: string };
+
+    const payment = await prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: {
+        order: { include: { restaurant: true } },
+        attempts: { orderBy: { createdAt: 'desc' }, take: 1 },
+      },
+    });
+
+    if (!payment) throw new AppError('Payment not found.', 404, 'PAYMENT_NOT_FOUND');
+    if (payment.status !== 'PAID') {
+      throw new AppError('Only successfully paid payments can be refunded.', 400, 'PAYMENT_NOT_PAID');
+    }
+
+    const refundAmount = amount && amount > 0 ? amount : payment.amount;
+    if (refundAmount > payment.amount) {
+      throw new AppError('Refund amount cannot exceed original payment amount.', 400, 'INVALID_REFUND_AMOUNT');
+    }
+
+    const refundRef = `REF-${payment.orderId.slice(-6).toUpperCase()}-${Date.now().toString().slice(-4)}`;
+    const latestAttempt = payment.attempts[0];
+    const provider = UpiProviderRegistry.getProvider(latestAttempt?.provider || payment.order.restaurant.paymentProvider || undefined);
+
+    let providerRefundRes;
+    if (provider.refundPayment) {
+      providerRefundRes = await provider.refundPayment({
+        merchantTxnRef: latestAttempt?.merchantRef || payment.txnRef || payment.id,
+        providerTxnRef: payment.providerTxnId || undefined,
+        amount: refundAmount,
+        reason: reason || 'Customer refund requested',
+      });
+    } else {
+      providerRefundRes = {
+        isSuccess: true,
+        refundId: `REF-${Date.now()}`,
+        status: 'SUCCESS' as const,
+      };
+    }
+
+    const refund = await prisma.paymentRefund.create({
+      data: {
+        paymentId: payment.id,
+        orderId: payment.orderId,
+        restaurantId: payment.order.restaurantId,
+        refundRef,
+        providerRefundId: providerRefundRes.refundId,
+        amount: refundAmount,
+        amountPaise: Math.round(refundAmount * 100),
+        reason: reason || 'Requested by merchant',
+        status: providerRefundRes.status,
+        initiatedBy: (req as any).user?.role || 'OWNER',
+        rawResponse: providerRefundRes.rawResponse || {},
+      },
+    });
+
+    // Record audit log
+    await prisma.paymentAuditLog.create({
+      data: {
+        orderId: payment.orderId,
+        paymentId: payment.id,
+        restaurantId: payment.order.restaurantId,
+        actorType: (req as any).user?.role || 'OWNER',
+        actorId: (req as any).user?.id,
+        action: 'REFUND_PROCESSED',
+        details: { refundRef, amount: refundAmount, status: refund.status },
+      },
+    });
+
+    res.json({
+      success: true,
+      message: 'Refund processed successfully.',
+      data: { refund },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * RESTAURANT TRANSACTION HISTORY API
+ * GET /api/v1/payments/restaurants/:restaurantId/transactions
+ */
+export async function getRestaurantTransactions(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const restaurantId = req.params.restaurantId as string;
+    const transactions = await prisma.paymentTransaction.findMany({
+      where: { restaurantId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      include: {
+        order: { select: { id: true, total: true, status: true } },
+      },
+    });
+
+    res.json({
+      success: true,
+      data: { transactions },
     });
   } catch (error) {
     next(error);

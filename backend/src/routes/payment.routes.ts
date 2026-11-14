@@ -7,6 +7,8 @@ import {
   handleUpiWebhook,
   reconcilePayment,
   cancelPendingOrder,
+  createPaymentRefund,
+  getRestaurantTransactions,
 } from '../controllers/payment.controller';
 
 const router = Router();
@@ -27,8 +29,10 @@ router.post('/verify-upi', verifyAndConfirmPayment);
 router.post('/webhook', handleUpiWebhook);
 router.post('/webhooks/upi/:provider', handleUpiWebhook);
 
-// Privileged reconciliation endpoint
+// Privileged reconciliation & refund endpoints
 router.post('/:paymentId/reconcile', reconcilePayment);
+router.post('/:paymentId/refund', createPaymentRefund);
+router.get('/restaurants/:restaurantId/transactions', getRestaurantTransactions);
 
 // Order cancellation endpoint
 router.post('/orders/:orderId/cancel', cancelPendingOrder);

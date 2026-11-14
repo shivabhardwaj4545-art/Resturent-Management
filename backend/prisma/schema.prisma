@@ -200,6 +200,12 @@ model Restaurant {
   reviews        Review[]
   upiAccount     RestaurantUpiAccount?
   paymentConfiguration RestaurantPaymentConfiguration?
+  paymentAccount       RestaurantPaymentAccount?
+  onboardingRecords    MerchantOnboardingRecord[]
+  paymentTransactions  PaymentTransaction[]
+  refunds              PaymentRefund[]
+  settlements          MerchantSettlement[]
+  reconciliations      PaymentReconciliationRecord[]
 
   @@index([slug])
   @@index([ownerId])
@@ -393,6 +399,8 @@ model Order {
   couponUsage CouponUsage[]
   loyaltyTransactions LoyaltyTransaction[]
   walletTransactions  WalletTransaction[]
+  transactions        PaymentTransaction[]
+  refunds             PaymentRefund[]
 
   @@index([restaurantId])
   @@index([userId])
@@ -487,9 +495,11 @@ model Payment {
   updatedAt         DateTime      @updatedAt
 
   // Relations
-  order     Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  attempts  PaymentAttempt[]
-  auditLogs PaymentAuditLog[]
+  order        Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  attempts     PaymentAttempt[]
+  auditLogs    PaymentAuditLog[]
+  transactions PaymentTransaction[]
+  refunds      PaymentRefund[]
 
   @@index([orderId])
   @@index([restaurantId])
@@ -866,4 +876,172 @@ model RefreshToken {
   @@index([tokenHash])
   @@index([expiresAt])
   @@map("refresh_tokens")
+}
+
+model RestaurantPaymentAccount {
+  id                  String    @id @default(cuid())
+  restaurantId        String    @unique
+  upiVpa              String
+  payeeName           String?
+  businessName        String?
+  accountType         String    @default("MERCHANT") // PERSONAL, MERCHANT
+  vpaStatus           String    @default("UNRESOLVED") // UNRESOLVED, VALID, INVALID, RESTRICTED
+  merchantStatus      String    @default("NOT_SUBMITTED") // NOT_SUBMITTED, SUBMITTED, KYC_PENDING, KYC_REJECTED, MERCHANT_PENDING, MERCHANT_APPROVED, SETTLEMENT_PENDING, PAYMENT_TEST_PENDING, ACTIVE, SUSPENDED
+  providerId          String    @default("DIRECT_UPI")
+  providerMerchantId  String?
+  mcc                 String?   @default("5812")
+  settlementStatus    String    @default("PENDING") // PENDING, APPROVED, REJECTED
+  verificationMode    String    @default("DIRECT_VPA_WITHOUT_AUTOMATIC_PROVIDER_VERIFICATION") // DIRECT_VPA_WITHOUT_AUTOMATIC_PROVIDER_VERIFICATION, AUTHORIZED_BANK_OR_ACQUIRER_VERIFICATION
+  paymentEnabled      Boolean   @default(false)
+  verifiedAt          DateTime?
+  metadata            Json?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  restaurant          Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+  @@index([vpaStatus])
+  @@index([merchantStatus])
+  @@index([settlementStatus])
+  @@map("restaurant_payment_accounts")
+}
+
+model MerchantOnboardingRecord {
+  id                    String    @id @default(cuid())
+  restaurantId          String
+  provider              String    @default("DIRECT_UPI")
+  legalBusinessName     String
+  businessStructure     String?   // PROPRIETORSHIP, PARTNERSHIP, LLP, PRIVATE_LIMITED
+  contactPhone          String?
+  contactEmail          String?
+  businessAddress       String?
+  panNumber             String?
+  gstin                 String?
+  bankAccountNumber     String?
+  bankIfsc              String?
+  bankAccountHolder     String?
+  settlementAccountRef  String?
+  onboardingRef         String?   @unique
+  kycStatus             String    @default("PENDING") // PENDING, SUBMITTED, VERIFIED, REJECTED
+  onboardingStatus      String    @default("NOT_SUBMITTED") // NOT_SUBMITTED, SUBMITTED, KYC_PENDING, KYC_REJECTED, MERCHANT_PENDING, MERCHANT_APPROVED, SETTLEMENT_PENDING, ACTIVE, SUSPENDED
+  rejectionReason       String?
+  documents             Json?
+  metadata              Json?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  restaurant            Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+  @@index([provider])
+  @@index([onboardingStatus])
+  @@map("merchant_onboarding_records")
+}
+
+model PaymentTransaction {
+  id                  String    @id @default(cuid())
+  paymentId           String?
+  attemptId           String?
+  orderId             String
+  restaurantId        String
+  merchantRef         String
+  providerRef         String?
+  utr                 String?
+  amount              Float
+  amountPaise         Int
+  currency            String    @default("INR")
+  payerVpa            String?
+  payeeVpa            String
+  status              String    // SUCCESS, FAILED, PENDING, REVERSED
+  verificationSource  String    // BANK_WEBHOOK, PROVIDER_API_POLL, MANUAL_STAFF_CONFIRMATION
+  settled             Boolean   @default(false)
+  settledAt           DateTime?
+  metadata            Json?
+  createdAt           DateTime  @default(now())
+
+  payment             Payment?   @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  order               Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  restaurant          Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([restaurantId])
+  @@index([merchantRef])
+  @@index([providerRef])
+  @@index([utr])
+  @@index([status])
+  @@map("payment_transactions")
+}
+
+model PaymentRefund {
+  id                  String    @id @default(cuid())
+  paymentId           String
+  orderId             String
+  restaurantId        String
+  refundRef           String    @unique
+  providerRefundId    String?
+  amount              Float
+  amountPaise         Int
+  reason              String?
+  status              String    @default("PENDING") // PENDING, SUCCESS, FAILED
+  initiatedBy         String    @default("OWNER") // OWNER, ADMIN, SYSTEM
+  rawResponse         Json?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  payment             Payment    @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  order               Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  restaurant          Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([orderId])
+  @@index([restaurantId])
+  @@index([status])
+  @@map("payment_refunds")
+}
+
+model MerchantSettlement {
+  id                  String    @id @default(cuid())
+  restaurantId        String
+  settlementRef       String    @unique
+  providerSettlementId String?
+  amount              Float
+  amountPaise         Int
+  fee                 Float     @default(0)
+  tax                 Float     @default(0)
+  netAmount           Float
+  bankAccountRef      String?
+  status              String    @default("PENDING") // PENDING, SETTLED, FAILED
+  settledAt           DateTime?
+  metadata            Json?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  restaurant          Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+  @@index([status])
+  @@map("merchant_settlements")
+}
+
+model PaymentReconciliationRecord {
+  id                  String    @id @default(cuid())
+  restaurantId        String
+  reconciliationDate  DateTime
+  totalTransactions   Int
+  totalAmount         Float
+  matchedCount        Int
+  matchedAmount       Float
+  discrepancyCount    Int
+  discrepancyAmount   Float
+  status              String    @default("MATCHED") // MATCHED, DISCREPANCY, INVESTIGATING, RESOLVED
+  discrepancyDetails  Json?
+  createdAt           DateTime  @default(now())
+
+  restaurant          Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+  @@index([reconciliationDate])
+  @@index([status])
+  @@map("payment_reconciliation_records")
 }

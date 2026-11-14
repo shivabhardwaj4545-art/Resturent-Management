@@ -57,6 +57,10 @@ import {
   verifyOwnerSubscriptionPayment,
   getOwnerUpiAccount,
   registerOwnerUpiAccount,
+  getPaymentAccountStages,
+  registerPaymentAccount,
+  submitMerchantOnboarding,
+  refreshMerchantStatus,
 } from '../controllers/owner.controller';
 import { upload, uploadDocument } from '../services/cloudinary.service';
 
@@ -83,6 +87,12 @@ router.post('/restaurant/payment-qr', upload.single('paymentQr'), uploadPaymentQ
 router.get('/restaurant/sign-table', signTable);
 router.get('/upi-account', getOwnerUpiAccount);
 router.post('/upi-account', registerOwnerUpiAccount);
+
+// Restaurant payment account multi-stage verification & onboarding
+router.get('/payment-account/stages', getPaymentAccountStages);
+router.post('/payment-account', registerPaymentAccount);
+router.post('/payment-account/onboard', submitMerchantOnboarding);
+router.post('/payment-account/refresh-status', refreshMerchantStatus);
 
 // Menu categories
 router.get('/menu/categories', getCategories);
