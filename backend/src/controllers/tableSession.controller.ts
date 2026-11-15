@@ -1633,66 +1633,69 @@ export async function getSessionBill(
         const sessionOrders = s.orders || [];
         let currentBatch = s.batches.find((b: any) => b.batchNumber === s.currentBatchNumber) || s.batches[s.batches.length - 1];
 
-        // Gather all items across all orders and batches for this table session
-        const seenItemIds = new Set<string>();
-        const allItems: any[] = [];
+        // Gather all items across all orders for this table session without duplication
+        const itemsMap = new Map<string, {
+          id: string;
+          itemName: string;
+          quantity: number;
+          unitPrice: number;
+          subtotal: number;
+          batchNumber?: number;
+          addedBy?: string;
+        }>();
 
-        // 1. From sessionOrders
-        for (const ord of sessionOrders) {
-          if (ord.status === 'CANCELLED') continue;
-          for (const it of (ord.items || [])) {
-            if (!seenItemIds.has(it.id)) {
-              seenItemIds.add(it.id);
-              allItems.push({
+        const rawItems: any[] = [];
+        if (sessionOrders.length > 0) {
+          for (const ord of sessionOrders) {
+            if (ord.status === 'CANCELLED') continue;
+            for (const it of (ord.items || [])) {
+              rawItems.push({
                 id: it.id,
+                menuItemId: it.menuItemId,
+                variantId: it.variantId,
                 itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
-                quantity: it.quantity,
-                unitPrice: it.unitPrice,
-                subtotal: it.subtotal,
-                orderId: ord.id,
+                quantity: it.quantity || 1,
+                unitPrice: it.unitPrice || 0,
+                subtotal: it.subtotal || ((it.unitPrice || 0) * (it.quantity || 1)),
                 batchNumber: ord.batchNumber || 1,
                 addedBy: ord.guestName || ord.user?.name || 'Guest',
               });
             }
           }
+        } else {
+          // Fallback to batches only if sessionOrders is empty
+          for (const b of s.batches) {
+            if (b.status === 'CANCELLED') continue;
+            const bItems = (b.items && b.items.length > 0) ? b.items : (b.order?.items || []);
+            for (const it of bItems) {
+              rawItems.push({
+                id: it.id,
+                menuItemId: it.menuItemId,
+                variantId: it.variantId,
+                itemName: `${it.menuItem?.name || it.itemName || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
+                quantity: it.quantity || 1,
+                unitPrice: it.unitPrice || 0,
+                subtotal: it.subtotal || ((it.unitPrice || 0) * (it.quantity || 1)),
+                batchNumber: b.batchNumber,
+                addedBy: it.addedBy || 'Guest',
+              });
+            }
+          }
         }
 
-        // 2. From batches (in case some items were batch-only or not in sessionOrders)
-        for (const b of s.batches) {
-          if (b.status === 'CANCELLED') continue;
-          if (b.items && b.items.length > 0) {
-            for (const it of b.items) {
-              if (!seenItemIds.has(it.id)) {
-                seenItemIds.add(it.id);
-                allItems.push({
-                  id: it.id,
-                  itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
-                  quantity: it.quantity,
-                  unitPrice: it.unitPrice,
-                  subtotal: it.subtotal,
-                  batchNumber: b.batchNumber,
-                  addedBy: it.addedBy || 'Guest',
-                });
-              }
-            }
-          }
-          if (b.order?.items) {
-            for (const it of b.order.items) {
-              if (!seenItemIds.has(it.id)) {
-                seenItemIds.add(it.id);
-                allItems.push({
-                  id: it.id,
-                  itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
-                  quantity: it.quantity,
-                  unitPrice: it.unitPrice,
-                  subtotal: it.subtotal,
-                  batchNumber: b.batchNumber,
-                  addedBy: b.order.guestName || 'Guest',
-                });
-              }
-            }
+        // Group same dishes together across rounds so no item appears double
+        for (const it of rawItems) {
+          const key = it.variantId ? `${it.menuItemId || it.itemName}_${it.variantId}` : (it.menuItemId || it.itemName);
+          const existing = itemsMap.get(key);
+          if (existing) {
+            existing.quantity += it.quantity;
+            existing.subtotal += it.subtotal;
+          } else {
+            itemsMap.set(key, { ...it });
           }
         }
+
+        const allItems = Array.from(itemsMap.values());
 
         // Total session bill
         let sessionTotal = 0;
@@ -1814,26 +1817,29 @@ export async function getSessionBill(
         else if (latestOrder.status === 'PREPARING' || latestOrder.status === 'BAKING') batchStatus = 'PREPARING';
         else if (latestOrder.status === 'CONFIRMED') batchStatus = 'ACCEPTED';
 
-        const allItems: any[] = [];
-        const seenItemIds = new Set<string>();
+        const itemsMap = new Map<string, any>();
         for (const o of tableOrders) {
           if (o.status === 'CANCELLED') continue;
           for (const it of (o.items || [])) {
-            if (!seenItemIds.has(it.id)) {
-              seenItemIds.add(it.id);
-              allItems.push({
+            const key = it.variantId ? `${it.menuItemId || it.menuItem?.name}_${it.variantId}` : (it.menuItemId || it.menuItem?.name || it.id);
+            const itemName = `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`;
+            const existing = itemsMap.get(key);
+            if (existing) {
+              existing.quantity += (it.quantity || 1);
+              existing.subtotal += (it.subtotal || 0);
+            } else {
+              itemsMap.set(key, {
                 id: it.id,
-                itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
-                quantity: it.quantity,
-                unitPrice: it.unitPrice,
-                subtotal: it.subtotal,
+                itemName,
+                quantity: it.quantity || 1,
+                unitPrice: it.unitPrice || 0,
+                subtotal: it.subtotal || 0,
                 orderId: o.id,
-                batchNumber: o.batchNumber || 1,
               });
             }
           }
         }
-
+        const allItems = Array.from(itemsMap.values());
         const items = allItems.slice(0, 10);
 
         formatted.push({
