@@ -1633,6 +1633,67 @@ export async function getSessionBill(
         const sessionOrders = s.orders || [];
         let currentBatch = s.batches.find((b: any) => b.batchNumber === s.currentBatchNumber) || s.batches[s.batches.length - 1];
 
+        // Gather all items across all orders and batches for this table session
+        const seenItemIds = new Set<string>();
+        const allItems: any[] = [];
+
+        // 1. From sessionOrders
+        for (const ord of sessionOrders) {
+          if (ord.status === 'CANCELLED') continue;
+          for (const it of (ord.items || [])) {
+            if (!seenItemIds.has(it.id)) {
+              seenItemIds.add(it.id);
+              allItems.push({
+                id: it.id,
+                itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
+                quantity: it.quantity,
+                unitPrice: it.unitPrice,
+                subtotal: it.subtotal,
+                orderId: ord.id,
+                batchNumber: ord.batchNumber || 1,
+                addedBy: ord.guestName || ord.user?.name || 'Guest',
+              });
+            }
+          }
+        }
+
+        // 2. From batches (in case some items were batch-only or not in sessionOrders)
+        for (const b of s.batches) {
+          if (b.status === 'CANCELLED') continue;
+          if (b.items && b.items.length > 0) {
+            for (const it of b.items) {
+              if (!seenItemIds.has(it.id)) {
+                seenItemIds.add(it.id);
+                allItems.push({
+                  id: it.id,
+                  itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
+                  quantity: it.quantity,
+                  unitPrice: it.unitPrice,
+                  subtotal: it.subtotal,
+                  batchNumber: b.batchNumber,
+                  addedBy: it.addedBy || 'Guest',
+                });
+              }
+            }
+          }
+          if (b.order?.items) {
+            for (const it of b.order.items) {
+              if (!seenItemIds.has(it.id)) {
+                seenItemIds.add(it.id);
+                allItems.push({
+                  id: it.id,
+                  itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
+                  quantity: it.quantity,
+                  unitPrice: it.unitPrice,
+                  subtotal: it.subtotal,
+                  batchNumber: b.batchNumber,
+                  addedBy: b.order.guestName || 'Guest',
+                });
+              }
+            }
+          }
+        }
+
         // Total session bill
         let sessionTotal = 0;
         if (sessionOrders.length > 0) {
@@ -1696,6 +1757,7 @@ export async function getSessionBill(
           currentBatchNumber: s.currentBatchNumber,
           currentBatchStatus: displayBatchStatus,
           currentBatch: enrichedBatch,
+          allItems,
           totalBatches: Math.max(s.batches.length, sessionOrders.length),
           sessionTotal: Math.round(sessionTotal * 100) / 100,
           paymentStatus: isPaid ? 'PAID' : 'PENDING',
@@ -1752,13 +1814,27 @@ export async function getSessionBill(
         else if (latestOrder.status === 'PREPARING' || latestOrder.status === 'BAKING') batchStatus = 'PREPARING';
         else if (latestOrder.status === 'CONFIRMED') batchStatus = 'ACCEPTED';
 
-        const items = (latestOrder.items || []).map((it: any) => ({
-          id: it.id,
-          itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
-          quantity: it.quantity,
-          unitPrice: it.unitPrice,
-          subtotal: it.subtotal,
-        }));
+        const allItems: any[] = [];
+        const seenItemIds = new Set<string>();
+        for (const o of tableOrders) {
+          if (o.status === 'CANCELLED') continue;
+          for (const it of (o.items || [])) {
+            if (!seenItemIds.has(it.id)) {
+              seenItemIds.add(it.id);
+              allItems.push({
+                id: it.id,
+                itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
+                quantity: it.quantity,
+                unitPrice: it.unitPrice,
+                subtotal: it.subtotal,
+                orderId: o.id,
+                batchNumber: o.batchNumber || 1,
+              });
+            }
+          }
+        }
+
+        const items = allItems.slice(0, 10);
 
         formatted.push({
           id: latestOrder.id,
@@ -1778,6 +1854,7 @@ export async function getSessionBill(
             items,
             orderId: latestOrder.id,
           },
+          allItems,
           totalBatches: tableOrders.length,
           sessionTotal: Math.round(tableTotal * 100) / 100,
           paymentStatus: allPaid ? 'PAID' : 'PENDING',

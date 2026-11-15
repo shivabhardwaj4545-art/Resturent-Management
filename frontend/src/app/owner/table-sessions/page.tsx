@@ -69,6 +69,7 @@ interface TableSessionSummary {
   currentBatchNumber: number;
   currentBatchStatus: string;
   currentBatch?: OrderBatch | null;
+  allItems?: BatchItem[];
   totalBatches: number;
   sessionTotal: number;
   paymentStatus: 'PAID' | 'PENDING';
@@ -412,7 +413,9 @@ export default function OwnerTableSessionsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
               {filteredSessions.map((session) => {
                 const currentBatch = session.currentBatch;
-                const canMarkServed = currentBatch && ['ACCEPTED', 'PREPARING', 'READY'].includes(currentBatch.status);
+                const displayItems = (session.allItems && session.allItems.length > 0)
+                  ? session.allItems
+                  : (currentBatch?.items || []);
 
                 return (
                   <motion.div
@@ -451,14 +454,12 @@ export default function OwnerTableSessionsPage() {
                         </div>
                       </div>
 
-                      {/* Current Order Items Summary */}
+                      {/* All Order Items Summary for Table */}
                       <div className="mt-4 p-3.5 rounded-2xl bg-muted/40 border border-border/80 space-y-2">
                         <div className="flex items-center justify-between text-xs">
                           <span className="font-bold text-foreground flex items-center gap-1.5">
                             <Layers className="w-3.5 h-3.5 text-primary" />
-                            {session.totalBatches > 1
-                              ? `Order Items (Batch ${session.currentBatchNumber})`
-                              : 'Order Items'}
+                            All Order Items ({displayItems.reduce((acc, it) => acc + (it.quantity || 1), 0)})
                           </span>
                           <span
                             className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase border ${getStatusBadge(
@@ -471,39 +472,27 @@ export default function OwnerTableSessionsPage() {
                           </span>
                         </div>
 
-                        {currentBatch?.items && currentBatch.items.length > 0 ? (
-                          <div className="space-y-1 pt-1">
-                            {currentBatch.items.slice(0, 3).map((it) => (
+                        {displayItems.length > 0 ? (
+                          <div className="space-y-1.5 pt-1 max-h-48 overflow-y-auto pr-1 divide-y divide-border/20">
+                            {displayItems.map((it, idx) => (
                               <div
-                                key={it.id}
-                                className="text-xs text-muted-foreground flex items-center justify-between"
+                                key={it.id || idx}
+                                className="text-xs text-muted-foreground flex items-center justify-between gap-2 pt-1.5 first:pt-0"
                               >
-                                <span className="truncate max-w-[200px]">
+                                <span className="truncate max-w-[210px] font-medium text-foreground">
                                   {it.quantity}x {it.itemName}
                                 </span>
-                                <span className="font-mono text-[11px] font-semibold text-foreground">
+                                <span className="font-mono text-[11px] font-bold text-foreground shrink-0">
                                   ₹{it.subtotal.toFixed(2)}
                                 </span>
                               </div>
                             ))}
-                            {currentBatch.items.length > 3 && (
-                              <p className="text-[10px] text-primary font-bold">
-                                + {currentBatch.items.length - 3} more items in this order
-                              </p>
-                            )}
                           </div>
                         ) : (
                           <p className="text-[11px] italic text-muted-foreground">
                             Customers are currently selecting dishes.
                           </p>
                         )}
-
-                        <div className="pt-2 border-t border-border/60 flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground font-medium">Batch Total:</span>
-                          <span className="font-black text-foreground font-mono">
-                            ₹{(currentBatch?.total || 0).toFixed(2)}
-                          </span>
-                        </div>
                       </div>
 
                       {/* Total Session Bill Rollup */}
@@ -531,48 +520,31 @@ export default function OwnerTableSessionsPage() {
 
                     {/* Waiter & Staff Actions */}
                     <div className="mt-5 pt-3 border-t border-border space-y-2">
-                      {/* Food Serving Action (Only shown while food is preparing/ready) */}
-                      {canMarkServed && (
-                        <button
-                          onClick={() =>
-                            updateBatchMutation.mutate({
-                              sessionId: session.id,
-                              batchId: currentBatch.id,
-                              status: 'SERVED',
-                            })
-                          }
-                          disabled={updateBatchMutation.isPending}
-                          className="w-full py-2.5 px-3 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5"
-                        >
-                          <UtensilsCrossed className="w-3.5 h-3.5" /> Mark Food as SERVED to Table
-                        </button>
-                      )}
-
-                        {/* Payment & Close Table Controls */ }
+                      {/* Payment & Close Table Controls */}
                       {session.paymentStatus === 'PAID' ? (
                         <button
                           onClick={() =>
-                              closeSessionMutation.mutate({
-                                sessionId: session.id,
-                                paymentConfirmed: true,
-                                paymentMethod: 'CASH',
-                              })
-                            }
-                          disabled = { closeSessionMutation.isPending }
-                          className = "w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5"
-                              >
-                            < CheckCircle2 className = "w-4 h-4" /> Close Table & amp; Free Table
-                    </button>
-                    ) : (
-                    <button
-                      onClick={() => setMarkPaidModalSession(session)}
-                      className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5"
-                    >
-                      <Banknote className="w-4 h-4" /> Mark as Paid (₹{session.sessionTotal.toFixed(2)})
-                    </button>
+                            closeSessionMutation.mutate({
+                              sessionId: session.id,
+                              paymentConfirmed: true,
+                              paymentMethod: 'CASH',
+                            })
+                          }
+                          disabled={closeSessionMutation.isPending}
+                          className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5"
+                        >
+                          <CheckCircle2 className="w-4 h-4" /> Close Table &amp; Free Table
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => setMarkPaidModalSession(session)}
+                          className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5"
+                        >
+                          <Banknote className="w-4 h-4" /> Mark as Paid (₹{session.sessionTotal.toFixed(2)})
+                        </button>
                       )}
 
-                    {/* Secondary Action Buttons */}
+                      {/* Secondary Action Buttons */}
                       <div className="grid grid-cols-4 gap-1.5 pt-1">
                         <button
                           onClick={() => setSelectedSessionId(session.id)}
