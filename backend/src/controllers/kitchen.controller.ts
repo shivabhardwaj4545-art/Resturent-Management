@@ -1,7 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
-import { emitOrderStatusUpdate } from '../services/socket.service';
+import { emitOrderStatusUpdate, emitTableSessionUpdate } from '../services/socket.service';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { logger } from '../utils/logger';
 
@@ -144,6 +144,52 @@ export async function updateKitchenOrderStatus(
         status: updated.status,
         updatedAt: updated.updatedAt.toISOString(),
       });
+
+      // Synchronize linked TableSession and OrderBatch
+      if (updated.tableSessionId) {
+        let batchStatus: any = undefined;
+        const now = new Date();
+        const batchTimestampUpdates: Record<string, any> = {};
+
+        if (status === 'PREPARING' || status === 'BAKING') {
+          batchStatus = 'PREPARING';
+          batchTimestampUpdates.preparingAt = now;
+        } else if (status === 'READY') {
+          batchStatus = 'READY';
+          batchTimestampUpdates.readyAt = now;
+        } else if (status === 'DELIVERED') {
+          batchStatus = 'SERVED';
+          batchTimestampUpdates.servedAt = now;
+        } else if (status === 'CANCELLED') {
+          batchStatus = 'CANCELLED';
+        }
+
+        if (batchStatus) {
+          await prisma.orderBatch.updateMany({
+            where: {
+              OR: [
+                { orderId: updated.id },
+                { sessionId: updated.tableSessionId, batchNumber: updated.batchNumber || 1 },
+              ],
+            },
+            data: {
+              status: batchStatus,
+              ...batchTimestampUpdates,
+            },
+          });
+        }
+
+        if (updated.tableNumber) {
+          emitTableSessionUpdate(restaurantId, updated.tableNumber, {
+            sessionId: updated.tableSessionId,
+            orderId: updated.id,
+            orderStatus: updated.status,
+            batchStatus,
+            paymentStatus: updated.paymentStatus,
+            event: 'ORDER_STATUS_SYNCED',
+          });
+        }
+      }
     } catch (err) {
       logger.warn('Failed to emit socket updates for kitchen order status update:', err);
     }

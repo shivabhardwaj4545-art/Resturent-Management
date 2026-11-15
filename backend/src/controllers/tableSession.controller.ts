@@ -311,9 +311,31 @@ export async function getSessionById(
                 status: true,
                 paymentStatus: true,
                 paymentMethod: true,
+                counterPaymentMethod: true,
                 total: true,
+                guestName: true,
+                guestPhone: true,
+                items: {
+                  include: {
+                    menuItem: { select: { id: true, name: true, image: true, price: true } },
+                    variant: { select: { id: true, name: true, price: true } },
+                  },
+                },
               },
             },
+          },
+        },
+        orders: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+          include: {
+            items: {
+              include: {
+                menuItem: { select: { id: true, name: true, image: true, price: true } },
+                variant: { select: { id: true, name: true, price: true } },
+              },
+            },
+            user: { select: { name: true, phone: true } },
           },
         },
       },
@@ -323,13 +345,58 @@ export async function getSessionById(
       throw new AppError('Table session not found.', 404, 'SESSION_NOT_FOUND');
     }
 
-    const currentBatch = session.batches.find((b: any) => b.batchNumber === session.currentBatchNumber) || null;
+    const sessionOrders = session.orders || [];
+
+    // Populate batch items or status from orders if batch was created via direct checkout
+    const enrichedBatches = session.batches.map((b: any) => {
+      const matchingOrder = b.order || sessionOrders.find((o: any) => o.batchNumber === b.batchNumber) || sessionOrders[0];
+      let items = b.items;
+      let total = b.total;
+      let status = b.status;
+      let paymentStatus = b.order?.paymentStatus || 'PENDING';
+
+      if (matchingOrder) {
+        if (!items || items.length === 0) {
+          items = (matchingOrder.items || []).map((it: any) => ({
+            id: it.id,
+            itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
+            quantity: it.quantity,
+            unitPrice: it.unitPrice,
+            subtotal: it.subtotal,
+            specialInstructions: it.addOns ? it.addOns.map((a: any) => a.name).join(', ') : null,
+            addedBy: matchingOrder.guestName || matchingOrder.user?.name || 'Guest',
+          }));
+          total = matchingOrder.total;
+        }
+
+        paymentStatus = matchingOrder.paymentStatus || 'PENDING';
+
+        if (matchingOrder.status === 'DELIVERED') status = 'SERVED';
+        else if (matchingOrder.status === 'READY') status = 'READY';
+        else if (matchingOrder.status === 'PREPARING' || matchingOrder.status === 'BAKING') status = 'PREPARING';
+        else if (matchingOrder.status === 'CONFIRMED') status = 'ACCEPTED';
+        else if (matchingOrder.status === 'PENDING') status = 'SUBMITTED';
+        else if (matchingOrder.status === 'CANCELLED') status = 'CANCELLED';
+      }
+
+      return {
+        ...b,
+        status,
+        total,
+        items,
+        paymentStatus,
+        order: matchingOrder,
+      };
+    });
+
+    const currentBatch = enrichedBatches.find((b: any) => b.batchNumber === session.currentBatchNumber) || enrichedBatches[enrichedBatches.length - 1] || null;
 
     res.json({
       success: true,
       data: {
         session: {
           ...session,
+          batches: enrichedBatches,
           currentBatch,
         },
       },
@@ -909,7 +976,31 @@ export async function getSessionBill(
                 id: true,
                 paymentStatus: true,
                 paymentMethod: true,
+                counterPaymentMethod: true,
+                paymentConfirmedAt: true,
                 verificationCode: true,
+                total: true,
+                subtotal: true,
+                gstAmount: true,
+                discount: true,
+                items: {
+                  include: {
+                    menuItem: { select: { id: true, name: true, price: true } },
+                    variant: { select: { id: true, name: true, price: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+        orders: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+          include: {
+            items: {
+              include: {
+                menuItem: { select: { id: true, name: true, price: true } },
+                variant: { select: { id: true, name: true, price: true } },
               },
             },
           },
@@ -921,16 +1012,43 @@ export async function getSessionBill(
       throw new AppError('Table session not found.', 404, 'SESSION_NOT_FOUND');
     }
 
+    const sessionOrders = session.orders || [];
+
     let subtotal = 0;
     let tax = 0;
     let discount = 0;
     let grandTotal = 0;
 
     const formattedBatches = session.batches.map((b: any) => {
-      subtotal += b.subtotal;
-      tax += b.tax;
-      discount += b.discount;
-      grandTotal += b.total;
+      const matchingOrder = b.order || sessionOrders.find((o: any) => o.batchNumber === b.batchNumber) || sessionOrders[0];
+      let items = b.items || [];
+      let bSubtotal = b.subtotal || 0;
+      let bTax = b.tax || 0;
+      let bDiscount = b.discount || 0;
+      let bTotal = b.total || 0;
+      let paymentStatus = b.order?.paymentStatus || 'PENDING';
+
+      if (matchingOrder) {
+        if (!items || items.length === 0) {
+          items = (matchingOrder.items || []).map((it: any) => ({
+            id: it.id,
+            itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
+            quantity: it.quantity,
+            unitPrice: it.unitPrice,
+            subtotal: it.subtotal,
+          }));
+          bSubtotal = matchingOrder.subtotal || 0;
+          bTax = matchingOrder.gstAmount || 0;
+          bDiscount = matchingOrder.discount || 0;
+          bTotal = matchingOrder.total || 0;
+        }
+        paymentStatus = matchingOrder.paymentStatus || paymentStatus;
+      }
+
+      subtotal += bSubtotal;
+      tax += bTax;
+      discount += bDiscount;
+      grandTotal += bTotal;
 
       return {
         batchId: b.id,
@@ -938,17 +1056,61 @@ export async function getSessionBill(
         status: b.status,
         submittedAt: b.submittedAt,
         completedAt: b.completedAt,
-        itemsCount: b.items.reduce((acc: number, it: any) => acc + it.quantity, 0),
-        items: b.items,
-        subtotal: b.subtotal,
-        tax: b.tax,
-        total: b.total,
-        paymentStatus: b.order?.paymentStatus || 'PENDING',
+        itemsCount: items.reduce((acc: number, it: any) => acc + (it.quantity || 1), 0),
+        items,
+        subtotal: bSubtotal,
+        tax: bTax,
+        discount: bDiscount,
+        total: bTotal,
+        paymentStatus,
+        orderId: matchingOrder?.id || null,
+        counterPaymentMethod: matchingOrder?.counterPaymentMethod || null,
+        paymentConfirmedAt: matchingOrder?.paymentConfirmedAt || null,
       };
     });
 
-    // Check overall payment status
-    const allPaid = session.batches.length > 0 && session.batches.every((b: any) => b.order?.paymentStatus === 'PAID');
+    // If batches array was empty or had 0 totals, fallback to sessionOrders directly
+    if (formattedBatches.length === 0 && sessionOrders.length > 0) {
+      sessionOrders.forEach((o: any, idx: number) => {
+        const oItems = (o.items || []).map((it: any) => ({
+          id: it.id,
+          itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+          subtotal: it.subtotal,
+        }));
+        subtotal += o.subtotal || 0;
+        tax += o.gstAmount || 0;
+        discount += o.discount || 0;
+        grandTotal += o.total || 0;
+
+        formattedBatches.push({
+          batchId: o.id,
+          batchNumber: idx + 1,
+          status: o.status === 'DELIVERED' ? 'SERVED' : o.status,
+          submittedAt: o.createdAt,
+          completedAt: o.deliveredAt,
+          itemsCount: oItems.reduce((acc: number, it: any) => acc + (it.quantity || 1), 0),
+          items: oItems,
+          subtotal: o.subtotal || 0,
+          tax: o.gstAmount || 0,
+          discount: o.discount || 0,
+          total: o.total || 0,
+          paymentStatus: o.paymentStatus || 'PENDING',
+          orderId: o.id,
+          counterPaymentMethod: o.counterPaymentMethod || null,
+          paymentConfirmedAt: o.paymentConfirmedAt || null,
+        });
+      });
+    }
+
+    // Check overall payment status across batches and orders
+    const allPaid =
+      (sessionOrders.length > 0 && sessionOrders.every((o: any) => o.paymentStatus === 'PAID')) ||
+      (formattedBatches.length > 0 && formattedBatches.every((b: any) => b.paymentStatus === 'PAID'));
+
+    // Check payment method from the paid order
+    const paidOrder = sessionOrders.find((o: any) => o.paymentStatus === 'PAID') || session.batches.find((b: any) => b.order?.paymentStatus === 'PAID')?.order;
 
     res.json({
       success: true,
@@ -966,6 +1128,8 @@ export async function getSessionBill(
           discount: Math.round(discount * 100) / 100,
           grandTotal: Math.round(grandTotal * 100) / 100,
           isPaid: allPaid,
+          paymentMethod: paidOrder?.counterPaymentMethod || paidOrder?.paymentMethod || (allPaid ? 'PAID' : 'PENDING'),
+          paymentConfirmedAt: paidOrder?.paymentConfirmedAt || null,
         },
       },
     });
@@ -1103,7 +1267,7 @@ export async function listActiveSessions(
       throw new AppError('Restaurant not found for authenticated user.', 404, 'RESTAURANT_NOT_FOUND');
     }
 
-    const sessions = await prisma.tableSession.findMany({
+    const sessions: any = await prisma.tableSession.findMany({
       where: {
         restaurantId,
         status: 'ACTIVE',
@@ -1124,20 +1288,95 @@ export async function listActiveSessions(
                 status: true,
                 paymentStatus: true,
                 paymentMethod: true,
+                counterPaymentMethod: true,
+                total: true,
+                guestName: true,
+                guestPhone: true,
+                items: {
+                  include: {
+                    menuItem: { select: { id: true, name: true, price: true } },
+                    variant: { select: { id: true, name: true, price: true } },
+                  },
+                },
               },
             },
+          },
+        },
+        orders: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          include: {
+            items: {
+              include: {
+                menuItem: { select: { id: true, name: true, price: true } },
+                variant: { select: { id: true, name: true, price: true } },
+              },
+            },
+            user: { select: { name: true, phone: true } },
           },
         },
       },
     });
 
-    const formatted = sessions.map((s) => {
-      const currentBatch = s.batches.find((b) => b.batchNumber === s.currentBatchNumber) || s.batches[s.batches.length - 1];
-      const sessionTotal = s.batches
-        .filter((b) => b.status !== 'CANCELLED')
-        .reduce((sum, b) => sum + b.total, 0);
+    const activeSessionTableSet = new Set(sessions.map((s: any) => normalizeTableNumber(s.tableNumber).toLowerCase()));
 
-      const isPaid = s.batches.length > 0 && s.batches.every((b) => b.order?.paymentStatus === 'PAID');
+    const formatted: any[] = sessions.map((s: any) => {
+      const sessionOrders = s.orders || [];
+      let currentBatch = s.batches.find((b: any) => b.batchNumber === s.currentBatchNumber) || s.batches[s.batches.length - 1];
+
+      // Total session bill
+      let sessionTotal = 0;
+      if (sessionOrders.length > 0) {
+        sessionTotal = sessionOrders
+          .filter((o: any) => o.status !== 'CANCELLED')
+          .reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
+      } else {
+        sessionTotal = s.batches
+          .filter((b: any) => b.status !== 'CANCELLED')
+          .reduce((sum: number, b: any) => sum + Number(b.total || 0), 0);
+      }
+
+      // Overall payment status
+      const isPaid =
+        (sessionOrders.length > 0 && sessionOrders.every((o: any) => o.paymentStatus === 'PAID')) ||
+        (s.batches.length > 0 && s.batches.every((b: any) => b.order?.paymentStatus === 'PAID'));
+
+      // If currentBatch has no items, enrich from matching order
+      let currentBatchItems = currentBatch?.items || [];
+      let currentBatchTotal = currentBatch?.total || 0;
+      let displayBatchStatus = currentBatch?.status || 'OPEN';
+
+      const matchingOrder = sessionOrders.find((o: any) => o.batchNumber === currentBatch?.batchNumber) || sessionOrders[0];
+      if (matchingOrder) {
+        if (!currentBatchItems || currentBatchItems.length === 0) {
+          currentBatchItems = (matchingOrder.items || []).map((it: any) => ({
+            id: it.id,
+            itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
+            quantity: it.quantity,
+            unitPrice: it.unitPrice,
+            subtotal: it.subtotal,
+          }));
+          currentBatchTotal = matchingOrder.total;
+        }
+
+        // Synchronize batch status with order status
+        if (matchingOrder.status === 'DELIVERED') displayBatchStatus = 'SERVED';
+        else if (matchingOrder.status === 'READY') displayBatchStatus = 'READY';
+        else if (matchingOrder.status === 'PREPARING' || matchingOrder.status === 'BAKING') displayBatchStatus = 'PREPARING';
+        else if (matchingOrder.status === 'CONFIRMED') displayBatchStatus = 'ACCEPTED';
+        else if (matchingOrder.status === 'PENDING') displayBatchStatus = 'SUBMITTED';
+        else if (matchingOrder.status === 'CANCELLED') displayBatchStatus = 'CANCELLED';
+      }
+
+      const enrichedBatch = currentBatch
+        ? {
+            ...currentBatch,
+            status: displayBatchStatus,
+            items: currentBatchItems,
+            total: currentBatchTotal,
+            orderId: matchingOrder?.id || currentBatch.orderId || null,
+          }
+        : null;
 
       return {
         id: s.id,
@@ -1146,14 +1385,97 @@ export async function listActiveSessions(
         guestCount: s.guestCount,
         status: s.status,
         currentBatchNumber: s.currentBatchNumber,
-        currentBatchStatus: currentBatch?.status || 'OPEN',
-        currentBatch,
-        totalBatches: s.batches.length,
+        currentBatchStatus: displayBatchStatus,
+        currentBatch: enrichedBatch,
+        totalBatches: Math.max(s.batches.length, sessionOrders.length),
         sessionTotal: Math.round(sessionTotal * 100) / 100,
         paymentStatus: isPaid ? 'PAID' : 'PENDING',
         createdAt: s.createdAt,
         updatedAt: s.updatedAt,
+        orders: sessionOrders,
       };
+    });
+
+    // Also look for standalone ongoing table orders created today that don't belong to any session
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const standaloneOrders: any = await prisma.order.findMany({
+      where: {
+        restaurantId,
+        tableNumber: { not: null },
+        tableSessionId: null,
+        deletedAt: null,
+        status: { not: 'CANCELLED' },
+        createdAt: { gte: startOfToday },
+      },
+      include: {
+        items: {
+          include: {
+            menuItem: { select: { id: true, name: true, price: true } },
+            variant: { select: { id: true, name: true, price: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Group standalone orders by table number if not already present
+    const standaloneByTable = new Map<string, any[]>();
+    for (const o of standaloneOrders) {
+      const cleanTable = normalizeTableNumber(o.tableNumber);
+      if (!activeSessionTableSet.has(cleanTable.toLowerCase())) {
+        if (!standaloneByTable.has(cleanTable)) {
+          standaloneByTable.set(cleanTable, []);
+        }
+        standaloneByTable.get(cleanTable)!.push(o);
+      }
+    }
+
+    standaloneByTable.forEach((tableOrders, tableNum) => {
+      const latestOrder = tableOrders[0];
+      const tableTotal = tableOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+      const allPaid = tableOrders.every((o) => o.paymentStatus === 'PAID');
+
+      let batchStatus = 'SUBMITTED';
+      if (latestOrder.status === 'DELIVERED') batchStatus = 'SERVED';
+      else if (latestOrder.status === 'READY') batchStatus = 'READY';
+      else if (latestOrder.status === 'PREPARING' || latestOrder.status === 'BAKING') batchStatus = 'PREPARING';
+      else if (latestOrder.status === 'CONFIRMED') batchStatus = 'ACCEPTED';
+
+      const items = (latestOrder.items || []).map((it: any) => ({
+        id: it.id,
+        itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
+        quantity: it.quantity,
+        unitPrice: it.unitPrice,
+        subtotal: it.subtotal,
+      }));
+
+      formatted.push({
+        id: latestOrder.id,
+        tableNumber: tableNum,
+        sessionCode: latestOrder.verificationCode || latestOrder.id.slice(-4).toUpperCase(),
+        guestCount: 1,
+        status: 'ACTIVE',
+        currentBatchNumber: 1,
+        currentBatchStatus: batchStatus,
+        currentBatch: {
+          id: latestOrder.id,
+          batchNumber: 1,
+          status: batchStatus,
+          subtotal: latestOrder.subtotal,
+          tax: latestOrder.gstAmount,
+          total: latestOrder.total,
+          items,
+          orderId: latestOrder.id,
+        },
+        totalBatches: tableOrders.length,
+        sessionTotal: Math.round(tableTotal * 100) / 100,
+        paymentStatus: allPaid ? 'PAID' : 'PENDING',
+        createdAt: latestOrder.createdAt,
+        updatedAt: latestOrder.updatedAt,
+        orders: tableOrders,
+      });
     });
 
     res.json({

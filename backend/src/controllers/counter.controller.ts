@@ -2,7 +2,7 @@ import { Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
-import { emitOrderStatusUpdate, emitNotification, emitUserLoyaltyUpdate } from '../services/socket.service';
+import { emitOrderStatusUpdate, emitNotification, emitUserLoyaltyUpdate, emitTableSessionUpdate } from '../services/socket.service';
 
 /**
  * Helper to resolve the authenticated restaurant owner or staff's restaurant.
@@ -320,6 +320,17 @@ export async function confirmCounterPayment(
       counterPaymentMethod: instrument,
       updatedAt: now.toISOString(),
     });
+
+    // Also emit TableSession real-time update so Table Sessions page shows PAID immediately
+    if (order.tableSessionId && order.tableNumber) {
+      emitTableSessionUpdate(restaurant.id, order.tableNumber, {
+        sessionId: order.tableSessionId,
+        orderId: order.id,
+        paymentStatus: 'PAID',
+        counterPaymentMethod: instrument,
+        event: 'PAYMENT_CONFIRMED',
+      });
+    }
 
     // In-app notification for logged-in customer
     if (order.userId) {

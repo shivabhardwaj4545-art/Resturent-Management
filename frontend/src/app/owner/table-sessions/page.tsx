@@ -25,6 +25,7 @@ import {
   Lock,
   ArrowRight,
   UserCheck,
+  Printer,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { useRouter } from 'next/navigation';
@@ -102,7 +103,7 @@ export default function OwnerTableSessionsPage() {
       const res = await api.get('/table-sessions');
       return res.data.data.sessions as TableSessionSummary[];
     },
-    refetchInterval: 10000,
+    refetchInterval: 5000,
   });
 
   const sessions = data || [];
@@ -137,7 +138,7 @@ export default function OwnerTableSessionsPage() {
       socket.emit('join:restaurant', restaurantId);
     }
 
-    socket.on('table-session:updated', () => {
+    const handleRefresh = () => {
       qc.invalidateQueries({ queryKey: ['table-sessions-active'] });
       if (selectedSessionId) {
         qc.invalidateQueries({ queryKey: ['table-session-detail', selectedSessionId] });
@@ -145,11 +146,16 @@ export default function OwnerTableSessionsPage() {
       if (viewBillSessionId) {
         qc.invalidateQueries({ queryKey: ['table-session-bill', viewBillSessionId] });
       }
-    });
+    };
+
+    socket.on('table-session:updated', handleRefresh);
+    socket.on('order:status', handleRefresh);
+    socket.on('order:new', handleRefresh);
+    socket.on('payment:confirmed', handleRefresh);
 
     socket.on('table-session:batch-unlocked', (payload: any) => {
       toast.info(payload.message || 'Next food batch unlocked for dining table! 🔔');
-      qc.invalidateQueries({ queryKey: ['table-sessions-active'] });
+      handleRefresh();
     });
 
     return () => {
@@ -352,7 +358,7 @@ export default function OwnerTableSessionsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
               {filteredSessions.map((session) => {
                 const currentBatch = session.currentBatch;
-                const canMarkServed = currentBatch && ['READY', 'PREPARING'].includes(currentBatch.status);
+                const canMarkServed = currentBatch && ['ACCEPTED', 'PREPARING', 'READY'].includes(currentBatch.status);
                 const canMarkCompleted = currentBatch && currentBatch.status === 'SERVED';
 
                 return (
@@ -659,10 +665,22 @@ export default function OwnerTableSessionsPage() {
                           <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md border ${getStatusBadge(batch.status)}`}>
                             {batch.status}
                           </span>
+                          {(batch as any).paymentStatus && (
+                            <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${(batch as any).paymentStatus === 'PAID' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30' : 'bg-amber-500/10 text-amber-500 border-amber-500/30'}`}>
+                              {(batch as any).paymentStatus === 'PAID' ? '✓ PAID' : '⏳ UNPAID'}
+                            </span>
+                          )}
                         </span>
-                        <span className="font-mono font-black text-foreground">
-                          ₹{batch.total.toFixed(2)}
-                        </span>
+                        <div className="text-right">
+                          <span className="font-mono font-black text-foreground block">
+                            ₹{Number(batch.total || 0).toFixed(2)}
+                          </span>
+                          {(batch as any).order?.id && (
+                            <span className="text-[10px] font-mono text-muted-foreground">
+                              #{(batch as any).order.id.slice(-8).toUpperCase()}
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       {batch.items && batch.items.length > 0 ? (
@@ -698,7 +716,17 @@ export default function OwnerTableSessionsPage() {
                 )}
               </div>
 
-              <div className="pt-3 border-t border-border flex justify-end">
+              <div className="pt-3 border-t border-border flex justify-between items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewBillSessionId(selectedSessionId);
+                    setSelectedSessionId(null);
+                  }}
+                  className="px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors"
+                >
+                  <Receipt className="w-3.5 h-3.5" /> View Table Bill
+                </button>
                 <button
                   onClick={() => setSelectedSessionId(null)}
                   className="px-5 py-2.5 bg-muted hover:bg-muted/80 text-foreground font-semibold text-xs rounded-xl"
@@ -738,9 +766,20 @@ export default function OwnerTableSessionsPage() {
                 <p className="text-xs text-muted-foreground font-mono">
                   {sessionBillData?.tableNumber} • Session Code: #{sessionBillData?.sessionCode}
                 </p>
+                <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black border">
+                  {sessionBillData?.totals?.isPaid ? (
+                    <span className="text-emerald-500 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> PAID {sessionBillData?.totals?.paymentMethod ? `(${sessionBillData.totals.paymentMethod})` : ''}
+                    </span>
+                  ) : (
+                    <span className="text-amber-500 flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 animate-pulse" /> PAYMENT PENDING
+                    </span>
+                  )}
+                </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto py-4 space-y-4">
+              <div id="session-bill-printable" className="flex-1 overflow-y-auto py-4 space-y-4">
                 {billLoading ? (
                   <div className="py-12 text-center text-muted-foreground flex items-center justify-center gap-2">
                     <RefreshCw className="w-4 h-4 animate-spin text-primary" /> Calculating consolidated bill...
@@ -751,18 +790,29 @@ export default function OwnerTableSessionsPage() {
                   <>
                     <div className="space-y-3">
                       {sessionBillData.batches.map((batch: any) => (
-                        <div key={batch.batchId} className="p-3 bg-muted/30 rounded-xl border border-border/80">
+                        <div key={batch.batchId || batch.batchNumber} className="p-3 bg-muted/30 rounded-xl border border-border/80">
                           <div className="flex items-center justify-between text-xs font-bold text-foreground mb-2">
-                            <span>Round {batch.batchNumber}</span>
-                            <span className="font-mono">₹{batch.total.toFixed(2)}</span>
+                            <span className="flex items-center gap-1.5">
+                              <span>Round {batch.batchNumber}</span>
+                              <span className={`text-[9px] uppercase px-1.5 py-0.2 rounded border ${getStatusBadge(batch.status)}`}>
+                                {batch.status}
+                              </span>
+                            </span>
+                            <span className="font-mono">₹{Number(batch.total || 0).toFixed(2)}</span>
                           </div>
-                          <div className="space-y-1">
-                            {batch.items.map((it: any) => (
-                              <div key={it.id} className="text-[11px] text-muted-foreground flex justify-between">
-                                <span>{it.quantity}x {it.itemName}</span>
-                                <span className="font-mono">₹{it.subtotal.toFixed(2)}</span>
-                              </div>
-                            ))}
+                          <div className="space-y-1.5">
+                            {batch.items && batch.items.length > 0 ? (
+                              batch.items.map((it: any) => (
+                                <div key={it.id} className="text-xs text-muted-foreground flex justify-between items-center">
+                                  <span>
+                                    <strong className="text-foreground">{it.quantity}x</strong> {it.itemName}
+                                  </span>
+                                  <span className="font-mono font-medium text-foreground">₹{Number(it.subtotal || 0).toFixed(2)}</span>
+                                </div>
+                              ))
+                            ) : (
+                              <p className="text-[11px] text-muted-foreground italic">Items processed in kitchen</p>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -772,16 +822,22 @@ export default function OwnerTableSessionsPage() {
                     <div className="pt-3 border-t border-border space-y-1.5 text-xs">
                       <div className="flex justify-between text-muted-foreground">
                         <span>Items Subtotal</span>
-                        <span className="font-mono">₹{sessionBillData.totals?.subtotal?.toFixed(2)}</span>
+                        <span className="font-mono">₹{Number(sessionBillData.totals?.subtotal || 0).toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-muted-foreground">
-                        <span>GST &amp; Taxes (5%)</span>
-                        <span className="font-mono">₹{sessionBillData.totals?.tax?.toFixed(2)}</span>
+                        <span>GST &amp; Taxes (18%)</span>
+                        <span className="font-mono">₹{Number(sessionBillData.totals?.tax || 0).toFixed(2)}</span>
                       </div>
+                      {Number(sessionBillData.totals?.discount || 0) > 0 && (
+                        <div className="flex justify-between text-emerald-500 font-bold">
+                          <span>Discount Applied</span>
+                          <span className="font-mono">-₹{Number(sessionBillData.totals.discount).toFixed(2)}</span>
+                        </div>
+                      )}
                       <div className="pt-2 border-t border-border flex justify-between text-base font-black text-foreground">
                         <span>Grand Total</span>
-                        <span className="font-mono text-primary text-lg">
-                          ₹{sessionBillData.totals?.grandTotal?.toFixed(2)}
+                        <span className="font-mono text-primary text-xl">
+                          ₹{Number(sessionBillData.totals?.grandTotal || 0).toFixed(2)}
                         </span>
                       </div>
                     </div>
@@ -789,7 +845,14 @@ export default function OwnerTableSessionsPage() {
                 )}
               </div>
 
-              <div className="pt-3 border-t border-border flex justify-end">
+              <div className="pt-3 border-t border-border flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-4 py-2.5 bg-card border border-border hover:bg-muted text-foreground font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors"
+                >
+                  <Printer className="w-4 h-4 text-primary" /> Print Bill
+                </button>
                 <button
                   onClick={() => setViewBillSessionId(null)}
                   className="px-5 py-2.5 bg-muted hover:bg-muted/80 text-foreground font-semibold text-xs rounded-xl"

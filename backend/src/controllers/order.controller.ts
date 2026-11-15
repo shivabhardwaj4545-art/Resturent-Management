@@ -4,7 +4,7 @@ import { isRestaurantOpen } from '../utils/operatingHours';
 import { AppError } from '../utils/AppError';
 import { logger } from '../utils/logger';
 import { createRazorpayOrder, verifyRazorpaySignature } from '../services/payment.razorpay.service';
-import { emitNewOrder, emitNotification, emitWaiterCall, emitOrderStatusUpdate, emitUserLoyaltyUpdate } from '../services/socket.service';
+import { emitNewOrder, emitNotification, emitWaiterCall, emitOrderStatusUpdate, emitUserLoyaltyUpdate, emitTableSessionUpdate } from '../services/socket.service';
 import { sendOrderConfirmationEmail } from '../services/email.service';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { verifyTableSignature } from '../utils/tableSignature';
@@ -369,8 +369,66 @@ export async function placeGuestOrder(
         },
       });
 
+      // Synchronize with TableSession and OrderBatch
+      if (sessionRes.tableSessionId) {
+        await tx.orderBatch.updateMany({
+          where: {
+            sessionId: sessionRes.tableSessionId,
+            batchNumber: sessionRes.batchNumber || 1,
+          },
+          data: {
+            orderId: newOrder.id,
+            status: 'SUBMITTED',
+            subtotal,
+            tax: gstAmount,
+            discount,
+            total,
+            submittedAt: new Date(),
+          },
+        });
+
+        const batch = await tx.orderBatch.findFirst({
+          where: {
+            sessionId: sessionRes.tableSessionId,
+            batchNumber: sessionRes.batchNumber || 1,
+          },
+        });
+
+        if (batch) {
+          await tx.orderBatchItem.deleteMany({ where: { batchId: batch.id } });
+          for (const item of items) {
+            const mi = await tx.menuItem.findUnique({
+              where: { id: item.menuItemId },
+              select: { name: true },
+            });
+            await tx.orderBatchItem.create({
+              data: {
+                batchId: batch.id,
+                menuItemId: item.menuItemId,
+                variantId: item.variantId || null,
+                itemName: mi?.name || 'Item',
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                subtotal: item.subtotal,
+                customizations: item.addOns || null,
+                addedBy: guestName?.trim() || 'Guest',
+              },
+            });
+          }
+        }
+      }
+
       return newOrder;
     });
+
+    if (sessionRes.tableSessionId && tableNumber) {
+      emitTableSessionUpdate(restaurant.id, tableNumber, {
+        sessionId: sessionRes.tableSessionId,
+        orderId: order.id,
+        batchNumber: sessionRes.batchNumber,
+        event: 'BATCH_SUBMITTED',
+      });
+    }
 
     const isOnlinePayment = effectivePaymentMethod === 'UPI_INTENT';
 
@@ -698,11 +756,69 @@ export async function placeOrder(
           },
         });
 
+        // Synchronize with TableSession and OrderBatch
+        if (sessionRes.tableSessionId) {
+          await tx.orderBatch.updateMany({
+            where: {
+              sessionId: sessionRes.tableSessionId,
+              batchNumber: sessionRes.batchNumber || 1,
+            },
+            data: {
+              orderId: newOrder.id,
+              status: 'SUBMITTED',
+              subtotal,
+              tax: gstAmount,
+              discount: discount + walletDeduction + pointsValue,
+              total: finalTotal,
+              submittedAt: new Date(),
+            },
+          });
+
+          const batch = await tx.orderBatch.findFirst({
+            where: {
+              sessionId: sessionRes.tableSessionId,
+              batchNumber: sessionRes.batchNumber || 1,
+            },
+          });
+
+          if (batch) {
+            await tx.orderBatchItem.deleteMany({ where: { batchId: batch.id } });
+            for (const item of items) {
+              const mi = await tx.menuItem.findUnique({
+                where: { id: item.menuItemId },
+                select: { name: true },
+              });
+              await tx.orderBatchItem.create({
+                data: {
+                  batchId: batch.id,
+                  menuItemId: item.menuItemId,
+                  variantId: item.variantId || null,
+                  itemName: mi?.name || 'Item',
+                  quantity: item.quantity,
+                  unitPrice: item.unitPrice,
+                  subtotal: item.subtotal,
+                  customizations: item.addOns || null,
+                  addedBy: user?.name || 'Guest',
+                },
+              });
+            }
+          }
+        }
+
         // Clear cart
         await tx.cartItem.deleteMany({ where: { userId } });
 
         return newOrder;
       });
+
+    if (sessionRes.tableSessionId && tableNumber) {
+      emitTableSessionUpdate(restaurant.id, tableNumber, {
+        sessionId: sessionRes.tableSessionId,
+        orderId: order.id,
+        batchNumber: sessionRes.batchNumber,
+        event: 'BATCH_SUBMITTED',
+      });
+    }
 
     // Fetch updated user profile to get real-time points
     const updatedUser = await prisma.user.findUnique({

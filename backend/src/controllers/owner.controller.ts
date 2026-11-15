@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { uploadMenuItemImage, uploadRestaurantLogo, uploadRestaurantBanner, uploadRestaurantPaymentQr } from '../services/cloudinary.service';
-import { emitOrderStatusUpdate, emitNotification, emitUserLoyaltyUpdate, emitPaymentNotReceived, emitOrderDeleted } from '../services/socket.service';
+import { emitOrderStatusUpdate, emitNotification, emitUserLoyaltyUpdate, emitPaymentNotReceived, emitOrderDeleted, emitTableSessionUpdate } from '../services/socket.service';
 import { cacheDelPattern, cacheSet } from '../services/redis.service';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { generateTableSignature } from '../utils/tableSignature';
@@ -1175,6 +1175,55 @@ export async function updateOrderStatus(req: AuthenticatedRequest, res: Response
       lastAddOnAt: updatedOrder.lastAddOnAt,
       updatedAt: updatedOrder.updatedAt.toISOString(),
     });
+
+    // Synchronize linked TableSession and OrderBatch
+    if (updatedOrder.tableSessionId) {
+      let batchStatus: any = undefined;
+      const now = new Date();
+      const batchTimestampUpdates: Record<string, any> = {};
+
+      if (status === 'CONFIRMED') {
+        batchStatus = 'ACCEPTED';
+        batchTimestampUpdates.acceptedAt = now;
+      } else if (status === 'PREPARING' || status === 'BAKING') {
+        batchStatus = 'PREPARING';
+        batchTimestampUpdates.preparingAt = now;
+      } else if (status === 'READY') {
+        batchStatus = 'READY';
+        batchTimestampUpdates.readyAt = now;
+      } else if (status === 'DELIVERED') {
+        batchStatus = 'SERVED';
+        batchTimestampUpdates.servedAt = now;
+      } else if (status === 'CANCELLED') {
+        batchStatus = 'CANCELLED';
+      }
+
+      if (batchStatus) {
+        await prisma.orderBatch.updateMany({
+          where: {
+            OR: [
+              { orderId: updatedOrder.id },
+              { sessionId: updatedOrder.tableSessionId, batchNumber: updatedOrder.batchNumber || 1 },
+            ],
+          },
+          data: {
+            status: batchStatus,
+            ...batchTimestampUpdates,
+          },
+        });
+      }
+
+      if (updatedOrder.tableNumber) {
+        emitTableSessionUpdate(restaurant.id, updatedOrder.tableNumber, {
+          sessionId: updatedOrder.tableSessionId,
+          orderId: updatedOrder.id,
+          orderStatus: updatedOrder.status,
+          batchStatus,
+          paymentStatus: updatedOrder.paymentStatus,
+          event: 'ORDER_STATUS_SYNCED',
+        });
+      }
+    }
 
     // Notify customer on status update
     if (status && order.userId) {
