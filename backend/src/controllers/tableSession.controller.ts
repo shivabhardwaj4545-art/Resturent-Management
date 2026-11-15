@@ -342,7 +342,94 @@ export async function getSessionById(
     });
 
     if (!session) {
-      throw new AppError('Table session not found.', 404, 'SESSION_NOT_FOUND');
+      const order = await prisma.order.findUnique({
+        where: { id: sessionId },
+        include: {
+          restaurant: { select: { id: true, name: true, slug: true } },
+          items: {
+            include: {
+              menuItem: { select: { id: true, name: true, image: true, price: true } },
+              variant: { select: { id: true, name: true, price: true } },
+            },
+          },
+          user: { select: { name: true, phone: true } },
+        },
+      });
+
+      if (!order) {
+        throw new AppError('Table session not found.', 404, 'SESSION_NOT_FOUND');
+      }
+
+      let status = 'SUBMITTED';
+      if (order.status === 'DELIVERED') status = 'SERVED';
+      else if (order.status === 'READY') status = 'READY';
+      else if (order.status === 'PREPARING' || order.status === 'BAKING') status = 'PREPARING';
+      else if (order.status === 'CONFIRMED') status = 'ACCEPTED';
+      else if (order.status === 'CANCELLED') status = 'CANCELLED';
+
+      const items = (order.items || []).map((it: any) => ({
+        id: it.id,
+        itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
+        quantity: it.quantity,
+        unitPrice: it.unitPrice,
+        subtotal: it.subtotal,
+        specialInstructions: null,
+        addedBy: order.guestName || order.user?.name || 'Guest',
+      }));
+
+      const syntheticBatch = {
+        id: order.id,
+        batchNumber: 1,
+        status,
+        subtotal: order.subtotal,
+        tax: order.gstAmount,
+        discount: order.discount,
+        total: order.total,
+        items,
+        paymentStatus: order.paymentStatus || 'PENDING',
+        order,
+      };
+
+      res.json({
+        success: true,
+        data: {
+          sessionId: order.id,
+          tableNumber: order.tableNumber || 'Table 1',
+          sessionCode: order.verificationCode || order.id.slice(-4).toUpperCase(),
+          sessionStatus: 'ACTIVE',
+          guestCount: 1,
+          restaurant: order.restaurant,
+          batches: [
+            {
+              batchId: order.id,
+              batchNumber: 1,
+              status,
+              submittedAt: order.createdAt,
+              completedAt: order.deliveredAt,
+              itemsCount: items.reduce((acc: number, it: any) => acc + (it.quantity || 1), 0),
+              items,
+              subtotal: order.subtotal || 0,
+              tax: order.gstAmount || 0,
+              discount: order.discount || 0,
+              total: order.total || 0,
+              paymentStatus: order.paymentStatus || 'PENDING',
+              orderId: order.id,
+              counterPaymentMethod: order.counterPaymentMethod || null,
+              paymentConfirmedAt: order.paymentConfirmedAt || null,
+            },
+          ],
+          totals: {
+            subtotal: order.subtotal || 0,
+            tax: order.gstAmount || 0,
+            discount: order.discount || 0,
+            grandTotal: order.total || 0,
+            isPaid: order.paymentStatus === 'PAID',
+            paymentMethod: order.counterPaymentMethod || order.paymentMethod || (order.paymentStatus === 'PAID' ? 'PAID' : 'PENDING'),
+            paymentConfirmedAt: order.paymentConfirmedAt || null,
+          },
+        },
+      });
+      return;
     }
 
     const sessionOrders = session.orders || [];
@@ -802,15 +889,29 @@ export async function updateBatchStatus(
       throw new AppError(`Invalid batch status: ${status}`, 400, 'INVALID_STATUS');
     }
 
-    const batch: any = await prisma.orderBatch.findUnique({
-      where: { id: batchId },
-      include: {
-        session: true,
-      },
-    });
+      let batch: any = await prisma.orderBatch.findUnique({
+        where: { id: batchId },
+        include: {
+          session: true,
+        },
+      });
 
-    if (!batch || batch.sessionId !== sessionId) {
-      throw new AppError('Order batch not found for this session.', 404, 'BATCH_NOT_FOUND');
+      if(!batch || batch.sessionId !== sessionId) {
+        throw new AppError('Order batch not found for this session.', 404, 'BATCH_NOT_FOUND');
+    if (!batch) {
+      batch = await prisma.orderBatch.findFirst({
+        where: {
+          OR: [
+            { orderId: batchId },
+            { id: batchId },
+            { sessionId: sessionId },
+          ],
+        },
+        include: {
+          session: true,
+        },
+        orderBy: { batchNumber: 'desc' },
+      });
     }
 
     // Restriction: Cannot mark COMPLETED unless the batch is already SERVED (Requirement 8)
@@ -820,672 +921,1152 @@ export async function updateBatchStatus(
         400,
         'BATCH_NOT_SERVED'
       );
-    }
-
-    const now = new Date();
-    const timestampUpdates: Record<string, any> = {};
-    if (status === 'ACCEPTED') timestampUpdates.acceptedAt = now;
-    if (status === 'PREPARING') timestampUpdates.preparingAt = now;
-    if (status === 'READY') timestampUpdates.readyAt = now;
-    if (status === 'SERVED') timestampUpdates.servedAt = now;
-    if (status === 'COMPLETED') timestampUpdates.completedAt = now;
-
-    const result = await prisma.$transaction(async (tx) => {
-      // 1. Update the target batch
-      const updated = await tx.orderBatch.update({
-        where: { id: batchId },
-        data: {
-          status: status as any,
-          ...timestampUpdates,
-        },
-        include: {
-          items: {
-            include: {
-              menuItem: { select: { id: true, name: true, image: true, price: true } },
-            },
+      if (!batch) {
+        // Direct order update fallback
+        const order = await prisma.order.findFirst({
+          where: {
+            OR: [{ id: batchId }, { id: sessionId }],
           },
-        },
-      });
+          include: { restaurant: true },
+        });
 
-      // 2. Synchronize linked Order status for KDS and existing tracking
-      if (batch.orderId) {
-        let orderStatus: any = undefined;
-        if (status === 'PREPARING') orderStatus = 'PREPARING';
-        if (status === 'READY') orderStatus = 'READY';
-        if (status === 'SERVED' || status === 'COMPLETED') orderStatus = 'DELIVERED';
-        if (status === 'CANCELLED') orderStatus = 'CANCELLED';
+        if (order) {
+          let orderStatus: any = undefined;
+          if (status === 'ACCEPTED') orderStatus = 'CONFIRMED';
+          if (status === 'PREPARING') orderStatus = 'PREPARING';
+          if (status === 'READY') orderStatus = 'READY';
+          if (status === 'SERVED' || status === 'COMPLETED') orderStatus = 'DELIVERED';
+          if (status === 'CANCELLED') orderStatus = 'CANCELLED';
 
-        if (orderStatus) {
-          await tx.order.update({
-            where: { id: batch.orderId },
-            data: { status: orderStatus },
+          const now = new Date();
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              ...(orderStatus ? { status: orderStatus } : {}),
+              ...(orderStatus === 'DELIVERED' ? { deliveredAt: now } : {}),
+            },
           });
-          emitOrderStatusUpdate(batch.orderId, batch.restaurantId, {
-            orderId: batch.orderId,
-            status: orderStatus,
-            updatedAt: now.toISOString(),
+
+          if (orderStatus) {
+            emitOrderStatusUpdate(order.id, order.restaurantId, {
+              orderId: order.id,
+              status: orderStatus,
+              updatedAt: now.toISOString(),
+            });
+          }
+
+          emitTableSessionUpdate(order.restaurantId, order.tableNumber || '', {
+            sessionId,
+            batchId,
+            status,
+            event: 'BATCH_STATUS_UPDATED',
           });
+
+          res.json({
+            success: true,
+            data: {
+              batch: {
+                id: order.id,
+                status,
+                total: order.total,
+              },
+            },
+          });
+          return;
         }
+
+        throw new AppError('Order batch not found for this session.', 404, 'BATCH_NOT_FOUND');
       }
 
-      // 3. SEQUENTIAL BATCH UNLOCKING:
-      // When batch is marked COMPLETED, initialize the NEXT batch!
-      let nextBatch = null;
+      const now = new Date();
+      const timestampUpdates: Record<string, any> = {};
+      if (status === 'ACCEPTED') timestampUpdates.acceptedAt = now;
+      if (status === 'PREPARING') timestampUpdates.preparingAt = now;
+      if (status === 'READY') timestampUpdates.readyAt = now;
+      if (status === 'SERVED') timestampUpdates.servedAt = now;
+      if (status === 'COMPLETED') timestampUpdates.completedAt = now;
       if (status === 'COMPLETED') {
-        const nextBatchNum = batch.batchNumber + 1;
+        timestampUpdates.completedAt = now;
+        if (!batch.servedAt) timestampUpdates.servedAt = now;
+      }
 
-        // Check if next batch already exists
-        const existingNext = await tx.orderBatch.findUnique({
-          where: {
-            sessionId_batchNumber: {
-              sessionId: batch.sessionId,
-              batchNumber: nextBatchNum,
+      const result = await prisma.$transaction(async (tx) => {
+        // 1. Update the target batch
+        const updated = await tx.orderBatch.update({
+          where: { id: batchId },
+          where: { id: batch.id },
+          data: {
+            status: status as any,
+            ...timestampUpdates,
+          },
+          include: {
+            items: {
+              include: {
+                menuItem: { select: { id: true, name: true, image: true, price: true } },
+              },
             },
           },
         });
 
-        if (!existingNext) {
-          nextBatch = await tx.orderBatch.create({
-            data: {
-              sessionId: batch.sessionId,
-              restaurantId: batch.restaurantId,
-              batchNumber: nextBatchNum,
-              status: 'OPEN',
-              subtotal: 0,
-              tax: 0,
-              discount: 0,
-              total: 0,
-            },
-            include: {
-              items: {
-                include: {
-                  menuItem: { select: { id: true, name: true, image: true, price: true } },
-                },
+        // 2. Synchronize linked Order status for KDS and existing tracking
+        if (batch.orderId) {
+          let orderStatus: any = undefined;
+          if (status === 'PREPARING') orderStatus = 'PREPARING';
+          if (status === 'READY') orderStatus = 'READY';
+          if (status === 'SERVED' || status === 'COMPLETED') orderStatus = 'DELIVERED';
+          if (status === 'CANCELLED') orderStatus = 'CANCELLED';
+
+          if (orderStatus) {
+            await tx.order.update({
+              where: { id: batch.orderId },
+              data: { status: orderStatus },
+            });
+            emitOrderStatusUpdate(batch.orderId, batch.restaurantId, {
+              orderId: batch.orderId,
+              status: orderStatus,
+              updatedAt: now.toISOString(),
+            });
+          }
+        }
+
+        // 3. SEQUENTIAL BATCH UNLOCKING:
+        // When batch is marked COMPLETED, initialize the NEXT batch!
+        let nextBatch = null;
+        if (status === 'COMPLETED') {
+          const nextBatchNum = batch.batchNumber + 1;
+
+          // Check if next batch already exists
+          const existingNext = await tx.orderBatch.findUnique({
+            where: {
+              sessionId_batchNumber: {
+                sessionId: batch.sessionId,
+                batchNumber: nextBatchNum,
               },
             },
           });
 
-          await tx.tableSession.update({
-            where: { id: batch.sessionId },
-            data: { currentBatchNumber: nextBatchNum },
-          });
-        } else {
-          nextBatch = existingNext;
+          if (!existingNext) {
+            nextBatch = await tx.orderBatch.create({
+              data: {
+                sessionId: batch.sessionId,
+                restaurantId: batch.restaurantId,
+                batchNumber: nextBatchNum,
+                status: 'OPEN',
+                subtotal: 0,
+                tax: 0,
+                discount: 0,
+                total: 0,
+              },
+              include: {
+                items: {
+                  include: {
+                    menuItem: { select: { id: true, name: true, image: true, price: true } },
+                  },
+                },
+              },
+            });
+
+            await tx.tableSession.update({
+              where: { id: batch.sessionId },
+              data: { currentBatchNumber: nextBatchNum },
+            });
+          } else {
+            nextBatch = existingNext;
+          }
         }
+
+        return { updated, nextBatch };
+      });
+
+      // Real-time broadcasts
+      emitTableSessionUpdate(batch.session.restaurantId, batch.session.tableNumber, {
+        sessionId,
+        batchId,
+        status,
+        updatedBatch: result.updated,
+        nextBatch: result.nextBatch,
+        event: 'BATCH_STATUS_UPDATED',
+      });
+
+      if (result.nextBatch) {
+        emitBatchUnlocked(batch.session.restaurantId, batch.session.tableNumber, result.nextBatch);
       }
 
-      return { updated, nextBatch };
-    });
-
-    // Real-time broadcasts
-    emitTableSessionUpdate(batch.session.restaurantId, batch.session.tableNumber, {
-      sessionId,
-      batchId,
-      status,
-      updatedBatch: result.updated,
-      nextBatch: result.nextBatch,
-      event: 'BATCH_STATUS_UPDATED',
-    });
-
-    if (result.nextBatch) {
-      emitBatchUnlocked(batch.session.restaurantId, batch.session.tableNumber, result.nextBatch);
+      res.json({
+        success: true,
+        data: {
+          batch: result.updated,
+          nextBatch: result.nextBatch,
+        },
+      });
+    } catch (error) {
+      next(error);
     }
-
-    res.json({
-      success: true,
-      data: {
-        batch: result.updated,
-        nextBatch: result.nextBatch,
-      },
-    });
-  } catch (error) {
-    next(error);
   }
-}
 
 /**
  * 8. Get Consolidated Session Bill.
  * Summarizes all items and charges across Batch 1, Batch 2, etc. without double-counting.
  */
 export async function getSessionBill(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
-  try {
-    const sessionId = req.params.sessionId as string;
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const sessionId = req.params.sessionId as string;
 
-    const session: any = await prisma.tableSession.findUnique({
-      where: { id: sessionId },
-      include: {
-        restaurant: {
-          select: { id: true, name: true, slug: true, address: true, phone: true },
-        },
-        batches: {
-          where: { status: { not: 'CANCELLED' } },
-          orderBy: { batchNumber: 'asc' },
-          include: {
-            items: {
-              include: {
-                menuItem: { select: { id: true, name: true, price: true } },
-                variant: { select: { id: true, name: true, price: true } },
-              },
-            },
-            order: {
-              select: {
-                id: true,
-                paymentStatus: true,
-                paymentMethod: true,
-                counterPaymentMethod: true,
-                paymentConfirmedAt: true,
-                verificationCode: true,
-                total: true,
-                subtotal: true,
-                gstAmount: true,
-                discount: true,
-                items: {
-                  include: {
-                    menuItem: { select: { id: true, name: true, price: true } },
-                    variant: { select: { id: true, name: true, price: true } },
-                  },
-                },
-              },
-            },
-          },
-        },
-        orders: {
-          where: { deletedAt: null },
-          orderBy: { createdAt: 'asc' },
-          include: {
-            items: {
-              include: {
-                menuItem: { select: { id: true, name: true, price: true } },
-                variant: { select: { id: true, name: true, price: true } },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    if (!session) {
-      throw new AppError('Table session not found.', 404, 'SESSION_NOT_FOUND');
-    }
-
-    const sessionOrders = session.orders || [];
-
-    let subtotal = 0;
-    let tax = 0;
-    let discount = 0;
-    let grandTotal = 0;
-
-    const formattedBatches = session.batches.map((b: any) => {
-      const matchingOrder = b.order || sessionOrders.find((o: any) => o.batchNumber === b.batchNumber) || sessionOrders[0];
-      let items = b.items || [];
-      let bSubtotal = b.subtotal || 0;
-      let bTax = b.tax || 0;
-      let bDiscount = b.discount || 0;
-      let bTotal = b.total || 0;
-      let paymentStatus = b.order?.paymentStatus || 'PENDING';
-
-      if (matchingOrder) {
-        if (!items || items.length === 0) {
-          items = (matchingOrder.items || []).map((it: any) => ({
-            id: it.id,
-            itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
-            quantity: it.quantity,
-            unitPrice: it.unitPrice,
-            subtotal: it.subtotal,
-          }));
-          bSubtotal = matchingOrder.subtotal || 0;
-          bTax = matchingOrder.gstAmount || 0;
-          bDiscount = matchingOrder.discount || 0;
-          bTotal = matchingOrder.total || 0;
-        }
-        paymentStatus = matchingOrder.paymentStatus || paymentStatus;
-      }
-
-      subtotal += bSubtotal;
-      tax += bTax;
-      discount += bDiscount;
-      grandTotal += bTotal;
-
-      return {
-        batchId: b.id,
-        batchNumber: b.batchNumber,
-        status: b.status,
-        submittedAt: b.submittedAt,
-        completedAt: b.completedAt,
-        itemsCount: items.reduce((acc: number, it: any) => acc + (it.quantity || 1), 0),
-        items,
-        subtotal: bSubtotal,
-        tax: bTax,
-        discount: bDiscount,
-        total: bTotal,
-        paymentStatus,
-        orderId: matchingOrder?.id || null,
-        counterPaymentMethod: matchingOrder?.counterPaymentMethod || null,
-        paymentConfirmedAt: matchingOrder?.paymentConfirmedAt || null,
-      };
-    });
-
-    // If batches array was empty or had 0 totals, fallback to sessionOrders directly
-    if (formattedBatches.length === 0 && sessionOrders.length > 0) {
-      sessionOrders.forEach((o: any, idx: number) => {
-        const oItems = (o.items || []).map((it: any) => ({
-          id: it.id,
-          itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
-          quantity: it.quantity,
-          unitPrice: it.unitPrice,
-          subtotal: it.subtotal,
-        }));
-        subtotal += o.subtotal || 0;
-        tax += o.gstAmount || 0;
-        discount += o.discount || 0;
-        grandTotal += o.total || 0;
-
-        formattedBatches.push({
-          batchId: o.id,
-          batchNumber: idx + 1,
-          status: o.status === 'DELIVERED' ? 'SERVED' : o.status,
-          submittedAt: o.createdAt,
-          completedAt: o.deliveredAt,
-          itemsCount: oItems.reduce((acc: number, it: any) => acc + (it.quantity || 1), 0),
-          items: oItems,
-          subtotal: o.subtotal || 0,
-          tax: o.gstAmount || 0,
-          discount: o.discount || 0,
-          total: o.total || 0,
-          paymentStatus: o.paymentStatus || 'PENDING',
-          orderId: o.id,
-          counterPaymentMethod: o.counterPaymentMethod || null,
-          paymentConfirmedAt: o.paymentConfirmedAt || null,
-        });
-      });
-    }
-
-    // Check overall payment status across batches and orders
-    const allPaid =
-      (sessionOrders.length > 0 && sessionOrders.every((o: any) => o.paymentStatus === 'PAID')) ||
-      (formattedBatches.length > 0 && formattedBatches.every((b: any) => b.paymentStatus === 'PAID'));
-
-    // Check payment method from the paid order
-    const paidOrder = sessionOrders.find((o: any) => o.paymentStatus === 'PAID') || session.batches.find((b: any) => b.order?.paymentStatus === 'PAID')?.order;
-
-    res.json({
-      success: true,
-      data: {
-        sessionId: session.id,
-        tableNumber: session.tableNumber,
-        sessionCode: session.sessionCode,
-        sessionStatus: session.status,
-        guestCount: session.guestCount,
-        restaurant: session.restaurant,
-        batches: formattedBatches,
-        totals: {
-          subtotal: Math.round(subtotal * 100) / 100,
-          tax: Math.round(tax * 100) / 100,
-          discount: Math.round(discount * 100) / 100,
-          grandTotal: Math.round(grandTotal * 100) / 100,
-          isPaid: allPaid,
-          paymentMethod: paidOrder?.counterPaymentMethod || paidOrder?.paymentMethod || (allPaid ? 'PAID' : 'PENDING'),
-          paymentConfirmedAt: paidOrder?.paymentConfirmedAt || null,
-        },
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/**
- * 9. Close Table Session (Authorized Staff).
- * Ensures all food rounds are completed or explicitly cancelled before closing.
- */
-export async function closeTableSession(
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
-  try {
-    const sessionId = req.params.sessionId as string;
-    const { paymentConfirmed = false, counterPaymentMethod = 'CASH' } = req.body as {
-      paymentConfirmed?: boolean;
-      counterPaymentMethod?: string;
-    };
-
-    const session: any = await prisma.tableSession.findUnique({
-      where: { id: sessionId },
-      include: {
-        batches: true,
-        orders: true,
-      },
-    });
-
-    if (!session) {
-      throw new AppError('Table session not found.', 404, 'SESSION_NOT_FOUND');
-    }
-
-    if (session.status !== 'ACTIVE') {
-      throw new AppError('This table session has already been closed.', 400, 'SESSION_ALREADY_CLOSED');
-    }
-
-    // Verify no batch is currently being prepared, ready, or served
-    const unfinishedBatch = session.batches.find(
-      (b: any) => ['SUBMITTED', 'ACCEPTED', 'PREPARING', 'READY', 'SERVED'].includes(b.status)
-    );
-
-    if (unfinishedBatch) {
-      throw new AppError(
-        `Cannot close table session while Batch ${unfinishedBatch.batchNumber} is still in progress (${unfinishedBatch.status}). Please complete or cancel it first.`,
-        400,
-        'UNFINISHED_BATCH'
-      );
-    }
-
-    const now = new Date();
-
-    await prisma.$transaction(async (tx) => {
-      // Close session
-      await tx.tableSession.update({
+      const session: any = await prisma.tableSession.findUnique({
         where: { id: sessionId },
-        data: {
-          status: 'COMPLETED',
-          completedAt: now,
-          closedBy: req.user?.id || 'Staff',
-        },
-      });
-
-      // Mark empty open batches as COMPLETED or CANCELLED
-      for (const b of session.batches) {
-        if (b.status === 'OPEN') {
-          await tx.orderBatch.update({
-            where: { id: b.id },
-            data: { status: 'COMPLETED', completedAt: now },
-          });
-        }
-      }
-
-      // If staff confirms counter payment, update linked orders
-      if (paymentConfirmed) {
-        await tx.order.updateMany({
-          where: { tableSessionId: sessionId },
-          data: {
-            paymentStatus: 'PAID',
-            paymentConfirmedBy: req.user?.id || 'Staff',
-            paymentConfirmedAt: now,
-            counterPaymentMethod: counterPaymentMethod || 'CASH',
+        include: {
+          restaurant: {
+            select: { id: true, name: true, slug: true, address: true, phone: true },
           },
-        });
-      }
-    });
-
-    emitTableSessionUpdate(session.restaurantId, session.tableNumber, {
-      sessionId,
-      event: 'SESSION_CLOSED',
-      message: `Table session for ${session.tableNumber} is closed.`,
-    });
-
-    res.json({
-      success: true,
-      message: `Table session for ${session.tableNumber} closed successfully.`,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/**
- * 10. List Active Table Sessions (Staff & Restaurant Owner Dashboard).
- */
-export async function listActiveSessions(
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
-  try {
-    const user = req.user!;
-    let restaurantId = (user as any).restaurantId || (user as any).kitchenRestaurantId;
-
-    if (!restaurantId && user.role === 'RESTAURANT_OWNER') {
-      const rest = await prisma.restaurant.findFirst({
-        where: { ownerId: user.id, deletedAt: null },
-        select: { id: true },
-      });
-      restaurantId = rest?.id;
-    }
-
-    if (!restaurantId && user.role === 'SUPER_ADMIN') {
-      const rest = await prisma.restaurant.findFirst({
-        where: { deletedAt: null },
-        select: { id: true },
-      });
-      restaurantId = rest?.id;
-    }
-
-    if (!restaurantId) {
-      throw new AppError('Restaurant not found for authenticated user.', 404, 'RESTAURANT_NOT_FOUND');
-    }
-
-    const sessions: any = await prisma.tableSession.findMany({
-      where: {
-        restaurantId,
-        status: 'ACTIVE',
-      },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        batches: {
-          orderBy: { batchNumber: 'asc' },
-          include: {
-            items: {
-              include: {
-                menuItem: { select: { id: true, name: true, price: true } },
+          batches: {
+            where: { status: { not: 'CANCELLED' } },
+            orderBy: { batchNumber: 'asc' },
+            include: {
+              items: {
+                include: {
+                  menuItem: { select: { id: true, name: true, price: true } },
+                  variant: { select: { id: true, name: true, price: true } },
+                },
               },
-            },
-            order: {
-              select: {
-                id: true,
-                status: true,
-                paymentStatus: true,
-                paymentMethod: true,
-                counterPaymentMethod: true,
-                total: true,
-                guestName: true,
-                guestPhone: true,
-                items: {
-                  include: {
-                    menuItem: { select: { id: true, name: true, price: true } },
-                    variant: { select: { id: true, name: true, price: true } },
+              order: {
+                select: {
+                  id: true,
+                  paymentStatus: true,
+                  paymentMethod: true,
+                  counterPaymentMethod: true,
+                  paymentConfirmedAt: true,
+                  verificationCode: true,
+                  total: true,
+                  subtotal: true,
+                  gstAmount: true,
+                  discount: true,
+                  items: {
+                    include: {
+                      menuItem: { select: { id: true, name: true, price: true } },
+                      variant: { select: { id: true, name: true, price: true } },
+                    },
                   },
                 },
               },
             },
           },
+          orders: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: 'asc' },
+            include: {
+              items: {
+                include: {
+                  menuItem: { select: { id: true, name: true, price: true } },
+                  variant: { select: { id: true, name: true, price: true } },
+                },
+              },
+            },
+          },
         },
-        orders: {
-          where: { deletedAt: null },
-          orderBy: { createdAt: 'desc' },
+      });
+
+      if (!session) {
+        throw new AppError('Table session not found.', 404, 'SESSION_NOT_FOUND');
+        const order = await prisma.order.findUnique({
+          where: { id: sessionId },
           include: {
+            restaurant: { select: { id: true, name: true, slug: true } },
             items: {
               include: {
-                menuItem: { select: { id: true, name: true, price: true } },
+                menuItem: { select: { id: true, name: true, image: true, price: true } },
                 variant: { select: { id: true, name: true, price: true } },
               },
             },
             user: { select: { name: true, phone: true } },
           },
-        },
-      },
-    });
+        });
 
-    const activeSessionTableSet = new Set(sessions.map((s: any) => normalizeTableNumber(s.tableNumber).toLowerCase()));
+        if (!order) {
+          throw new AppError('Table session not found.', 404, 'SESSION_NOT_FOUND');
+        }
 
-    const formatted: any[] = sessions.map((s: any) => {
-      const sessionOrders = s.orders || [];
-      let currentBatch = s.batches.find((b: any) => b.batchNumber === s.currentBatchNumber) || s.batches[s.batches.length - 1];
+        let status = 'SUBMITTED';
+        if (order.status === 'DELIVERED') status = 'SERVED';
+        else if (order.status === 'READY') status = 'READY';
+        else if (order.status === 'PREPARING' || order.status === 'BAKING') status = 'PREPARING';
+        else if (order.status === 'CONFIRMED') status = 'ACCEPTED';
+        else if (order.status === 'CANCELLED') status = 'CANCELLED';
 
-      // Total session bill
-      let sessionTotal = 0;
-      if (sessionOrders.length > 0) {
-        sessionTotal = sessionOrders
-          .filter((o: any) => o.status !== 'CANCELLED')
-          .reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
-      } else {
-        sessionTotal = s.batches
-          .filter((b: any) => b.status !== 'CANCELLED')
-          .reduce((sum: number, b: any) => sum + Number(b.total || 0), 0);
+        const items = (order.items || []).map((it: any) => ({
+          id: it.id,
+          itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+          subtotal: it.subtotal,
+          specialInstructions: null,
+          addedBy: order.guestName || order.user?.name || 'Guest',
+        }));
+
+        const syntheticBatch = {
+          id: order.id,
+          batchNumber: 1,
+          status,
+          subtotal: order.subtotal,
+          tax: order.gstAmount,
+          discount: order.discount,
+          total: order.total,
+          items,
+          paymentStatus: order.paymentStatus || 'PENDING',
+          order,
+        };
+
+        res.json({
+          success: true,
+          data: {
+            sessionId: order.id,
+            tableNumber: order.tableNumber || 'Table 1',
+            sessionCode: order.verificationCode || order.id.slice(-4).toUpperCase(),
+            sessionStatus: 'ACTIVE',
+            guestCount: 1,
+            restaurant: order.restaurant,
+            batches: [
+              {
+                batchId: order.id,
+                batchNumber: 1,
+                status,
+                submittedAt: order.createdAt,
+                completedAt: order.deliveredAt,
+                itemsCount: items.reduce((acc: number, it: any) => acc + (it.quantity || 1), 0),
+                items,
+                subtotal: order.subtotal || 0,
+                tax: order.gstAmount || 0,
+                discount: order.discount || 0,
+                total: order.total || 0,
+                paymentStatus: order.paymentStatus || 'PENDING',
+                orderId: order.id,
+                counterPaymentMethod: order.counterPaymentMethod || null,
+                paymentConfirmedAt: order.paymentConfirmedAt || null,
+              },
+            ],
+            totals: {
+              subtotal: order.subtotal || 0,
+              tax: order.gstAmount || 0,
+              discount: order.discount || 0,
+              grandTotal: order.total || 0,
+              isPaid: order.paymentStatus === 'PAID',
+              paymentMethod: order.counterPaymentMethod || order.paymentMethod || (order.paymentStatus === 'PAID' ? 'PAID' : 'PENDING'),
+              paymentConfirmedAt: order.paymentConfirmedAt || null,
+            },
+          },
+        });
+        return;
       }
 
-      // Overall payment status
-      const isPaid =
-        (sessionOrders.length > 0 && sessionOrders.every((o: any) => o.paymentStatus === 'PAID')) ||
-        (s.batches.length > 0 && s.batches.every((b: any) => b.order?.paymentStatus === 'PAID'));
+      const sessionOrders = session.orders || [];
 
-      // If currentBatch has no items, enrich from matching order
-      let currentBatchItems = currentBatch?.items || [];
-      let currentBatchTotal = currentBatch?.total || 0;
-      let displayBatchStatus = currentBatch?.status || 'OPEN';
+      let subtotal = 0;
+      let tax = 0;
+      let discount = 0;
+      let grandTotal = 0;
 
-      const matchingOrder = sessionOrders.find((o: any) => o.batchNumber === currentBatch?.batchNumber) || sessionOrders[0];
-      if (matchingOrder) {
-        if (!currentBatchItems || currentBatchItems.length === 0) {
-          currentBatchItems = (matchingOrder.items || []).map((it: any) => ({
+      const formattedBatches = session.batches.map((b: any) => {
+        const matchingOrder = b.order || sessionOrders.find((o: any) => o.batchNumber === b.batchNumber) || sessionOrders[0];
+        let items = b.items || [];
+        let bSubtotal = b.subtotal || 0;
+        let bTax = b.tax || 0;
+        let bDiscount = b.discount || 0;
+        let bTotal = b.total || 0;
+        let paymentStatus = b.order?.paymentStatus || 'PENDING';
+
+        if (matchingOrder) {
+          if (!items || items.length === 0) {
+            items = (matchingOrder.items || []).map((it: any) => ({
+              id: it.id,
+              itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
+              quantity: it.quantity,
+              unitPrice: it.unitPrice,
+              subtotal: it.subtotal,
+            }));
+            bSubtotal = matchingOrder.subtotal || 0;
+            bTax = matchingOrder.gstAmount || 0;
+            bDiscount = matchingOrder.discount || 0;
+            bTotal = matchingOrder.total || 0;
+          }
+          paymentStatus = matchingOrder.paymentStatus || paymentStatus;
+        }
+
+        subtotal += bSubtotal;
+        tax += bTax;
+        discount += bDiscount;
+        grandTotal += bTotal;
+
+        return {
+          batchId: b.id,
+          batchNumber: b.batchNumber,
+          status: b.status,
+          submittedAt: b.submittedAt,
+          completedAt: b.completedAt,
+          itemsCount: items.reduce((acc: number, it: any) => acc + (it.quantity || 1), 0),
+          items,
+          subtotal: bSubtotal,
+          tax: bTax,
+          discount: bDiscount,
+          total: bTotal,
+          paymentStatus,
+          orderId: matchingOrder?.id || null,
+          counterPaymentMethod: matchingOrder?.counterPaymentMethod || null,
+          paymentConfirmedAt: matchingOrder?.paymentConfirmedAt || null,
+        };
+      });
+
+      // If batches array was empty or had 0 totals, fallback to sessionOrders directly
+      if (formattedBatches.length === 0 && sessionOrders.length > 0) {
+        sessionOrders.forEach((o: any, idx: number) => {
+          const oItems = (o.items || []).map((it: any) => ({
             id: it.id,
             itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
             quantity: it.quantity,
             unitPrice: it.unitPrice,
             subtotal: it.subtotal,
           }));
-          currentBatchTotal = matchingOrder.total;
-        }
+          subtotal += o.subtotal || 0;
+          tax += o.gstAmount || 0;
+          discount += o.discount || 0;
+          grandTotal += o.total || 0;
 
-        // Synchronize batch status with order status
-        if (matchingOrder.status === 'DELIVERED') displayBatchStatus = 'SERVED';
-        else if (matchingOrder.status === 'READY') displayBatchStatus = 'READY';
-        else if (matchingOrder.status === 'PREPARING' || matchingOrder.status === 'BAKING') displayBatchStatus = 'PREPARING';
-        else if (matchingOrder.status === 'CONFIRMED') displayBatchStatus = 'ACCEPTED';
-        else if (matchingOrder.status === 'PENDING') displayBatchStatus = 'SUBMITTED';
-        else if (matchingOrder.status === 'CANCELLED') displayBatchStatus = 'CANCELLED';
+          formattedBatches.push({
+            batchId: o.id,
+            batchNumber: idx + 1,
+            status: o.status === 'DELIVERED' ? 'SERVED' : o.status,
+            submittedAt: o.createdAt,
+            completedAt: o.deliveredAt,
+            itemsCount: oItems.reduce((acc: number, it: any) => acc + (it.quantity || 1), 0),
+            items: oItems,
+            subtotal: o.subtotal || 0,
+            tax: o.gstAmount || 0,
+            discount: o.discount || 0,
+            total: o.total || 0,
+            paymentStatus: o.paymentStatus || 'PENDING',
+            orderId: o.id,
+            counterPaymentMethod: o.counterPaymentMethod || null,
+            paymentConfirmedAt: o.paymentConfirmedAt || null,
+          });
+        });
       }
 
-      const enrichedBatch = currentBatch
-        ? {
+      // Check overall payment status across batches and orders
+      const allPaid =
+        (sessionOrders.length > 0 && sessionOrders.every((o: any) => o.paymentStatus === 'PAID')) ||
+        (formattedBatches.length > 0 && formattedBatches.every((b: any) => b.paymentStatus === 'PAID'));
+
+      // Check payment method from the paid order
+      const paidOrder = sessionOrders.find((o: any) => o.paymentStatus === 'PAID') || session.batches.find((b: any) => b.order?.paymentStatus === 'PAID')?.order;
+
+      res.json({
+        success: true,
+        data: {
+          sessionId: session.id,
+          tableNumber: session.tableNumber,
+          sessionCode: session.sessionCode,
+          sessionStatus: session.status,
+          guestCount: session.guestCount,
+          restaurant: session.restaurant,
+          batches: formattedBatches,
+          totals: {
+            subtotal: Math.round(subtotal * 100) / 100,
+            tax: Math.round(tax * 100) / 100,
+            discount: Math.round(discount * 100) / 100,
+            grandTotal: Math.round(grandTotal * 100) / 100,
+            isPaid: allPaid,
+            paymentMethod: paidOrder?.counterPaymentMethod || paidOrder?.paymentMethod || (allPaid ? 'PAID' : 'PENDING'),
+            paymentConfirmedAt: paidOrder?.paymentConfirmedAt || null,
+          },
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * 9. Close Table Session (Authorized Staff).
+   * Ensures all food rounds are completed or explicitly cancelled before closing.
+   */
+  export async function closeTableSession(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const sessionId = req.params.sessionId as string;
+      const { paymentConfirmed = false, counterPaymentMethod = 'CASH' } = req.body as {
+        paymentConfirmed?: boolean;
+        counterPaymentMethod?: string;
+      };
+
+      const session: any = await prisma.tableSession.findUnique({
+        where: { id: sessionId },
+        include: {
+          batches: true,
+          orders: true,
+        },
+      });
+
+      if (!session) {
+        throw new AppError('Table session not found.', 404, 'SESSION_NOT_FOUND');
+        const order = await prisma.order.findUnique({
+          where: { id: sessionId },
+          include: { restaurant: true },
+        });
+
+        if (!order) {
+          throw new AppError('Table session not found.', 404, 'SESSION_NOT_FOUND');
+        }
+
+        const now = new Date();
+        await prisma.$transaction(async (tx) => {
+          await tx.order.update({
+            where: { id: order.id },
+            data: {
+              status: 'DELIVERED',
+              deliveredAt: order.deliveredAt || now,
+              ...(paymentConfirmed
+                ? {
+                  paymentStatus: 'PAID',
+                  paymentConfirmedBy: req.user?.id || 'Staff',
+                  paymentConfirmedAt: now,
+                  counterPaymentMethod: counterPaymentMethod || 'CASH',
+                }
+                : {}),
+            },
+          });
+
+          if (paymentConfirmed) {
+            await tx.payment.updateMany({
+              where: { orderId: order.id },
+              data: { status: 'PAID' },
+            });
+          }
+        });
+
+        emitOrderStatusUpdate(order.id, order.restaurantId, {
+          orderId: order.id,
+          status: 'DELIVERED',
+          updatedAt: now.toISOString(),
+        });
+
+        emitTableSessionUpdate(order.restaurantId, order.tableNumber || '', {
+          sessionId,
+          event: 'SESSION_CLOSED',
+          message: `Table order for ${order.tableNumber || 'Table'} closed successfully.`,
+        });
+
+        res.json({
+          success: true,
+          message: `Table order for ${order.tableNumber || 'Table'} closed successfully.`,
+        });
+        return;
+      }
+
+      if (session.status !== 'ACTIVE') {
+        throw new AppError('This table session has already been closed.', 400, 'SESSION_ALREADY_CLOSED');
+        res.json({
+          success: true,
+          message: `Table session for ${session.tableNumber} is already closed.`,
+        });
+        return;
+      }
+
+      // Verify no batch is currently being prepared, ready, or served
+      const unfinishedBatch = session.batches.find(
+        (b: any) => ['SUBMITTED', 'ACCEPTED', 'PREPARING', 'READY', 'SERVED'].includes(b.status)
+      );
+
+      if (unfinishedBatch) {
+        throw new AppError(
+          `Cannot close table session while Batch ${unfinishedBatch.batchNumber} is still in progress (${unfinishedBatch.status}). Please complete or cancel it first.`,
+          400,
+          'UNFINISHED_BATCH'
+        );
+      }
+
+      const now = new Date();
+
+      await prisma.$transaction(async (tx) => {
+        // Close session
+        // 1. Close session
+        await tx.tableSession.update({
+          where: { id: sessionId },
+          data: {
+            status: 'COMPLETED',
+            completedAt: now,
+            closedBy: req.user?.id || 'Staff',
+          },
+        });
+
+        // Mark empty open batches as COMPLETED or CANCELLED
+        // 2. Mark all non-completed batches as COMPLETED
+        for (const b of session.batches) {
+          if (b.status === 'OPEN') {
+            if (b.status !== 'COMPLETED' && b.status !== 'CANCELLED') {
+              await tx.orderBatch.update({
+                where: { id: b.id },
+                data: { status: 'COMPLETED', completedAt: now },
+                data: { status: 'COMPLETED', completedAt: now, servedAt: b.servedAt || now },
+              });
+            }
+          }
+
+          // If staff confirms counter payment, update linked orders
+          // 3. Mark all session orders as DELIVERED
+          const batchOrderIds = session.batches.map((b: any) => b.orderId).filter(Boolean);
+          await tx.order.updateMany({
+            where: {
+              OR: [
+                { tableSessionId: sessionId },
+                { id: { in: batchOrderIds } },
+              ],
+              status: { notIn: ['CANCELLED'] },
+            },
+            data: {
+              status: 'DELIVERED',
+              deliveredAt: now,
+              ...(paymentConfirmed
+                ? {
+                  paymentStatus: 'PAID',
+                  paymentConfirmedBy: req.user?.id || 'Staff',
+                  paymentConfirmedAt: now,
+                  counterPaymentMethod: counterPaymentMethod || 'CASH',
+                }
+                : {}),
+            },
+          });
+
+          // 4. If payment confirmed, mark payments as PAID
+          if (paymentConfirmed) {
+            await tx.order.updateMany({
+              where: { tableSessionId: sessionId },
+              data: {
+                paymentStatus: 'PAID',
+                paymentConfirmedBy: req.user?.id || 'Staff',
+                paymentConfirmedAt: now,
+                counterPaymentMethod: counterPaymentMethod || 'CASH',
+                const linkedOrders = await tx.order.findMany({
+                  where: {
+                    OR: [
+                      { tableSessionId: sessionId },
+                      { id: { in: batchOrderIds } },
+                    ],
+                  },
+                  select: { id: true },
+                });
+                const lIds = linkedOrders.map((o) => o.id);
+                if(lIds.length > 0) {
+              await tx.payment.updateMany({
+                where: { orderId: { in: lIds } },
+                data: { status: 'PAID' },
+              });
+            }
+          }
+        });
+
+      emitTableSessionUpdate(session.restaurantId, session.tableNumber, {
+        sessionId,
+        event: 'SESSION_CLOSED',
+        message: `Table session for ${session.tableNumber} is closed.`,
+      });
+
+      res.json({
+        success: true,
+        message: `Table session for ${session.tableNumber} closed successfully.`,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * 10. List Active Table Sessions (Staff & Restaurant Owner Dashboard).
+   */
+  export async function listActiveSessions(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const user = req.user!;
+      let restaurantId = (user as any).restaurantId || (user as any).kitchenRestaurantId;
+
+      if (!restaurantId && user.role === 'RESTAURANT_OWNER') {
+        const rest = await prisma.restaurant.findFirst({
+          where: { ownerId: user.id, deletedAt: null },
+          select: { id: true },
+        });
+        restaurantId = rest?.id;
+      }
+
+      if (!restaurantId && user.role === 'SUPER_ADMIN') {
+        const rest = await prisma.restaurant.findFirst({
+          where: { deletedAt: null },
+          select: { id: true },
+        });
+        restaurantId = rest?.id;
+      }
+
+      if (!restaurantId) {
+        throw new AppError('Restaurant not found for authenticated user.', 404, 'RESTAURANT_NOT_FOUND');
+      }
+
+      const sessions: any = await prisma.tableSession.findMany({
+        where: {
+          restaurantId,
+          status: 'ACTIVE',
+        },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          batches: {
+            orderBy: { batchNumber: 'asc' },
+            include: {
+              items: {
+                include: {
+                  menuItem: { select: { id: true, name: true, price: true } },
+                },
+              },
+              order: {
+                select: {
+                  id: true,
+                  status: true,
+                  paymentStatus: true,
+                  paymentMethod: true,
+                  counterPaymentMethod: true,
+                  total: true,
+                  guestName: true,
+                  guestPhone: true,
+                  items: {
+                    include: {
+                      menuItem: { select: { id: true, name: true, price: true } },
+                      variant: { select: { id: true, name: true, price: true } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          orders: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: 'desc' },
+            include: {
+              items: {
+                include: {
+                  menuItem: { select: { id: true, name: true, price: true } },
+                  variant: { select: { id: true, name: true, price: true } },
+                },
+              },
+              user: { select: { name: true, phone: true } },
+            },
+          },
+        },
+      });
+
+      const activeSessionTableSet = new Set(sessions.map((s: any) => normalizeTableNumber(s.tableNumber).toLowerCase()));
+
+      const formatted: any[] = sessions.map((s: any) => {
+        const sessionOrders = s.orders || [];
+        let currentBatch = s.batches.find((b: any) => b.batchNumber === s.currentBatchNumber) || s.batches[s.batches.length - 1];
+
+        // Total session bill
+        let sessionTotal = 0;
+        if (sessionOrders.length > 0) {
+          sessionTotal = sessionOrders
+            .filter((o: any) => o.status !== 'CANCELLED')
+            .reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
+        } else {
+          sessionTotal = s.batches
+            .filter((b: any) => b.status !== 'CANCELLED')
+            .reduce((sum: number, b: any) => sum + Number(b.total || 0), 0);
+        }
+
+        // Overall payment status
+        const isPaid =
+          (sessionOrders.length > 0 && sessionOrders.every((o: any) => o.paymentStatus === 'PAID')) ||
+          (s.batches.length > 0 && s.batches.every((b: any) => b.order?.paymentStatus === 'PAID'));
+
+        // If currentBatch has no items, enrich from matching order
+        let currentBatchItems = currentBatch?.items || [];
+        let currentBatchTotal = currentBatch?.total || 0;
+        let displayBatchStatus = currentBatch?.status || 'OPEN';
+
+        const matchingOrder = sessionOrders.find((o: any) => o.batchNumber === currentBatch?.batchNumber) || sessionOrders[0];
+        if (matchingOrder) {
+          if (!currentBatchItems || currentBatchItems.length === 0) {
+            currentBatchItems = (matchingOrder.items || []).map((it: any) => ({
+              id: it.id,
+              itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
+              quantity: it.quantity,
+              unitPrice: it.unitPrice,
+              subtotal: it.subtotal,
+            }));
+            currentBatchTotal = matchingOrder.total;
+          }
+
+          // Synchronize batch status with order status
+          if (matchingOrder.status === 'DELIVERED') displayBatchStatus = 'SERVED';
+          else if (matchingOrder.status === 'READY') displayBatchStatus = 'READY';
+          else if (matchingOrder.status === 'PREPARING' || matchingOrder.status === 'BAKING') displayBatchStatus = 'PREPARING';
+          else if (matchingOrder.status === 'CONFIRMED') displayBatchStatus = 'ACCEPTED';
+          else if (matchingOrder.status === 'PENDING') displayBatchStatus = 'SUBMITTED';
+          else if (matchingOrder.status === 'CANCELLED') displayBatchStatus = 'CANCELLED';
+        }
+
+        const enrichedBatch = currentBatch
+          ? {
             ...currentBatch,
             status: displayBatchStatus,
             items: currentBatchItems,
             total: currentBatchTotal,
             orderId: matchingOrder?.id || currentBatch.orderId || null,
           }
-        : null;
+          : null;
 
-      return {
-        id: s.id,
-        tableNumber: s.tableNumber,
-        sessionCode: s.sessionCode,
-        guestCount: s.guestCount,
-        status: s.status,
-        currentBatchNumber: s.currentBatchNumber,
-        currentBatchStatus: displayBatchStatus,
-        currentBatch: enrichedBatch,
-        totalBatches: Math.max(s.batches.length, sessionOrders.length),
-        sessionTotal: Math.round(sessionTotal * 100) / 100,
-        paymentStatus: isPaid ? 'PAID' : 'PENDING',
-        createdAt: s.createdAt,
-        updatedAt: s.updatedAt,
-        orders: sessionOrders,
-      };
-    });
+        return {
+          id: s.id,
+          tableNumber: s.tableNumber,
+          sessionCode: s.sessionCode,
+          guestCount: s.guestCount,
+          status: s.status,
+          currentBatchNumber: s.currentBatchNumber,
+          currentBatchStatus: displayBatchStatus,
+          currentBatch: enrichedBatch,
+          totalBatches: Math.max(s.batches.length, sessionOrders.length),
+          sessionTotal: Math.round(sessionTotal * 100) / 100,
+          paymentStatus: isPaid ? 'PAID' : 'PENDING',
+          createdAt: s.createdAt,
+          updatedAt: s.updatedAt,
+          orders: sessionOrders,
+        };
+      });
 
-    // Also look for standalone ongoing table orders created today that don't belong to any session
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
+      // Also look for standalone ongoing table orders created today that don't belong to any session
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
 
-    const standaloneOrders: any = await prisma.order.findMany({
-      where: {
-        restaurantId,
-        tableNumber: { not: null },
-        tableSessionId: null,
-        deletedAt: null,
-        status: { not: 'CANCELLED' },
-        createdAt: { gte: startOfToday },
-      },
-      include: {
-        items: {
-          include: {
-            menuItem: { select: { id: true, name: true, price: true } },
-            variant: { select: { id: true, name: true, price: true } },
+      const standaloneOrders: any = await prisma.order.findMany({
+        where: {
+          restaurantId,
+          tableNumber: { not: null },
+          tableSessionId: null,
+          deletedAt: null,
+          status: { not: 'CANCELLED' },
+          createdAt: { gte: startOfToday },
+        },
+        include: {
+          items: {
+            include: {
+              menuItem: { select: { id: true, name: true, price: true } },
+              variant: { select: { id: true, name: true, price: true } },
+            },
           },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    // Group standalone orders by table number if not already present
-    const standaloneByTable = new Map<string, any[]>();
-    for (const o of standaloneOrders) {
-      const cleanTable = normalizeTableNumber(o.tableNumber);
-      if (!activeSessionTableSet.has(cleanTable.toLowerCase())) {
-        if (!standaloneByTable.has(cleanTable)) {
-          standaloneByTable.set(cleanTable, []);
-        }
-        standaloneByTable.get(cleanTable)!.push(o);
-      }
-    }
-
-    standaloneByTable.forEach((tableOrders, tableNum) => {
-      const latestOrder = tableOrders[0];
-      const tableTotal = tableOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
-      const allPaid = tableOrders.every((o) => o.paymentStatus === 'PAID');
-
-      let batchStatus = 'SUBMITTED';
-      if (latestOrder.status === 'DELIVERED') batchStatus = 'SERVED';
-      else if (latestOrder.status === 'READY') batchStatus = 'READY';
-      else if (latestOrder.status === 'PREPARING' || latestOrder.status === 'BAKING') batchStatus = 'PREPARING';
-      else if (latestOrder.status === 'CONFIRMED') batchStatus = 'ACCEPTED';
-
-      const items = (latestOrder.items || []).map((it: any) => ({
-        id: it.id,
-        itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
-        quantity: it.quantity,
-        unitPrice: it.unitPrice,
-        subtotal: it.subtotal,
-      }));
-
-      formatted.push({
-        id: latestOrder.id,
-        tableNumber: tableNum,
-        sessionCode: latestOrder.verificationCode || latestOrder.id.slice(-4).toUpperCase(),
-        guestCount: 1,
-        status: 'ACTIVE',
-        currentBatchNumber: 1,
-        currentBatchStatus: batchStatus,
-        currentBatch: {
-          id: latestOrder.id,
-          batchNumber: 1,
-          status: batchStatus,
-          subtotal: latestOrder.subtotal,
-          tax: latestOrder.gstAmount,
-          total: latestOrder.total,
-          items,
-          orderId: latestOrder.id,
-        },
-        totalBatches: tableOrders.length,
-        sessionTotal: Math.round(tableTotal * 100) / 100,
-        paymentStatus: allPaid ? 'PAID' : 'PENDING',
-        createdAt: latestOrder.createdAt,
-        updatedAt: latestOrder.updatedAt,
-        orders: tableOrders,
+        orderBy: { createdAt: 'desc' },
       });
-    });
 
-    res.json({
-      success: true,
-      data: {
-        sessions: formatted,
-      },
-    });
-  } catch (error) {
-    next(error);
+      // Group standalone orders by table number if not already present
+      const standaloneByTable = new Map<string, any[]>();
+      for (const o of standaloneOrders) {
+        const cleanTable = normalizeTableNumber(o.tableNumber);
+        if (!activeSessionTableSet.has(cleanTable.toLowerCase())) {
+          if (!standaloneByTable.has(cleanTable)) {
+            standaloneByTable.set(cleanTable, []);
+          }
+          standaloneByTable.get(cleanTable)!.push(o);
+        }
+      }
+
+      standaloneByTable.forEach((tableOrders, tableNum) => {
+        const latestOrder = tableOrders[0];
+        const tableTotal = tableOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+        const allPaid = tableOrders.every((o) => o.paymentStatus === 'PAID');
+
+        let batchStatus = 'SUBMITTED';
+        if (latestOrder.status === 'DELIVERED') batchStatus = 'SERVED';
+        else if (latestOrder.status === 'READY') batchStatus = 'READY';
+        else if (latestOrder.status === 'PREPARING' || latestOrder.status === 'BAKING') batchStatus = 'PREPARING';
+        else if (latestOrder.status === 'CONFIRMED') batchStatus = 'ACCEPTED';
+
+        const items = (latestOrder.items || []).map((it: any) => ({
+          id: it.id,
+          itemName: `${it.menuItem?.name || 'Item'}${it.variant?.name ? ` (${it.variant.name})` : ''}`,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+          subtotal: it.subtotal,
+        }));
+
+        formatted.push({
+          id: latestOrder.id,
+          tableNumber: tableNum,
+          sessionCode: latestOrder.verificationCode || latestOrder.id.slice(-4).toUpperCase(),
+          guestCount: 1,
+          status: 'ACTIVE',
+          currentBatchNumber: 1,
+          currentBatchStatus: batchStatus,
+          currentBatch: {
+            id: latestOrder.id,
+            batchNumber: 1,
+            status: batchStatus,
+            subtotal: latestOrder.subtotal,
+            tax: latestOrder.gstAmount,
+            total: latestOrder.total,
+            items,
+            orderId: latestOrder.id,
+          },
+          totalBatches: tableOrders.length,
+          sessionTotal: Math.round(tableTotal * 100) / 100,
+          paymentStatus: allPaid ? 'PAID' : 'PENDING',
+          createdAt: latestOrder.createdAt,
+          updatedAt: latestOrder.updatedAt,
+          orders: tableOrders,
+        });
+      });
+
+      res.json({
+        success: true,
+        data: {
+          sessions: formatted,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
   }
-}
+
+  /**
+   * 11. Mark Session as Paid (Counter Staff, Waitstaff, Restaurant Owner).
+   * Marks all orders and batches in this session as PAID with selected payment instrument.
+   */
+  export async function markSessionAsPaid(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const sessionId = req.params.sessionId as string;
+      const { paymentMethod = 'CASH' } = req.body as { paymentMethod?: string };
+      const now = new Date();
+
+      const session: any = await prisma.tableSession.findUnique({
+        where: { id: sessionId },
+        include: { orders: true, batches: true, restaurant: true },
+      });
+
+      if (session) {
+        await prisma.$transaction(async (tx) => {
+          // Mark all orders in session as PAID
+          await tx.order.updateMany({
+            where: { tableSessionId: sessionId },
+            data: {
+              paymentStatus: 'PAID',
+              paymentConfirmedAt: now,
+              paymentConfirmedBy: req.user?.id || 'Staff',
+              counterPaymentMethod: paymentMethod,
+            },
+          });
+
+          // Also update any orders linked to batches of this session
+          const batchOrderIds = session.batches.map((b: any) => b.orderId).filter(Boolean);
+          if (batchOrderIds.length > 0) {
+            await tx.order.updateMany({
+              where: { id: { in: batchOrderIds } },
+              data: {
+                paymentStatus: 'PAID',
+                paymentConfirmedAt: now,
+                paymentConfirmedBy: req.user?.id || 'Staff',
+                counterPaymentMethod: paymentMethod,
+              },
+            });
+          }
+
+          // Update payment records
+          const allOrders = await tx.order.findMany({
+            where: {
+              OR: [
+                { tableSessionId: sessionId },
+                { id: { in: batchOrderIds } },
+              ],
+            },
+            select: { id: true },
+          });
+
+          const orderIds = allOrders.map((o) => o.id);
+          if (orderIds.length > 0) {
+            await tx.payment.updateMany({
+              where: { orderId: { in: orderIds } },
+              data: { status: 'PAID' },
+            });
+          }
+        });
+
+        emitTableSessionUpdate(session.restaurantId, session.tableNumber, {
+          sessionId: session.id,
+          event: 'PAYMENT_CONFIRMED',
+          paymentStatus: 'PAID',
+          paymentMethod,
+          message: `Payment confirmed for ${session.tableNumber}.`,
+        });
+
+        res.json({
+          success: true,
+          message: `Payment confirmed for ${session.tableNumber}.`,
+        });
+        return;
+      }
+
+      // Fallback: Check if sessionId is a standalone Order ID
+      const order = await prisma.order.findUnique({
+        where: { id: sessionId },
+        include: { restaurant: true },
+      });
+
+      if (order) {
+        await prisma.$transaction(async (tx) => {
+          await tx.order.update({
+            where: { id: order.id },
+            data: {
+              paymentStatus: 'PAID',
+              paymentConfirmedAt: now,
+              paymentConfirmedBy: req.user?.id || 'Staff',
+              counterPaymentMethod: paymentMethod,
+            },
+          });
+
+          await tx.payment.updateMany({
+            where: { orderId: order.id },
+            data: { status: 'PAID' },
+          });
+        });
+
+        emitTableSessionUpdate(order.restaurantId, order.tableNumber || '', {
+          sessionId: order.id,
+          event: 'PAYMENT_CONFIRMED',
+          paymentStatus: 'PAID',
+          paymentMethod,
+          message: `Payment confirmed for ${order.tableNumber || 'Order'}.`,
+        });
+
+        res.json({
+          success: true,
+          message: `Payment confirmed for ${order.tableNumber || 'Order'}.`,
+        });
+        return;
+      }
+
+      throw new AppError('Table session or order not found.', 404, 'SESSION_NOT_FOUND');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * 12. Cancel Table Session (Counter Staff, Restaurant Owner).
+   * Cancels active table session and any ongoing orders, immediately freeing the table.
+   */
+  export async function cancelTableSession(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const sessionId = req.params.sessionId as string;
+      const { reason = 'Cancelled by staff' } = req.body as { reason?: string };
+      const now = new Date();
+
+      const session: any = await prisma.tableSession.findUnique({
+        where: { id: sessionId },
+        include: { orders: true, batches: true, restaurant: true },
+      });
+
+      if (session) {
+        await prisma.$transaction(async (tx) => {
+          await tx.tableSession.update({
+            where: { id: sessionId },
+            data: {
+              status: 'CANCELLED',
+              completedAt: now,
+              closedBy: req.user?.id || 'Staff',
+            },
+          });
+
+          await tx.orderBatch.updateMany({
+            where: { sessionId },
+            data: { status: 'CANCELLED' },
+          });
+
+          await tx.order.updateMany({
+            where: {
+              tableSessionId: sessionId,
+              status: { notIn: ['DELIVERED'] },
+            },
+            data: { status: 'CANCELLED' },
+          });
+        });
+
+        emitTableSessionUpdate(session.restaurantId, session.tableNumber, {
+          sessionId: session.id,
+          event: 'SESSION_CANCELLED',
+          reason,
+          message: `Table session for ${session.tableNumber} cancelled.`,
+        });
+
+        for (const ord of session.orders) {
+          if (ord.status !== 'DELIVERED') {
+            emitOrderStatusUpdate(ord.id, session.restaurantId, {
+              orderId: ord.id,
+              status: 'CANCELLED',
+              updatedAt: now.toISOString(),
+            });
+          }
+        }
+
+        res.json({
+          success: true,
+          message: `Table session for ${session.tableNumber} cancelled. Table is now available.`,
+        });
+        return;
+      }
+
+      // Fallback: Check if sessionId is a standalone Order ID
+      const order = await prisma.order.findUnique({
+        where: { id: sessionId },
+        include: { restaurant: true },
+      });
+
+      if (order) {
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { status: 'CANCELLED' },
+        });
+
+        emitOrderStatusUpdate(order.id, order.restaurantId, {
+          orderId: order.id,
+          status: 'CANCELLED',
+          updatedAt: now.toISOString(),
+        });
+
+        emitTableSessionUpdate(order.restaurantId, order.tableNumber || '', {
+          sessionId: order.id,
+          event: 'SESSION_CANCELLED',
+          message: `Order for ${order.tableNumber || 'Table'} cancelled.`,
+        });
+
+        res.json({
+          success: true,
+          message: `Order for ${order.tableNumber || 'Table'} cancelled. Table is now available.`,
+        });
+        return;
+      }
+
+      throw new AppError('Table session or order not found.', 404, 'SESSION_NOT_FOUND');
+    } catch (error) {
+      next(error);
+    }
+  }
+
 

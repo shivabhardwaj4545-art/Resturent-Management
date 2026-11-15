@@ -12,6 +12,8 @@ import {
   getSessionBill,
   closeTableSession,
   listActiveSessions,
+  markSessionAsPaid,
+  cancelTableSession,
 } from '../controllers/tableSession.controller';
 
 const router = Router();
@@ -31,6 +33,8 @@ router.post('/:sessionId/batches/submit', submitCurrentBatch);
 router.get('/', authenticate, requireOwnerOrKitchen, listActiveSessions);
 router.patch('/:sessionId/batches/:batchId/status', authenticate, requireOwnerOrKitchen, updateBatchStatus);
 router.post('/:sessionId/close', authenticate, requireOwnerOrKitchen, closeTableSession);
+router.post('/:sessionId/mark-paid', authenticate, requireOwnerOrKitchen, markSessionAsPaid);
+router.post('/:sessionId/cancel', authenticate, requireOwnerOrKitchen, cancelTableSession);
 
 export default router;
 

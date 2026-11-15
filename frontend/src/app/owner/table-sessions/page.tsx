@@ -85,6 +85,8 @@ export default function OwnerTableSessionsPage() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [viewBillSessionId, setViewBillSessionId] = useState<string | null>(null);
   const [closeModalSession, setCloseModalSession] = useState<TableSessionSummary | null>(null);
+  const [markPaidModalSession, setMarkPaidModalSession] = useState<TableSessionSummary | null>(null);
+  const [cancelModalSession, setCancelModalSession] = useState<TableSessionSummary | null>(null);
   const [newSessionModal, setNewSessionModal] = useState(false);
   const [newTableNum, setNewTableNum] = useState('');
   const [newGuests, setNewGuests] = useState('4');
@@ -243,6 +245,58 @@ export default function OwnerTableSessionsPage() {
     },
   });
 
+  // Mark Session As Paid Mutation
+  const markPaidMutation = useMutation({
+    mutationFn: async ({
+      sessionId,
+      paymentMethod,
+    }: {
+      sessionId: string;
+      paymentMethod: string;
+    }) => {
+      const res = await api.post(`/table-sessions/${sessionId}/mark-paid`, { paymentMethod });
+      return res.data;
+    },
+    onSuccess: () => {
+      toast.success('Payment confirmed! Table session marked as PAID. 💰');
+      setMarkPaidModalSession(null);
+      qc.invalidateQueries({ queryKey: ['table-sessions-active'] });
+      if (selectedSessionId) {
+        qc.invalidateQueries({ queryKey: ['table-session-detail', selectedSessionId] });
+      }
+      if (viewBillSessionId) {
+        qc.invalidateQueries({ queryKey: ['table-session-bill', viewBillSessionId] });
+      }
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error || 'Failed to confirm payment');
+    },
+  });
+
+  // Cancel Table Session & Orders Mutation
+  const cancelSessionMutation = useMutation({
+    mutationFn: async ({
+      sessionId,
+      reason,
+    }: {
+      sessionId: string;
+      reason?: string;
+    }) => {
+      const res = await api.post(`/table-sessions/${sessionId}/cancel`, { reason });
+      return res.data;
+    },
+    onSuccess: () => {
+      toast.success('Table session cancelled. Table is now available. 🏁');
+      setCancelModalSession(null);
+      setSelectedSessionId(null);
+      setViewBillSessionId(null);
+      qc.invalidateQueries({ queryKey: ['table-sessions-active'] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error || 'Failed to cancel session');
+    },
+  });
+
   const filteredSessions = sessions.filter(
     (s) =>
       s.tableNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -359,7 +413,6 @@ export default function OwnerTableSessionsPage() {
               {filteredSessions.map((session) => {
                 const currentBatch = session.currentBatch;
                 const canMarkServed = currentBatch && ['ACCEPTED', 'PREPARING', 'READY'].includes(currentBatch.status);
-                const canMarkCompleted = currentBatch && currentBatch.status === 'SERVED';
 
                 return (
                   <motion.div
@@ -398,19 +451,23 @@ export default function OwnerTableSessionsPage() {
                         </div>
                       </div>
 
-                      {/* Current Batch State Indicator */}
+                      {/* Current Order Items Summary */}
                       <div className="mt-4 p-3.5 rounded-2xl bg-muted/40 border border-border/80 space-y-2">
                         <div className="flex items-center justify-between text-xs">
                           <span className="font-bold text-foreground flex items-center gap-1.5">
                             <Layers className="w-3.5 h-3.5 text-primary" />
-                            Current Round: Round {session.currentBatchNumber}
+                            {session.totalBatches > 1
+                              ? `Order Items (Batch ${session.currentBatchNumber})`
+                              : 'Order Items'}
                           </span>
                           <span
                             className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase border ${getStatusBadge(
                               session.currentBatchStatus
                             )}`}
                           >
-                            {session.currentBatchStatus}
+                            {session.currentBatchStatus === 'SERVED'
+                              ? 'SERVED'
+                              : session.currentBatchStatus}
                           </span>
                         </div>
 
@@ -431,18 +488,18 @@ export default function OwnerTableSessionsPage() {
                             ))}
                             {currentBatch.items.length > 3 && (
                               <p className="text-[10px] text-primary font-bold">
-                                + {currentBatch.items.length - 3} more items in this round
+                                + {currentBatch.items.length - 3} more items in this order
                               </p>
                             )}
                           </div>
                         ) : (
                           <p className="text-[11px] italic text-muted-foreground">
-                            Customers are currently selecting dishes for this round.
+                            Customers are currently selecting dishes.
                           </p>
                         )}
 
                         <div className="pt-2 border-t border-border/60 flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground font-medium">Round Total:</span>
+                          <span className="text-muted-foreground font-medium">Batch Total:</span>
                           <span className="font-black text-foreground font-mono">
                             ₹{(currentBatch?.total || 0).toFixed(2)}
                           </span>
@@ -453,18 +510,19 @@ export default function OwnerTableSessionsPage() {
                       <div className="mt-3 px-3.5 py-2.5 rounded-xl bg-card border border-border flex items-center justify-between text-xs">
                         <div>
                           <span className="text-[10px] text-muted-foreground uppercase font-bold block">
-                            All Rounds Total ({session.totalBatches} Rounds)
+                            {session.totalBatches > 1
+                              ? `Total Bill (${session.totalBatches} Batches)`
+                              : 'Total Bill'}
                           </span>
                           <span className="text-base font-black font-mono text-foreground">
                             ₹{session.sessionTotal.toFixed(2)}
                           </span>
                         </div>
                         <span
-                          className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${
-                            session.paymentStatus === 'PAID'
+                          className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${session.paymentStatus === 'PAID'
                               ? 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30'
                               : 'bg-amber-500/15 text-amber-600 border-amber-500/30'
-                          }`}
+                            }`}
                         >
                           {session.paymentStatus === 'PAID' ? '✓ PAID' : '⏳ UNPAID'}
                         </span>
@@ -473,7 +531,7 @@ export default function OwnerTableSessionsPage() {
 
                     {/* Waiter & Staff Actions */}
                     <div className="mt-5 pt-3 border-t border-border space-y-2">
-                      {/* Sequential Round Status Controls */}
+                      {/* Food Serving Action (Only shown while food is preparing/ready) */}
                       {canMarkServed && (
                         <button
                           onClick={() =>
@@ -486,49 +544,73 @@ export default function OwnerTableSessionsPage() {
                           disabled={updateBatchMutation.isPending}
                           className="w-full py-2.5 px-3 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5"
                         >
-                          <UtensilsCrossed className="w-3.5 h-3.5" /> Mark Round as SERVED to Table
+                          <UtensilsCrossed className="w-3.5 h-3.5" /> Mark Food as SERVED to Table
                         </button>
                       )}
 
-                      {canMarkCompleted && (
+                        {/* Payment & Close Table Controls */ }
+                      {session.paymentStatus === 'PAID' ? (
                         <button
                           onClick={() =>
-                            updateBatchMutation.mutate({
-                              sessionId: session.id,
-                              batchId: currentBatch.id,
-                              status: 'COMPLETED',
-                            })
-                          }
-                          disabled={updateBatchMutation.isPending}
-                          className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Mark Round COMPLETED (Unlock Round{' '}
-                          {session.currentBatchNumber + 1})
-                        </button>
+                              closeSessionMutation.mutate({
+                                sessionId: session.id,
+                                paymentConfirmed: true,
+                                paymentMethod: 'CASH',
+                              })
+                            }
+                          disabled = { closeSessionMutation.isPending }
+                          className = "w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5"
+                              >
+                            < CheckCircle2 className = "w-4 h-4" /> Close Table & amp; Free Table
+                    </button>
+                    ) : (
+                    <button
+                      onClick={() => setMarkPaidModalSession(session)}
+                      className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5"
+                    >
+                      <Banknote className="w-4 h-4" /> Mark as Paid (₹{session.sessionTotal.toFixed(2)})
+                    </button>
                       )}
 
-                      {/* Secondary Action Buttons */}
-                      <div className="grid grid-cols-3 gap-2">
+                    {/* Secondary Action Buttons */}
+                      <div className="grid grid-cols-4 gap-1.5 pt-1">
                         <button
                           onClick={() => setSelectedSessionId(session.id)}
-                          className="py-1.5 px-2 bg-muted hover:bg-muted/80 rounded-xl text-xs font-semibold text-foreground text-center transition-colors truncate"
+                          className="py-1.5 px-1 bg-muted hover:bg-muted/80 rounded-xl text-xs font-semibold text-foreground text-center transition-colors truncate"
                           title="View all details & items"
                         >
                           Details
                         </button>
                         <button
                           onClick={() => setViewBillSessionId(session.id)}
-                          className="py-1.5 px-2 bg-muted hover:bg-muted/80 rounded-xl text-xs font-semibold text-foreground text-center transition-colors truncate flex items-center justify-center gap-1"
+                          className="py-1.5 px-1 bg-muted hover:bg-muted/80 rounded-xl text-xs font-semibold text-foreground text-center transition-colors truncate flex items-center justify-center gap-0.5"
                           title="Consolidated bill summary"
                         >
                           <Receipt className="w-3 h-3 text-muted-foreground" /> Bill
                         </button>
                         <button
-                          onClick={() => setCloseModalSession(session)}
-                          className="py-1.5 px-2 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 rounded-xl text-xs font-bold text-center transition-colors truncate"
+                          onClick={() => {
+                            if (session.paymentStatus === 'PAID') {
+                              closeSessionMutation.mutate({
+                                sessionId: session.id,
+                                paymentConfirmed: true,
+                                paymentMethod: 'CASH',
+                              });
+                            } else {
+                              setCloseModalSession(session);
+                            }
+                          }}
+                          className="py-1.5 px-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/20 rounded-xl text-xs font-bold text-center transition-colors truncate"
                           title="Finish dining & close table"
                         >
                           Close Table
+                        </button>
+                        <button
+                          onClick={() => setCancelModalSession(session)}
+                          className="py-1.5 px-1 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 rounded-xl text-xs font-bold text-center transition-colors truncate flex items-center justify-center gap-0.5"
+                          title="Cancel order and free table"
+                        >
+                          <X className="w-3 h-3" /> Cancel
                         </button>
                       </div>
                     </div>
@@ -883,59 +965,236 @@ export default function OwnerTableSessionsPage() {
               </button>
 
               <div className="text-center space-y-2 mb-4">
-                <div className="w-12 h-12 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto">
-                  <CheckCircle2 className="w-6 h-6" />
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto ${closeModalSession.paymentStatus === 'PAID' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}>
+                    <CheckCircle2 className="w-6 h-6" />
+                  </div>
+                  <h3 className="font-display font-black text-lg text-foreground">
+                    Close Table Session for {closeModalSession.tableNumber}?
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    {closeModalSession.paymentStatus === 'PAID'
+                      ? 'Payment is already settled. Close this table session to free the table for new diners.'
+                      : 'Confirm that the guests have finished their meal and payment has been received at the counter.'}
+                  </p>
+                  <div className="p-3 bg-muted/40 rounded-xl font-mono text-sm font-black text-foreground flex items-center justify-between">
+                    <span>Session Total: ₹{closeModalSession.sessionTotal.toFixed(2)}</span>
+                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${closeModalSession.paymentStatus === 'PAID' ? 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30' : 'bg-amber-500/15 text-amber-600 border-amber-500/30'}`}>
+                      {closeModalSession.paymentStatus === 'PAID' ? '✓ PAID' : '⏳ UNPAID'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2 pt-2">
+                  {closeModalSession.paymentStatus === 'PAID' ? (
+                    <button
+                      onClick={() =>
+                        closeSessionMutation.mutate({
+                          sessionId: closeModalSession.id,
+                          paymentConfirmed: true,
+                          paymentMethod: 'CASH',
+                        })
+                      }
+                      disabled={closeSessionMutation.isPending}
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5"
+                    >
+                      <CheckCircle2 className="w-4 h-4" /> Close Session &amp; Free Table
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() =>
+                          closeSessionMutation.mutate({
+                            sessionId: closeModalSession.id,
+                            paymentConfirmed: true,
+                            paymentMethod: 'CASH',
+                          })
+                        }
+                        disabled={closeSessionMutation.isPending}
+                        className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5"
+                      >
+                        <Banknote className="w-4 h-4" /> Confirm Cash Payment &amp; Close Session
+                      </button>
+                      <button
+                        onClick={() =>
+                          closeSessionMutation.mutate({
+                            sessionId: closeModalSession.id,
+                            paymentConfirmed: true,
+                            paymentMethod: 'COUNTER_UPI',
+                          })
+                        }
+                        disabled={closeSessionMutation.isPending}
+                        className="w-full py-3 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5"
+                      >
+                        <CreditCard className="w-4 h-4" /> Confirm UPI / Card Payment &amp; Close Session
+                      </button>
+                      <button
+                        onClick={() =>
+                          closeSessionMutation.mutate({
+                            sessionId: closeModalSession.id,
+                            paymentConfirmed: false,
+                            paymentMethod: 'CASH',
+                          })
+                        }
+                        disabled={closeSessionMutation.isPending}
+                        className="w-full py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5"
+                      >
+                        Close Table Without Settle (Keep Unpaid)
+                      </button>
+                    </>
+                  )}
+                  <button
+                    onClick={() => setCloseModalSession(null)}
+                    className="w-full py-2.5 bg-muted hover:bg-muted/80 text-foreground font-semibold text-xs rounded-xl"
+                  >
+                    Cancel
+                  </button>
+                </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL 5: Mark As Paid Modal */}
+      <AnimatePresence>
+        {markPaidModalSession && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-card border border-border rounded-3xl p-6 w-full max-w-md shadow-2xl relative"
+            >
+              <button
+                onClick={() => setMarkPaidModalSession(null)}
+                className="p-1 rounded-lg text-muted-foreground hover:text-foreground absolute top-5 right-5"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="text-center space-y-2 mb-4">
+                <div className="w-12 h-12 bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mx-auto">
+                  <Banknote className="w-6 h-6" />
                 </div>
                 <h3 className="font-display font-black text-lg text-foreground">
-                  Close Table Session for {closeModalSession.tableNumber}?
+                  Confirm Payment for {markPaidModalSession.tableNumber}
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Confirm that the guests have finished their meal and payment has been received at the counter.
+                  Select payment instrument used by guest at the counter.
                 </p>
                 <div className="p-3 bg-muted/40 rounded-xl font-mono text-sm font-black text-foreground">
-                  Session Total Due: ₹{closeModalSession.sessionTotal.toFixed(2)}
+                  Amount: ₹{markPaidModalSession.sessionTotal.toFixed(2)}
                 </div>
               </div>
 
               <div className="space-y-2 pt-2">
                 <button
                   onClick={() =>
-                    closeSessionMutation.mutate({
-                      sessionId: closeModalSession.id,
-                      paymentConfirmed: true,
-                      paymentMethod: 'CASH',
-                    })
-                  }
-                  disabled={closeSessionMutation.isPending}
-                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5"
-                >
-                  <Banknote className="w-4 h-4" /> Confirm Cash Payment &amp; Close Session
-                </button>
-                <button
-                  onClick={() =>
-                    closeSessionMutation.mutate({
-                      sessionId: closeModalSession.id,
-                      paymentConfirmed: true,
+                      markPaidMutation.mutate({
+                        sessionId: markPaidModalSession.id,
+                        paymentMethod: 'CASH',
+                      })
+                    }
+                  disabled = { markPaidMutation.isPending }
+                  className = "w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5"
+                      >
+                <Banknote className="w-4 h-4" /> 💵 Cash Received
+              </button>
+              <button
+                onClick={() =>
+                    markPaidMutation.mutate({
+                      sessionId: markPaidModalSession.id,
                       paymentMethod: 'COUNTER_UPI',
                     })
                   }
-                  disabled={closeSessionMutation.isPending}
-                  className="w-full py-3 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5"
-                >
-                  <CreditCard className="w-4 h-4" /> Confirm UPI / Card Payment &amp; Close Session
-                </button>
-                <button
-                  onClick={() => setCloseModalSession(null)}
-                  className="w-full py-2.5 bg-muted hover:bg-muted/80 text-foreground font-semibold text-xs rounded-xl"
-                >
-                  Cancel
-                </button>
-              </div>
-            </motion.div>
+                  disabled = { markPaidMutation.isPending }
+                  className = "w-full py-3 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5"
+                    >
+              <CreditCard className="w-4 h-4" /> 📱 Counter UPI / Dynamic QR
+            </button>
+            <button
+              onClick={() =>
+                markPaidMutation.mutate({
+                  sessionId: markPaidModalSession.id,
+                  paymentMethod: 'CARD',
+                })
+              }
+              disabled={markPaidMutation.isPending}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5"
+            >
+              <CreditCard className="w-4 h-4" /> 💳 Card / POS Machine
+            </button>
+            <button
+              onClick={() => setMarkPaidModalSession(null)}
+              className="w-full py-2.5 bg-muted hover:bg-muted/80 text-foreground font-semibold text-xs rounded-xl"
+            >
+              Cancel
+            </button>
           </div>
-        )}
-      </AnimatePresence>
+            </motion.div>
     </div>
+  )
+}
+      </AnimatePresence >
+
+  {/* MODAL 6: Cancel Table Session & Orders Modal */ }
+  <AnimatePresence>
+{
+  cancelModalSession && (
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-card border border-border rounded-3xl p-6 w-full max-w-md shadow-2xl relative"
+      >
+        <button
+          onClick={() => setCancelModalSession(null)}
+          className="p-1 rounded-lg text-muted-foreground hover:text-foreground absolute top-5 right-5"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        <div className="text-center space-y-2 mb-4">
+          <div className="w-12 h-12 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <h3 className="font-display font-black text-lg text-foreground">
+            Cancel Table &amp; Orders for {cancelModalSession.tableNumber}?
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            This will cancel all ongoing food batches and orders for this table and immediately free the table for new diners.
+          </p>
+          <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl font-mono text-xs font-semibold text-red-600 dark:text-red-400">
+            Shared Code: #{cancelModalSession.sessionCode} • Total: ₹{cancelModalSession.sessionTotal.toFixed(2)}
+          </div>
+        </div>
+
+        <div className="space-y-2 pt-2">
+          <button
+            onClick={() =>
+              cancelSessionMutation.mutate({
+                sessionId: cancelModalSession.id,
+                reason: 'Cancelled by restaurant staff',
+              })
+            }
+            disabled={cancelSessionMutation.isPending}
+            className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5"
+          >
+            <X className="w-4 h-4" /> Confirm Cancel Order &amp; Free Table
+          </button>
+          <button
+            onClick={() => setCancelModalSession(null)}
+            className="w-full py-2.5 bg-muted hover:bg-muted/80 text-foreground font-semibold text-xs rounded-xl"
+          >
+            Go Back
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+      </AnimatePresence >
+    </div >
   );
 }
 
