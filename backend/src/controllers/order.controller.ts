@@ -139,7 +139,6 @@ async function resolveOrCreateTableSession(
 
       return {
         tableSessionId: session.id,
-        batchNumber: session.currentBatchNumber,
         batchNumber: targetBatchNumber,
         verificationCode: session.sessionCode,
       };
