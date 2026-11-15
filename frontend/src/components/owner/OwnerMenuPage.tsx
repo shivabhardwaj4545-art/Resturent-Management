@@ -1016,7 +1016,7 @@ export function OwnerMenuPage() {
             <button
               onClick={() => seedDemoMutation.mutate()}
               disabled={seedDemoMutation.isPending}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl font-semibold text-xs shadow-sm transition-all disabled:opacity-60 whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/25 rounded-xl font-semibold text-xs shadow-xs transition-all disabled:opacity-60 whitespace-nowrap shrink-0"
               title="Load Sample Demo Menu"
             >
               <Sparkles className="w-3.5 h-3.5 shrink-0" />
@@ -1331,7 +1331,7 @@ export function OwnerMenuPage() {
                       <button
                         onClick={() => seedDemoMutation.mutate()}
                         disabled={seedDemoMutation.isPending}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl font-semibold text-sm shadow-md transition-all disabled:opacity-60"
+                        className="flex items-center gap-2 px-5 py-2.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/25 rounded-xl font-semibold text-sm shadow-sm transition-all disabled:opacity-60"
                       >
                         <Sparkles className="w-4 h-4 animate-pulse" />
                         {seedDemoMutation.isPending ? 'Loading...' : 'Load Sample Menu'}

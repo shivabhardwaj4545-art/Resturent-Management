@@ -267,10 +267,10 @@ export function WaiterBell() {
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  <BellRing className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                  <BellRing className="w-3.5 h-3.5 text-primary shrink-0" />
                   <span className="truncate">Calls</span>
                   {waiterCalls.length > 0 && (
-                    <span className="px-1.5 py-0.2 bg-orange-500 text-white rounded-full text-[10px] font-extrabold shrink-0">
+                    <span className="px-1.5 py-0.2 bg-primary text-primary-foreground rounded-full text-[10px] font-extrabold shrink-0">
                       {waiterCalls.length}
                     </span>
                   )}
@@ -314,8 +314,8 @@ export function WaiterBell() {
               {/* TAB 1: Waiter Calls */}
               {activeTab === 'calls' && (
                 <>
-                  <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-border bg-orange-500/5 dark:bg-orange-950/20 gap-2 min-w-0">
-                    <span className="text-[10px] sm:text-[11px] font-extrabold text-orange-600 dark:text-orange-400 uppercase tracking-wider truncate">
+                  <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-border bg-primary/5 dark:bg-primary/10 gap-2 min-w-0">
+                    <span className="text-[10px] sm:text-[11px] font-extrabold text-primary uppercase tracking-wider truncate">
                       Live Table & Payment Requests
                     </span>
                     {waiterCalls.length > 0 && (
@@ -356,8 +356,8 @@ export function WaiterBell() {
                           const isAddon = call.type === 'addons';
                           const isPayment = call.type === 'payment';
 
-                          let containerClass = "bg-orange-50 dark:bg-zinc-900 border-orange-200 dark:border-orange-500/40";
-                          let iconClass = "bg-orange-500 text-white";
+                          let containerClass = "bg-primary/5 dark:bg-zinc-900 border-primary/20 dark:border-primary/40";
+                          let iconClass = "bg-primary text-primary-foreground";
                           let IconComponent = BellRing;
 
                           if (isAddon) {

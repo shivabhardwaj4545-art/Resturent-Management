@@ -24,6 +24,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { useRouter } from 'next/navigation';
 import { io } from 'socket.io-client';
 import { generateTableToken } from '@qr-restaurant/shared';
+import { applyThemeColor } from '@/utils/theme';
 
 const WAITER_COOLDOWN_SECONDS = 30;
 
@@ -566,6 +567,14 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
   );
 
   const isHotelRoom = isHotelPlatform ? true : isRestaurantPlatform ? false : isExplicitRoom;
+
+  const currentThemeColor = searchParams?.themeColor || data?.restaurant?.themeColor;
+
+  useEffect(() => {
+    if (currentThemeColor) {
+      applyThemeColor(currentThemeColor);
+    }
+  }, [currentThemeColor]);
 
   useEffect(() => {
     if (isHotelRoom) {

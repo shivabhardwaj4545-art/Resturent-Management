@@ -22,6 +22,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import api from '@/services/api';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
+import { getImageUrl } from '@/lib/image';
 
 export const OWNER_NAV_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
@@ -56,6 +57,7 @@ export function OwnerSidebar({ mobileOpen = false, onMobileClose }: OwnerSidebar
         platformType?: string;
         maxLogins?: number;
         disabledTabs?: string[] | null;
+        logo?: string | null;
       };
     },
     staleTime: 30 * 1000,
@@ -81,8 +83,16 @@ export function OwnerSidebar({ mobileOpen = false, onMobileClose }: OwnerSidebar
       <div>
         <div className="p-6 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center shadow-lg shadow-orange-500/20 shrink-0">
-              <UtensilsCrossed className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-2xl bg-primary text-primary-foreground flex items-center justify-center shadow-lg shadow-primary/25 shrink-0 overflow-hidden">
+              {restaurantData?.logo ? (
+                <img
+                  src={getImageUrl(restaurantData.logo)}
+                  alt={restaurantData.name || 'Restaurant Logo'}
+                  className="w-full h-full object-cover rounded-2xl"
+                />
+              ) : (
+                <UtensilsCrossed className="w-5 h-5 text-primary-foreground" />
+              )}
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
@@ -152,7 +162,7 @@ export function OwnerSidebar({ mobileOpen = false, onMobileClose }: OwnerSidebar
       {/* Bottom User Box */}
       <div className="p-4 border-t border-border bg-card">
         <div className="flex items-center gap-3 mb-3 p-2 rounded-2xl bg-muted/50 border border-border/60">
-          <div className="w-9 h-9 rounded-xl bg-orange-500/20 text-orange-600 dark:text-orange-400 font-extrabold flex items-center justify-center text-sm shrink-0 border border-orange-500/30">
+          <div className="w-9 h-9 rounded-xl bg-primary/20 text-primary font-extrabold flex items-center justify-center text-sm shrink-0 border border-primary/30">
             {user?.name?.[0]?.toUpperCase() ?? 'O'}
           </div>
           <div className="flex-1 min-w-0">

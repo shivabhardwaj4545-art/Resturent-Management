@@ -219,7 +219,7 @@ export function CounterOrderVerification() {
               <button
                 type="submit"
                 disabled={lookupMutation.isPending || code.length !== 4}
-                className="w-full py-3.5 px-4 rounded-xl font-bold text-sm text-white bg-primary hover:bg-primary/95 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-md shadow-primary/20"
+                className="w-full py-3.5 px-4 rounded-xl font-bold text-sm text-primary-foreground bg-primary hover:bg-primary/95 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-md shadow-primary/20"
               >
                 {lookupMutation.isPending ? (
                   <>

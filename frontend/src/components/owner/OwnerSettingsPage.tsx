@@ -22,6 +22,7 @@ import QRCode from 'qrcode';
 import { downloadPlacardImage, printPlacard, formatLocationBadgeText } from '@/utils/qrPlacard';
 import { generateUniqueTableCode } from '@/utils/tableCode';
 import { TableQrGallery } from './TableQrGallery';
+import { applyThemeColor } from '@/utils/theme';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
@@ -534,6 +535,13 @@ export function OwnerSettingsPage() {
     }
   }, [data]);
 
+  // Dynamically update CSS custom properties in real-time as the owner edits themeColor
+  useEffect(() => {
+    if (form.themeColor) {
+      applyThemeColor(form.themeColor);
+    }
+  }, [form.themeColor]);
+
   const saveMutation = useMutation({
     mutationFn: async (customQrSettings?: { enabled: boolean; disabledLocations: string[]; customLocations: string[]; deletedLocations?: string[] } | void) => {
       const activeQrSettings = customQrSettings || qrSettings;
@@ -623,7 +631,10 @@ export function OwnerSettingsPage() {
         toast.success('Settings saved!');
       }
       qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
+      qc.invalidateQueries({ queryKey: ['owner-restaurant-layout'] });
+      qc.invalidateQueries({ queryKey: ['owner-restaurant-sidebar'] });
       qc.invalidateQueries({ queryKey: ['owner-upi-account'] });
+      qc.invalidateQueries({ queryKey: ['menu'] });
     },
     onError: (err: any) => {
       const msg = err?.response?.data?.error || 'Failed to save settings';
@@ -645,6 +656,8 @@ export function OwnerSettingsPage() {
       setLogoFile(null);
       setLogoPreviewUrl(null);
       qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
+      qc.invalidateQueries({ queryKey: ['owner-restaurant-layout'] });
+      qc.invalidateQueries({ queryKey: ['owner-restaurant-sidebar'] });
     },
     onError: () => toast.error('Failed to upload logo'),
   });
@@ -1561,7 +1574,7 @@ export function OwnerSettingsPage() {
                               <button
                                 onClick={() => setTableNumber('')}
                                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${tableNumber === ''
-                                    ? 'bg-primary border-primary text-white shadow-sm'
+                                    ? 'bg-primary border-primary text-primary-foreground shadow-sm'
                                     : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
                                   }`}
                               >
@@ -1572,7 +1585,7 @@ export function OwnerSettingsPage() {
                                   key={num}
                                   onClick={() => setTableNumber(num)}
                                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${tableNumber === num
-                                      ? 'bg-primary border-primary text-white shadow-sm'
+                                      ? 'bg-primary border-primary text-primary-foreground shadow-sm'
                                       : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
                                     }`}
                                 >
@@ -1586,7 +1599,7 @@ export function OwnerSettingsPage() {
                                     key={loc}
                                     onClick={() => setTableNumber(loc)}
                                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${tableNumber === loc
-                                        ? 'bg-primary border-primary text-white shadow-sm'
+                                        ? 'bg-primary border-primary text-primary-foreground shadow-sm'
                                         : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
                                       }`}
                                   >
@@ -1631,7 +1644,7 @@ export function OwnerSettingsPage() {
                                 type="button"
                                 onClick={handleGenerateAndSaveRoom}
                                 disabled={!roomNumber.trim()}
-                                className="px-4 py-2.5 bg-primary text-white hover:bg-primary/95 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 shrink-0"
+                                className="px-4 py-2.5 bg-primary text-primary-foreground hover:bg-primary/95 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 shrink-0"
                               >
                                 <Plus className="w-3.5 h-3.5" /> Generate &amp; Save QR
                               </button>
@@ -1652,7 +1665,7 @@ export function OwnerSettingsPage() {
                                   key={rm}
                                   onClick={() => setRoomNumber(rm)}
                                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${roomNumber === rm || roomNumber === `Room ${rm}`
-                                      ? 'bg-primary border-primary text-white shadow-sm'
+                                      ? 'bg-primary border-primary text-primary-foreground shadow-sm'
                                       : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
                                     }`}
                                 >
@@ -1666,7 +1679,7 @@ export function OwnerSettingsPage() {
                                     key={loc}
                                     onClick={() => setRoomNumber(loc)}
                                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${roomNumber === loc
-                                        ? 'bg-primary border-primary text-white shadow-sm'
+                                        ? 'bg-primary border-primary text-primary-foreground shadow-sm'
                                         : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
                                       }`}
                                   >
@@ -1720,7 +1733,7 @@ export function OwnerSettingsPage() {
                               disabled={(qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed)}
                               className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-colors ${(qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed)
                                   ? 'bg-muted text-muted-foreground opacity-50 cursor-not-allowed'
-                                  : 'bg-primary text-white hover:bg-primary/95 cursor-pointer'
+                                  : 'bg-primary text-primary-foreground hover:bg-primary/95 cursor-pointer'
                                 }`}
                             >
                               <Download className="w-4 h-4" /> Download Placard (PNG)
@@ -1744,7 +1757,7 @@ export function OwnerSettingsPage() {
                               disabled={(qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed)}
                               className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${(qrMode === 'TABLE' && !isTableQrAllowed) || (qrMode === 'ROOM' && !isRoomQrAllowed)
                                   ? 'bg-muted border-border text-muted-foreground opacity-50 cursor-not-allowed'
-                                  : 'bg-secondary text-secondary-foreground hover:bg-secondary/80 border-border cursor-pointer'
+                                  : 'bg-primary/90 text-primary-foreground hover:bg-primary border-primary/30 cursor-pointer shadow-sm'
                                 }`}
                             >
                               <Printer className="w-4 h-4" /> Print Placard
@@ -1774,16 +1787,31 @@ export function OwnerSettingsPage() {
                     {/* Placard Preview Panel */}
                     <div className="md:col-span-2 flex flex-col items-center justify-center">
                       <div className="flex flex-col items-center p-5 bg-zinc-950 dark:bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-[240px] shadow-2xl text-center text-white relative overflow-hidden">
-                        <div className="absolute inset-0 bg-gradient-to-b from-orange-500/10 via-transparent to-transparent pointer-events-none" />
+                        <div
+                          className="absolute inset-0 pointer-events-none"
+                          style={{
+                            background: `radial-gradient(circle at 50% 0%, ${form.themeColor || '#E85D04'}26 0%, transparent 70%)`
+                          }}
+                        />
 
                         <span className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 mb-1">
                           Welcome To
                         </span>
-                        <h4 className="text-sm font-extrabold text-orange-500 truncate max-w-[200px] mb-2 uppercase">
+                        <h4
+                          className="text-sm font-extrabold truncate max-w-[200px] mb-2 uppercase"
+                          style={{ color: form.themeColor || '#E85D04' }}
+                        >
                           {data.name}
                         </h4>
 
-                        <div className="bg-orange-500/20 text-orange-400 text-[10px] font-black uppercase px-2.5 py-1 rounded-md mb-3 border border-orange-500/30 tracking-wide">
+                        <div
+                          className="text-[10px] font-black uppercase px-2.5 py-1 rounded-md mb-3 tracking-wide"
+                          style={{
+                            backgroundColor: `${form.themeColor || '#E85D04'}26`,
+                            color: form.themeColor || '#E85D04',
+                            border: `1px solid ${form.themeColor || '#E85D04'}4D`,
+                          }}
+                        >
                           {qrMode === 'ROOM' ? 'SCAN THIS QR FOR ROOM SERVICE' : 'SCAN THIS QR TO ORDER FOOD'}
                         </div>
 
@@ -1801,7 +1829,12 @@ export function OwnerSettingsPage() {
                           )}
                         </div>
 
-                        <span className="text-xs font-bold bg-orange-500 text-white px-4 py-1.5 rounded-full shadow-md truncate max-w-[210px]">
+                        <span
+                          className="text-xs font-bold text-white px-4 py-1.5 rounded-full shadow-md truncate max-w-[210px]"
+                          style={{
+                            backgroundColor: form.themeColor || '#E85D04',
+                          }}
+                        >
                           {formatLocationBadgeText(activeLocationStr, qrMode)}
                         </span>
                       </div>

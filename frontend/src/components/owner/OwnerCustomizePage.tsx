@@ -16,6 +16,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
 import { WaiterBell } from '@/components/owner/WaiterBell';
 import { OwnerSidebar } from '@/components/owner/OwnerSidebar';
+import { applyThemeColor } from '@/utils/theme';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
@@ -167,6 +168,13 @@ export function OwnerCustomizePage() {
     }
   }, [categoriesData]);
 
+  // Dynamically update CSS custom properties in real-time as owner selects theme color
+  useEffect(() => {
+    if (selectedThemeColor) {
+      applyThemeColor(selectedThemeColor);
+    }
+  }, [selectedThemeColor]);
+
   // Save Theme Mutation
   const saveThemeMutation = useMutation({
     mutationFn: async (color: string) => {
@@ -175,6 +183,8 @@ export function OwnerCustomizePage() {
     onSuccess: () => {
       toast.success('Theme color updated successfully! 🎨');
       qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
+      qc.invalidateQueries({ queryKey: ['owner-restaurant-layout'] });
+      qc.invalidateQueries({ queryKey: ['owner-restaurant-sidebar'] });
       qc.invalidateQueries({ queryKey: ['menu'] });
     },
     onError: () => toast.error('Failed to update theme'),

@@ -121,7 +121,7 @@ export default function OwnerKitchenStaffPage() {
           {/* Header Card */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-card p-6 rounded-3xl border border-border shadow-sm">
             <div className="flex items-center gap-4">
-              <div className="p-3.5 bg-orange-500/10 text-orange-500 rounded-2xl border border-orange-500/20">
+              <div className="p-3.5 bg-primary/10 text-primary rounded-2xl border border-primary/20">
                 <ChefHat className="w-8 h-8" />
               </div>
               <div>
@@ -139,13 +139,13 @@ export default function OwnerKitchenStaffPage() {
           <div className="bg-card rounded-3xl border border-border overflow-hidden shadow-sm">
             <div className="p-6 border-b border-border flex items-center justify-between">
               <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-                <UserCheck className="w-5 h-5 text-orange-500" /> Active Kitchen Staff Accounts ({staffList.length})
+                <UserCheck className="w-5 h-5 text-primary" /> Active Kitchen Staff Accounts ({staffList.length})
               </h3>
             </div>
 
             {isLoading ? (
               <div className="p-12 text-center text-muted-foreground flex items-center justify-center gap-2 font-medium">
-                <RefreshCw className="w-5 h-5 animate-spin text-orange-500" /> Loading Kitchen Staff...
+                <RefreshCw className="w-5 h-5 animate-spin text-primary" /> Loading Kitchen Staff...
               </div>
             ) : staffList.length === 0 ? (
               <div className="p-12 text-center space-y-3">
@@ -158,7 +158,7 @@ export default function OwnerKitchenStaffPage() {
                 </p>
                 <button
                   onClick={() => setIsCreateModalOpen(true)}
-                  className="mt-2 px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs rounded-xl transition-all inline-flex items-center gap-2"
+                  className="mt-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl transition-all inline-flex items-center gap-2 shadow-sm"
                 >
                   <Plus className="w-4 h-4" /> Create First Kitchen Account
                 </button>
@@ -171,7 +171,7 @@ export default function OwnerKitchenStaffPage() {
                     className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-muted/40 transition-colors"
                   >
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-2xl bg-orange-500/10 text-orange-500 font-bold flex items-center justify-center text-lg border border-orange-500/20">
+                      <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary font-bold flex items-center justify-center text-lg border border-primary/20">
                         {staff.name.charAt(0).toUpperCase()}
                       </div>
                       <div>
@@ -219,7 +219,7 @@ export default function OwnerKitchenStaffPage() {
             </button>
 
             <div className="flex items-center gap-3">
-              <div className="p-3 bg-orange-500/10 text-orange-500 rounded-2xl border border-orange-500/20">
+              <div className="p-3 bg-primary/10 text-primary rounded-2xl border border-primary/20">
                 <ChefHat className="w-6 h-6" />
               </div>
               <div>
@@ -297,7 +297,7 @@ export default function OwnerKitchenStaffPage() {
                 <button
                   type="submit"
                   disabled={createMutation.isPending}
-                  className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs rounded-xl transition-colors shadow-md flex items-center justify-center gap-2"
+                  className="flex-1 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl transition-colors shadow-md flex items-center justify-center gap-2"
                 >
                   {createMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                   Create Account

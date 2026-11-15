@@ -190,7 +190,7 @@ export function TableQrCard({
         <button
           type="button"
           onClick={handleDownload}
-          className="w-full py-2 px-3 bg-primary text-white hover:bg-primary/90 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs"
+          className="w-full py-2 px-3 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs"
           title="Download printable PNG Placard"
         >
           <Download className="w-3.5 h-3.5" /> Download Placard (PNG)
