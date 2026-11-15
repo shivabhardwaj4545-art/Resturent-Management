@@ -9,11 +9,123 @@ import { sendOrderConfirmationEmail } from '../services/email.service';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { verifyTableSignature } from '../utils/tableSignature';
 import { generateOrderVerificationCode } from '../services/verificationCode.service';
+import { normalizeTableNumber, generateUniqueSessionCode } from './tableSession.controller';
 
 const GST_RATE = parseFloat(process.env.GST_RATE ?? '18') / 100;
 const DELIVERY_FEE = 40;
 const PACKAGING_FEE = 15;
 const LOYALTY_POINTS_PER_RUPEE = 1; // 1 point per ₹10 spent
+
+/**
+ * Resolves or establishes a shared Table Session for dine-in orders.
+ * Ensures:
+ * 1. All customers at the table share ONE table session and ONE 4-digit verification code.
+ * 2. Sequential food ordering: blocks new batch orders while the current batch is in progress.
+ * 3. Consistent batch linkage to KDS and counter billing.
+ */
+async function resolveOrCreateTableSession(
+  restaurantId: string,
+  rawTableNumber?: string | null,
+  guestName?: string | null,
+  orderTotal?: number,
+  orderSubtotal?: number,
+  orderTax?: number,
+  orderDiscount?: number
+): Promise<{
+  tableSessionId?: string;
+  batchNumber?: number;
+  verificationCode: string;
+}> {
+  if (!rawTableNumber) {
+    const code = await generateOrderVerificationCode(restaurantId);
+    return { verificationCode: code };
+  }
+
+  const cleanTable = normalizeTableNumber(rawTableNumber);
+
+  // Check for an active table session
+  let session = await prisma.tableSession.findFirst({
+    where: {
+      restaurantId,
+      tableNumber: cleanTable,
+      status: 'ACTIVE',
+    },
+    include: {
+      batches: {
+        orderBy: { batchNumber: 'desc' },
+        take: 1,
+      },
+    },
+  });
+
+  if (session) {
+    const currentBatch = session.batches[0];
+    // If current batch is in progress, enforce sequential round ordering
+    if (currentBatch && ['SUBMITTED', 'ACCEPTED', 'PREPARING', 'READY', 'SERVED'].includes(currentBatch.status)) {
+      throw new AppError(
+        `Your current food batch (Batch ${session.currentBatchNumber}) is still in progress. You can place your next order after the waiter completes the current batch.`,
+        400,
+        'BATCH_IN_PROGRESS'
+      );
+    }
+
+    // If current batch is open, lock it as SUBMITTED with the new totals
+    if (currentBatch && currentBatch.status === 'OPEN') {
+      await prisma.orderBatch.update({
+        where: { id: currentBatch.id },
+        data: {
+          status: 'SUBMITTED',
+          submittedAt: new Date(),
+          total: (currentBatch.total || 0) + (orderTotal || 0),
+          subtotal: (currentBatch.subtotal || 0) + (orderSubtotal || 0),
+          tax: (currentBatch.tax || 0) + (orderTax || 0),
+          discount: (currentBatch.discount || 0) + (orderDiscount || 0),
+        },
+      });
+    }
+
+    return {
+      tableSessionId: session.id,
+      batchNumber: session.currentBatchNumber,
+      verificationCode: session.sessionCode,
+    };
+  }
+
+  // If no active session exists yet for this table, create one atomically
+  const sessionCode = await generateUniqueSessionCode(restaurantId);
+  const newSession = await prisma.tableSession.create({
+    data: {
+      restaurantId,
+      tableNumber: cleanTable,
+      sessionCode,
+      guestCount: 1,
+      currentBatchNumber: 1,
+      status: 'ACTIVE',
+      notes: guestName ? `Initiated by ${guestName}` : undefined,
+    },
+  });
+
+  // Create Batch 1 with status SUBMITTED
+  await prisma.orderBatch.create({
+    data: {
+      sessionId: newSession.id,
+      restaurantId,
+      batchNumber: 1,
+      status: 'SUBMITTED',
+      subtotal: orderSubtotal || 0,
+      tax: orderTax || 0,
+      discount: orderDiscount || 0,
+      total: orderTotal || 0,
+      submittedAt: new Date(),
+    },
+  });
+
+  return {
+    tableSessionId: newSession.id,
+    batchNumber: 1,
+    verificationCode: sessionCode,
+  };
+}
 
 async function calculateOrderTotal(
   cartItems: Array<{
@@ -195,7 +307,16 @@ export async function placeGuestOrder(
     }
 
     const effectivePaymentMethod = (paymentMethod as string) === 'RAZORPAY' ? 'UPI_INTENT' : paymentMethod;
-    const verificationCode = await generateOrderVerificationCode(restaurant.id);
+    const sessionRes = await resolveOrCreateTableSession(
+      restaurant.id,
+      tableNumber,
+      guestName,
+      total,
+      subtotal,
+      gstAmount,
+      discount
+    );
+    const verificationCode = sessionRes.verificationCode;
 
     const order = await prisma.$transaction(async (tx) => {
       const newOrder = await tx.order.create({
@@ -204,6 +325,8 @@ export async function placeGuestOrder(
           guestName: guestName?.trim() || 'Guest',
           guestPhone: guestPhone?.trim() || null,
           tableNumber,
+          tableSessionId: sessionRes.tableSessionId,
+          batchNumber: sessionRes.batchNumber,
           status: 'PENDING',
           paymentMethod: effectivePaymentMethod,
           paymentStatus: 'PENDING',
@@ -292,6 +415,9 @@ export async function placeGuestOrder(
           status: order.status,
           total: order.total,
           razorpayOrderId,
+          verificationCode: order.verificationCode,
+          tableSessionId: order.tableSessionId,
+          batchNumber: order.batchNumber,
         },
       },
       message: 'Order placed successfully!',
@@ -426,7 +552,7 @@ export async function placeOrder(
     // Get user wallet balance and loyalty points
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { walletBalance: true, loyaltyPoints: true }
+      select: { name: true, walletBalance: true, loyaltyPoints: true }
     });
 
     const loyaltySetting = await prisma.systemSetting.findUnique({
@@ -456,7 +582,16 @@ export async function placeOrder(
     }
 
     const effectivePaymentMethod = (paymentMethod as string) === 'RAZORPAY' ? 'UPI_INTENT' : paymentMethod;
-    const verificationCode = await generateOrderVerificationCode(restaurant.id);
+    const sessionRes = await resolveOrCreateTableSession(
+      restaurant.id,
+      tableNumber,
+      user?.name || null,
+      finalTotal,
+      subtotal,
+      gstAmount,
+      discount + walletDeduction + pointsValue
+    );
+    const verificationCode = sessionRes.verificationCode;
 
     const order = await prisma.$transaction(async (tx) => {
       const newOrder = await tx.order.create({
@@ -465,6 +600,8 @@ export async function placeOrder(
           userId,
           addressId: resolvedAddressId,
           tableNumber,
+          tableSessionId: sessionRes.tableSessionId,
+          batchNumber: sessionRes.batchNumber,
           status: 'PENDING',
           paymentMethod: effectivePaymentMethod,
           paymentStatus: 'PENDING',
@@ -634,6 +771,9 @@ export async function placeOrder(
           status: order.status,
           total: finalTotal,
           razorpayOrderId,
+          verificationCode: order.verificationCode,
+          tableSessionId: order.tableSessionId,
+          batchNumber: order.batchNumber,
           walletDeducted: walletDeduction,
         },
       },

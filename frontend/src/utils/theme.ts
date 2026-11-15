@@ -62,3 +62,4 @@ export function applyThemeColor(hex?: string | null): void {
   root.style.setProperty('--secondary-foreground', foreground);
   root.style.setProperty('--ring', primary);
 }
+

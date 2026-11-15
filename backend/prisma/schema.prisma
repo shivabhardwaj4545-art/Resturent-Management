@@ -80,6 +80,23 @@ enum ItemBadge {
   NEW
 }
 
+enum SessionStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum BatchStatus {
+  OPEN
+  SUBMITTED
+  ACCEPTED
+  PREPARING
+  READY
+  SERVED
+  COMPLETED
+  CANCELLED
+}
+
 // ============================================================
 // MODELS
 // ============================================================
@@ -193,6 +210,8 @@ model Restaurant {
   categories     MenuCategory[]
   menuItems      MenuItem[]
   orders         Order[]
+  tableSessions  TableSession[]
+  orderBatches   OrderBatch[]
   coupons        Coupon[]
   notifications  Notification[]
   aiRecommendations AiRecommendation[]
@@ -259,6 +278,7 @@ model MenuItem {
   addOns       ItemAddOn[]
   cartItems    CartItem[]
   orderItems   OrderItem[]
+  batchItems   OrderBatchItem[]
   favoriteItems FavoriteItem[]
 
   @@index([restaurantId])
@@ -279,6 +299,7 @@ model ItemVariant {
   menuItem   MenuItem    @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
   cartItems  CartItem[]
   orderItems OrderItem[]
+  batchItems OrderBatchItem[]
 
   @@index([menuItemId])
   @@map("item_variants")
@@ -383,6 +404,10 @@ model Order {
   paymentConfirmedAt   DateTime?
   counterPaymentMethod String? // CASH, COUNTER_UPI, CARD
 
+  // Table Session & Sequential Batch Ordering
+  tableSessionId       String?
+  batchNumber          Int?          @default(1)
+
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
   deletedAt         DateTime?
@@ -404,6 +429,8 @@ model Order {
   items       OrderItem[]
   payment     Payment?
   review      Review?
+  tableSession TableSession? @relation(fields: [tableSessionId], references: [id])
+  orderBatch   OrderBatch?
   couponUsage CouponUsage[]
   loyaltyTransactions LoyaltyTransaction[]
   walletTransactions  WalletTransaction[]
@@ -412,6 +439,7 @@ model Order {
 
   @@index([restaurantId])
   @@index([restaurantId, verificationCode])
+  @@index([tableSessionId])
   @@index([userId])
   @@index([status])
   @@index([createdAt])
@@ -440,6 +468,88 @@ model OrderItem {
 
   @@index([orderId])
   @@map("order_items")
+}
+
+model TableSession {
+  id                 String        @id @default(cuid())
+  restaurantId       String
+  tableNumber        String
+  sessionCode        String        // 4-digit verification code, e.g. "4827"
+  guestCount         Int           @default(1)
+  currentBatchNumber Int           @default(1)
+  status             SessionStatus @default(ACTIVE)
+  notes              String?
+  closedBy           String?
+  completedAt        DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  // Relations
+  restaurant         Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  batches            OrderBatch[]
+  orders             Order[]
+
+  @@index([restaurantId])
+  @@index([restaurantId, tableNumber])
+  @@index([restaurantId, sessionCode])
+  @@index([restaurantId, status])
+  @@index([status])
+  @@map("table_sessions")
+}
+
+model OrderBatch {
+  id                 String          @id @default(cuid())
+  sessionId          String
+  restaurantId       String
+  batchNumber        Int
+  status             BatchStatus     @default(OPEN)
+  subtotal           Float           @default(0)
+  tax                Float           @default(0)
+  discount           Float           @default(0)
+  total              Float           @default(0)
+  notes              String?
+  submittedAt        DateTime?
+  acceptedAt         DateTime?
+  preparingAt        DateTime?
+  readyAt            DateTime?
+  servedAt           DateTime?
+  completedAt        DateTime?
+  orderId            String?         @unique
+
+  // Relations
+  session            TableSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  restaurant         Restaurant      @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  order              Order?          @relation(fields: [orderId], references: [id])
+  items              OrderBatchItem[]
+
+  @@unique([sessionId, batchNumber])
+  @@index([sessionId])
+  @@index([restaurantId])
+  @@index([status])
+  @@map("order_batches")
+}
+
+model OrderBatchItem {
+  id                  String       @id @default(cuid())
+  batchId             String
+  menuItemId          String
+  variantId           String?
+  itemName            String
+  quantity            Int
+  unitPrice           Float
+  subtotal            Float
+  customizations      Json?
+  specialInstructions String?
+  addedBy             String?      // e.g. "Person 1", "Guest", or customer name
+  createdAt           DateTime     @default(now())
+
+  // Relations
+  batch               OrderBatch   @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  menuItem            MenuItem     @relation(fields: [menuItemId], references: [id])
+  variant             ItemVariant? @relation(fields: [variantId], references: [id])
+
+  @@index([batchId])
+  @@map("order_batch_items")
 }
 
 model Coupon {

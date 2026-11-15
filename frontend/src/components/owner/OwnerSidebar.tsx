@@ -16,6 +16,7 @@ import {
   X,
   Lock,
   CreditCard,
+  Users,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -26,6 +27,7 @@ import { getImageUrl } from '@/lib/image';
 
 export const OWNER_NAV_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
+  { key: 'table-sessions', label: 'Table Sessions', icon: Users, href: '/owner/table-sessions' },
   { key: 'menu', label: 'Menu', icon: UtensilsCrossed, href: '/owner/menu' },
   { key: 'orders', label: 'Orders', icon: ShoppingBag, href: '/owner/orders' },
   { key: 'kitchen-staff', label: 'Kitchen Staff', icon: ChefHat, href: '/owner/kitchen-staff' },

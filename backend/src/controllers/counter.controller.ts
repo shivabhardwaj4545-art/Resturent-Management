@@ -94,6 +94,39 @@ export async function lookupOrderByVerificationCode(
       );
     }
 
+    // If order is part of a Table Session, aggregate across all batches
+    let displayTotal = order.total;
+    let displaySubtotal = order.subtotal;
+    let displayGst = order.gstAmount;
+    let allItems = order.items;
+    let batchLabel = order.batchNumber ? `Batch ${order.batchNumber}` : null;
+
+    if (order.tableSessionId) {
+      const sessionOrders = await prisma.order.findMany({
+        where: {
+          tableSessionId: order.tableSessionId,
+          deletedAt: null,
+          status: { not: 'CANCELLED' },
+        },
+        include: {
+          items: {
+            include: {
+              menuItem: { select: { id: true, name: true, image: true, price: true } },
+              variant: { select: { id: true, name: true, price: true } },
+            },
+          },
+        },
+      });
+
+      if (sessionOrders.length > 1) {
+        displayTotal = Math.round(sessionOrders.reduce((sum, o) => sum + o.total, 0) * 100) / 100;
+        displaySubtotal = Math.round(sessionOrders.reduce((sum, o) => sum + o.subtotal, 0) * 100) / 100;
+        displayGst = Math.round(sessionOrders.reduce((sum, o) => sum + o.gstAmount, 0) * 100) / 100;
+        allItems = sessionOrders.flatMap((o) => o.items);
+        batchLabel = `Consolidated (${sessionOrders.length} Rounds)`;
+      }
+    }
+
     res.json({
       success: true,
       data: {
@@ -106,20 +139,21 @@ export async function lookupOrderByVerificationCode(
           customerName: order.user?.name || order.guestName || 'Guest Customer',
           customerPhone: order.user?.phone || order.guestPhone || null,
           tableNumber: order.tableNumber,
+          batchLabel,
           status: order.status,
           paymentStatus: order.paymentStatus,
           paymentMethod: order.paymentMethod,
           counterPaymentMethod: order.counterPaymentMethod,
           paymentConfirmedBy: order.paymentConfirmedBy,
           paymentConfirmedAt: order.paymentConfirmedAt,
-          subtotal: order.subtotal,
-          gstAmount: order.gstAmount,
+          subtotal: displaySubtotal,
+          gstAmount: displayGst,
           deliveryFee: order.deliveryFee,
           packagingFee: order.packagingFee,
           discount: order.discount,
-          total: order.total,
+          total: displayTotal,
           createdAt: order.createdAt,
-          items: order.items.map((item) => ({
+          items: allItems.map((item) => ({
             id: item.id,
             name: item.menuItem?.name || 'Item',
             image: item.menuItem?.image || null,
@@ -205,6 +239,22 @@ export async function confirmCounterPayment(
           counterPaymentMethod: instrument,
         },
       });
+
+      // If part of a Table Session, also mark sibling orders for this table session as PAID
+      if (order.tableSessionId) {
+        await tx.order.updateMany({
+          where: {
+            tableSessionId: order.tableSessionId,
+            paymentStatus: { not: 'PAID' },
+          },
+          data: {
+            paymentStatus: 'PAID',
+            paymentConfirmedBy: req.user!.id,
+            paymentConfirmedAt: now,
+            counterPaymentMethod: instrument,
+          },
+        });
+      }
 
       // 2. Update Payment records
       await tx.payment.updateMany({

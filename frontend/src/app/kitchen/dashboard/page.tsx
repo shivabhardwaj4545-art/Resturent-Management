@@ -55,6 +55,10 @@ interface KitchenOrder {
   total: number;
   notes?: string | null;
   createdAt: string;
+  tableNumber?: string | null;
+  batchNumber?: number | null;
+  tableSessionId?: string | null;
+  verificationCode?: string | null;
   table?: { id: string; tableNumber: number } | null;
   user?: { name: string; phone?: string | null } | null;
   items: KitchenOrderItem[];
@@ -138,7 +142,15 @@ export default function KitchenDashboardPage() {
 
       const orderIdShort = orderId !== 'NEW' ? String(orderId).slice(-8).toUpperCase() : 'NEW';
       const itemsLabel = order?.items?.map((i: any) => `${i.menuItem?.name || i.name || 'Item'} × ${i.quantity}`).join(', ') || 'New items in kitchen';
-      const locationLabel = order?.table?.tableNumber || order?.tableNumber ? `Table ${order?.table?.tableNumber || order?.tableNumber}` : 'Dine-In / Delivery';
+      const rawTable = order?.tableNumber || order?.table?.tableNumber;
+      const isRoom = rawTable && (String(rawTable).toLowerCase().includes('room') || String(rawTable).toLowerCase().includes('suite'));
+      const tableFormatted = rawTable
+        ? (isRoom
+            ? (String(rawTable).toLowerCase().startsWith('room') ? String(rawTable) : `Room ${rawTable}`)
+            : (String(rawTable).toLowerCase().startsWith('table') ? String(rawTable) : `Table ${rawTable}`))
+        : 'Dine-In / Delivery';
+      const batchPart = order?.batchNumber ? ` • BATCH ${order.batchNumber}` : '';
+      const locationLabel = `${tableFormatted}${batchPart}`;
       const totalLabel = order?.total ? `₹${Number(order.total).toFixed(2)}` : '';
 
       if (soundEnabledRef.current) {
@@ -468,15 +480,30 @@ export default function KitchenDashboardPage() {
 
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            {order.table?.tableNumber ? (
-                              <span className="bg-orange-500 text-white font-extrabold text-[10px] sm:text-xs px-2 py-0.5 rounded-md truncate">
-                                🍽️ Table {order.table.tableNumber}
-                              </span>
-                            ) : (
-                              <span className="bg-blue-600 text-white font-extrabold text-[10px] sm:text-xs px-2 py-0.5 rounded-md truncate">
-                                🍽️ Dine-In Order
-                              </span>
-                            )}
+                            {(() => {
+                              const rawTable = order.tableNumber || (order.table as any)?.tableNumber;
+                              const isRoom = rawTable && (String(rawTable).toLowerCase().includes('room') || String(rawTable).toLowerCase().includes('suite'));
+                              const tableDisplay = rawTable
+                                ? (isRoom
+                                    ? (String(rawTable).toLowerCase().startsWith('room') ? String(rawTable) : `Room ${rawTable}`)
+                                    : (String(rawTable).toLowerCase().startsWith('table') ? String(rawTable) : `Table ${rawTable}`))
+                                : 'Dine-In Order';
+                              const batchDisplay = order.batchNumber ? ` • BATCH ${order.batchNumber}` : '';
+
+                              return (
+                                <>
+                                  <span className="bg-orange-500 text-white font-extrabold text-[10px] sm:text-xs px-2 py-0.5 rounded-md truncate flex items-center gap-1 shadow-xs">
+                                    <span>{isRoom ? '🏨' : '🍽️'}</span>
+                                    <span>{tableDisplay}{batchDisplay}</span>
+                                  </span>
+                                  {order.verificationCode && (
+                                    <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono font-bold text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded-md" title="Verification Code">
+                                      #{order.verificationCode}
+                                    </span>
+                                  )}
+                                </>
+                              );
+                            })()}
                             {order.addOnStatus && (
                               <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 font-extrabold text-[9px] sm:text-[10px] px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs">
                                 <Sparkles className="w-2.5 h-2.5 animate-pulse text-amber-400" />

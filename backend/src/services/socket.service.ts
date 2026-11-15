@@ -354,6 +354,34 @@ export function emitOrderDeleted(orderId: string, restaurantId: string): void {
   io.to(`restaurant:${restaurantId}`).emit('order_status_changed', { orderId, status: 'DELETED' });
 }
 
+export function emitTableSessionUpdate(restaurantId: string, tableNumber: string, sessionData: any): void {
+  if (!io) return;
+  const cleanTable = String(tableNumber).trim();
+  const payload = {
+    restaurantId,
+    tableNumber: cleanTable,
+    session: sessionData,
+    timestamp: new Date().toISOString(),
+  };
+  io.to(`table:${restaurantId}:${cleanTable}`).emit('table-session:updated', payload);
+  io.to(`restaurant:${restaurantId}`).emit('table-session:updated', payload);
+}
+
+export function emitBatchUnlocked(restaurantId: string, tableNumber: string, nextBatchData: any): void {
+  if (!io) return;
+  const cleanTable = String(tableNumber).trim();
+  const payload = {
+    restaurantId,
+    tableNumber: cleanTable,
+    nextBatch: nextBatchData,
+    message: `Your food round is completed! Round ${nextBatchData?.batchNumber ?? ''} is now unlocked.`,
+    timestamp: new Date().toISOString(),
+  };
+  io.to(`table:${restaurantId}:${cleanTable}`).emit('table-session:batch-unlocked', payload);
+  io.to(`table:${restaurantId}:${cleanTable}`).emit('table-session:updated', payload);
+  io.to(`restaurant:${restaurantId}`).emit('table-session:updated', payload);
+}
+
 export function getSocketIO(): SocketIOServer {
   if (!io) throw new Error('Socket.IO not initialized');
   return io;
