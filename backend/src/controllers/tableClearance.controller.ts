@@ -526,6 +526,7 @@ export async function checkTableStatusAndAccess(
       include: {
         orders: {
           where: { deletedAt: null },
+          orderBy: { createdAt: 'desc' },
         },
         deviceAccesses: {
           where: { revokedAt: null },
@@ -676,6 +677,9 @@ export async function checkTableStatusAndAccess(
           });
         }
 
+        const nonCancelledOrders = session.orders.filter((o) => o.status !== 'CANCELLED');
+        const latestActiveOrder = nonCancelledOrders[0] || null;
+
         res.json({
           success: true,
           data: {
@@ -685,6 +689,17 @@ export async function checkTableStatusAndAccess(
             role: deviceRole,
             isPrimary: deviceRole === 'PRIMARY',
             tableAccessCode: deviceRole === 'PRIMARY' ? accessCode : undefined,
+            activeOrderId: latestActiveOrder?.id || null,
+            activeOrder: latestActiveOrder
+              ? {
+                  id: latestActiveOrder.id,
+                  orderNumber: latestActiveOrder.id.slice(-8).toUpperCase(),
+                  status: latestActiveOrder.status,
+                  total: latestActiveOrder.total,
+                  verificationCode: latestActiveOrder.verificationCode,
+                  createdAt: latestActiveOrder.createdAt,
+                }
+              : null,
             session: {
               id: session.id,
               sessionCode: session.sessionCode,
@@ -853,11 +868,13 @@ export async function validateTableAccessCode(
       include: {
         orders: {
           where: { deletedAt: null },
+          orderBy: { createdAt: 'desc' },
           select: {
             id: true,
             status: true,
             paymentStatus: true,
             total: true,
+            verificationCode: true,
             createdAt: true,
           },
         },
@@ -930,6 +947,7 @@ export async function validateTableAccessCode(
     const totalAmount = nonCancelledOrders.reduce((sum, o) => sum + (o.total || 0), 0);
     const paidOrders = nonCancelledOrders.filter((o) => o.paymentStatus === 'PAID');
     const paidAmount = paidOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+    const latestActiveOrder = nonCancelledOrders[0] || null;
 
     res.json({
       success: true,
@@ -938,6 +956,17 @@ export async function validateTableAccessCode(
         authorized: true,
         role: 'SECONDARY',
         isPrimary: false,
+        activeOrderId: latestActiveOrder?.id || null,
+        activeOrder: latestActiveOrder
+          ? {
+              id: latestActiveOrder.id,
+              orderNumber: latestActiveOrder.id.slice(-8).toUpperCase(),
+              status: latestActiveOrder.status,
+              total: latestActiveOrder.total,
+              verificationCode: latestActiveOrder.verificationCode,
+              createdAt: latestActiveOrder.createdAt,
+            }
+          : null,
         session: {
           id: session.id,
           sessionCode: session.sessionCode,

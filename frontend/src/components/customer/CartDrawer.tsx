@@ -133,6 +133,14 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, tableTo
     const activeTable = tableNumber || storedTable;
     const activeToken = tableToken || storedToken;
 
+    const activeOrderId = typeof window !== 'undefined'
+      ? (localStorage.getItem(`active_table_order_id_${restaurantSlug}`) || localStorage.getItem('active_table_order_id'))
+      : null;
+    if (activeOrderId) {
+      sessionStorage.setItem('qr_restaurant_addon_order_id', activeOrderId);
+      sessionStorage.setItem('qr_restaurant_addon_order_num', activeOrderId.slice(-8).toUpperCase());
+    }
+
     if (activeTable) params.set('table', activeTable);
     if (activeToken) params.set('t', activeToken);
 

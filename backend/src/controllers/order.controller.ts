@@ -37,6 +37,7 @@ async function resolveOrCreateTableSession(
   tableSessionId?: string;
   batchNumber?: number;
   verificationCode: string;
+  existingOrderId?: string;
 }> {
   if (!rawTableNumber) {
     const code = await generateOrderVerificationCode(restaurantId);
@@ -200,10 +201,16 @@ async function resolveOrCreateTableSession(
         });
       }
 
+      // Identify active ongoing order for this dining session if one exists
+      const existingActiveOrder = session.orders.find(
+        (o) => o.status !== 'CANCELLED'
+      );
+
       return {
         tableSessionId: session.id,
         batchNumber: targetBatchNumber,
         verificationCode: session.sessionCode,
+        existingOrderId: existingActiveOrder?.id,
       };
     }
 
@@ -455,6 +462,92 @@ async function resolveOrCreateTableSession(
         deviceReference
       );
       const verificationCode = sessionRes.verificationCode;
+
+      // If table session already has an ongoing active order, automatically append cart items as add-ons!
+      if (sessionRes.existingOrderId) {
+        const targetOrderId = sessionRes.existingOrderId;
+        const existingOrder = await prisma.order.findUnique({
+          where: { id: targetOrderId },
+          include: { items: true, restaurant: true },
+        });
+
+        if (existingOrder) {
+          const updatedOrder = await prisma.$transaction(async (tx) => {
+            await tx.orderItem.createMany({
+              data: items.map((item) => ({
+                orderId: targetOrderId,
+                menuItemId: item.menuItemId,
+                variantId: item.variantId || null,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                subtotal: item.subtotal,
+                addOns: item.addOns ? item.addOns : undefined,
+                isAddon: true,
+              })),
+            });
+
+            const orderUpdate = await tx.order.update({
+              where: { id: targetOrderId },
+              data: {
+                subtotal: { increment: subtotal },
+                gstAmount: { increment: gstAmount },
+                total: { increment: total },
+                addOnStatus: 'PREPARING',
+                lastAddOnAt: new Date(),
+              },
+              include: {
+                items: { include: { menuItem: true } },
+                restaurant: true,
+              },
+            });
+
+            if (sessionRes.tableSessionId) {
+              await tx.tableSession.update({
+                where: { id: sessionRes.tableSessionId },
+                data: {
+                  totalAmount: { increment: total },
+                  paymentStatus: 'PENDING',
+                },
+              });
+            }
+
+            return orderUpdate;
+          });
+
+          // Live socket notification for both diner phones and owner
+          emitOrderStatusUpdate(targetOrderId, restaurant.id, {
+            orderId: targetOrderId,
+            status: updatedOrder.status,
+            addOnStatus: updatedOrder.addOnStatus,
+            lastAddOnAt: updatedOrder.lastAddOnAt,
+            paymentStatus: updatedOrder.paymentStatus,
+            updatedAt: updatedOrder.updatedAt.toISOString(),
+            items: updatedOrder.items,
+          });
+
+          void emitNewOrder(restaurant.id, updatedOrder, restaurant.ownerId);
+
+          if (sessionRes.tableSessionId && tableNumber) {
+            emitTableSessionUpdate(restaurant.id, tableNumber, {
+              sessionId: sessionRes.tableSessionId,
+              orderId: targetOrderId,
+              batchNumber: sessionRes.batchNumber,
+              event: 'ITEMS_ADDED',
+            });
+          }
+
+          res.status(201).json({
+            success: true,
+            data: {
+              order: updatedOrder,
+              verificationCode: existingOrder.verificationCode || verificationCode,
+              isAddon: true,
+            },
+            message: 'Items added to ongoing table order.',
+          });
+          return;
+        }
+      }
 
       const order = await prisma.$transaction(async (tx) => {
         const newOrder = await tx.order.create({
@@ -791,6 +884,92 @@ async function resolveOrCreateTableSession(
       );
       const verificationCode = sessionRes.verificationCode;
 
+      // If table session already has an ongoing active order, automatically append cart items as add-ons!
+      if (sessionRes.existingOrderId) {
+        const targetOrderId = sessionRes.existingOrderId;
+        const existingOrder = await prisma.order.findUnique({
+          where: { id: targetOrderId },
+          include: { items: true, restaurant: true },
+        });
+
+        if (existingOrder) {
+          const updatedOrder = await prisma.$transaction(async (tx) => {
+            await tx.orderItem.createMany({
+              data: items.map((item) => ({
+                orderId: targetOrderId,
+                menuItemId: item.menuItemId,
+                variantId: item.variantId || null,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                subtotal: item.subtotal,
+                addOns: item.addOns ? item.addOns : undefined,
+                isAddon: true,
+              })),
+            });
+
+            const orderUpdate = await tx.order.update({
+              where: { id: targetOrderId },
+              data: {
+                subtotal: { increment: subtotal },
+                gstAmount: { increment: gstAmount },
+                total: { increment: total },
+                addOnStatus: 'PREPARING',
+                lastAddOnAt: new Date(),
+              },
+              include: {
+                items: { include: { menuItem: true } },
+                restaurant: true,
+              },
+            });
+
+            if (sessionRes.tableSessionId) {
+              await tx.tableSession.update({
+                where: { id: sessionRes.tableSessionId },
+                data: {
+                  totalAmount: { increment: total },
+                  paymentStatus: 'PENDING',
+                },
+              });
+            }
+
+            return orderUpdate;
+          });
+
+          // Live socket notification for both diner phones and owner
+          emitOrderStatusUpdate(targetOrderId, restaurant.id, {
+            orderId: targetOrderId,
+            status: updatedOrder.status,
+            addOnStatus: updatedOrder.addOnStatus,
+            lastAddOnAt: updatedOrder.lastAddOnAt,
+            paymentStatus: updatedOrder.paymentStatus,
+            updatedAt: updatedOrder.updatedAt.toISOString(),
+            items: updatedOrder.items,
+          });
+
+          void emitNewOrder(restaurant.id, updatedOrder, restaurant.ownerId);
+
+          if (sessionRes.tableSessionId && tableNumber) {
+            emitTableSessionUpdate(restaurant.id, tableNumber, {
+              sessionId: sessionRes.tableSessionId,
+              orderId: targetOrderId,
+              batchNumber: sessionRes.batchNumber,
+              event: 'ITEMS_ADDED',
+            });
+          }
+
+          res.status(201).json({
+            success: true,
+            data: {
+              order: updatedOrder,
+              verificationCode: existingOrder.verificationCode || verificationCode,
+              isAddon: true,
+            },
+            message: 'Items added to ongoing table order.',
+          });
+          return;
+        }
+      }
+
       const order = await prisma.$transaction(async (tx) => {
         const newOrder = await tx.order.create({
           data: {
@@ -1077,14 +1256,24 @@ async function resolveOrCreateTableSession(
           address: true,
           user: { select: { name: true, email: true, phone: true } },
           review: true,
+          tableSession: {
+            select: {
+              id: true,
+              tableAccessCode: true,
+              sessionCode: true,
+              status: true,
+            },
+          },
         },
       });
 
       if (!order) throw new AppError('Order not found.', 404, 'ORDER_NOT_FOUND');
 
-      // Access control — restrict only if authenticated user is trying to view another user's order
+      // Access control — restrict only if authenticated user is trying to view another user's order AND it's not a shared table session order
       if (order.userId && req.user && req.user.role === 'CUSTOMER' && order.userId !== req.user.id) {
-        throw new AppError('Access denied.', 403, 'ACCESS_DENIED');
+        if (!order.tableSessionId) {
+          throw new AppError('Access denied.', 403, 'ACCESS_DENIED');
+        }
       }
 
       res.json({ success: true, data: { order } });
@@ -1392,8 +1581,29 @@ async function resolveOrCreateTableSession(
           });
         }
 
+        // Synchronize with TableSession if order is part of a table dining session
+        if (order.tableSessionId) {
+          await tx.tableSession.update({
+            where: { id: order.tableSessionId },
+            data: {
+              totalAmount: { increment: addedTotal },
+              paymentStatus: 'PENDING',
+            },
+          });
+        }
+
         return orderUpdate;
       });
+
+      // Emit table session update so all diners at the table see new totals in real time
+      if (order.tableSessionId && order.tableNumber) {
+        emitTableSessionUpdate(order.restaurantId, order.tableNumber, {
+          sessionId: order.tableSessionId,
+          orderId,
+          totalAmount: updatedOrder.total,
+          event: 'ITEMS_ADDED',
+        });
+      }
 
       // Emit order status update / socket events to update owner dashboard in real time
       emitOrderStatusUpdate(orderId, order.restaurantId, {

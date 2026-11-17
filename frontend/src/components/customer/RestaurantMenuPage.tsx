@@ -197,6 +197,21 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
         toast.success('Access granted! Connected to table bill.');
         setTableLockedState(null);
         setTableAccessCodeInput('');
+
+        if (res.data?.data?.activeOrderId) {
+          const actId = res.data.data.activeOrderId;
+          const actNum = res.data.data.activeOrder?.orderNumber || actId.slice(-8).toUpperCase();
+          setAddonOrderId(actId);
+          setAddonOrderNum(actNum);
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('qr_restaurant_addon_order_id', actId);
+            sessionStorage.setItem('qr_restaurant_addon_order_num', actNum);
+            localStorage.setItem(`active_table_order_id_${slug}`, actId);
+            localStorage.setItem('active_table_order_id', actId);
+          }
+          toast.info('Active order detected! Any items you add will be appended to this ongoing order.');
+        }
+
         refetchTableAccess();
       }
     } catch (err: any) {
@@ -451,6 +466,21 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (tableAccessData?.data?.activeOrderId) {
+      const actId = tableAccessData.data.activeOrderId;
+      const actNum = tableAccessData.data.activeOrder?.orderNumber || actId.slice(-8).toUpperCase();
+      setAddonOrderId(actId);
+      setAddonOrderNum(actNum);
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('qr_restaurant_addon_order_id', actId);
+        sessionStorage.setItem('qr_restaurant_addon_order_num', actNum);
+        localStorage.setItem(`active_table_order_id_${slug}`, actId);
+        localStorage.setItem('active_table_order_id', actId);
+      }
+    }
+  }, [tableAccessData?.data?.activeOrderId, tableAccessData?.data?.activeOrder, slug]);
 
   const [recentOrders, setRecentOrders] = useState<Array<{ orderId: string; restaurantSlug: string; createdAt: number }>>([]);
 
@@ -1520,6 +1550,40 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                 <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 rounded-full text-[11px] font-semibold">
                   <CheckCircle2 className="w-3 h-3" />
                   <span>Joined Table Bill • Secondary Ordering Device</span>
+                </div>
+              )}
+
+              {/* Ongoing Table Order Tracking Banner */}
+              {tableAccessData?.data?.activeOrderId && (
+                <div className="mt-3 p-3.5 bg-gradient-to-r from-emerald-500/15 via-emerald-500/10 to-transparent border border-emerald-500/35 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-base shrink-0">
+                      🍽️
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                          Table Order in Progress #{tableAccessData.data.activeOrder?.orderNumber || tableAccessData.data.activeOrderId.slice(-6).toUpperCase()}
+                        </span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          {tableAccessData.data.activeOrder?.status || 'In Kitchen'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Any items you add will be appended to this ongoing order. Live tracking is shared across all devices at this table.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
+                    <Link
+                      href={`/r/${slug}/order/${tableAccessData.data.activeOrderId}`}
+                      className="w-full sm:w-auto text-center px-3.5 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition active:scale-95 flex items-center justify-center gap-1.5"
+                    >
+                      <span>Track Order Live</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </Link>
+                  </div>
                 </div>
               )}
             </div>

@@ -250,6 +250,21 @@ class SingleDeviceOrderingHarness {
       throw new Error('TABLE_ACCESS_CODE_REQUIRED');
     }
 
+    // If an active ongoing order exists for this table session, append items as add-ons
+    const existingActiveOrder = Array.from(this.orders.values()).find(
+      (o) => o.tableSessionId === session.id && o.status !== 'CANCELLED' && o.status !== 'COMPLETED'
+    );
+
+    if (existingActiveOrder) {
+      const addonItems = items.map((i) => ({ ...i, isAddon: true, addedByDevice: deviceReference }));
+      existingActiveOrder.items.push(...addonItems);
+      existingActiveOrder.total += total;
+      existingActiveOrder.addOnStatus = 'PREPARING';
+      existingActiveOrder.lastAddOnAt = new Date();
+      session.totalAmount += total;
+      return existingActiveOrder;
+    }
+
     const orderId = `ord-${this.idCounter++}`;
     const order = {
       id: orderId,
@@ -257,7 +272,7 @@ class SingleDeviceOrderingHarness {
       tableSessionId: session.id,
       tableNumber: cleanTable,
       deviceReference,
-      items,
+      items: items.map((i) => ({ ...i, isAddon: false })),
       total,
       paymentStatus: 'PENDING',
       status: 'PENDING',
@@ -451,16 +466,21 @@ describe('EZRestro Single Device Ordering & Waiter Assistance Suite', () => {
     expect(bill.orderCount).toBe(1);
   });
 
-  // TEST 7: Primary device adds items to bill -> Both orders appear on combined bill
-  test('7. Primary and secondary device orders accumulate on one combined table bill', async () => {
+  // TEST 7: Primary and secondary device orders accumulate on one ongoing order
+  test('7. Primary and secondary device orders accumulate on one combined ongoing order and shared table bill', async () => {
     const primary = await harness.checkTableAccess('rest-1', 'Table 4', 'dev-customer-1');
     await harness.validateAccessCode('rest-1', 'Table 4', primary.tableAccessCode, 'dev-customer-2');
 
-    await harness.placeOrder('rest-1', 'Table 4', 'dev-customer-1', [{ name: 'Pizza', price: 450 }], 450);
-    await harness.placeOrder('rest-1', 'Table 4', 'dev-customer-2', [{ name: 'Pasta', price: 350 }], 350);
+    const initialOrder = await harness.placeOrder('rest-1', 'Table 4', 'dev-customer-1', [{ name: 'Pizza', price: 450 }], 450);
+    const addedOrder = await harness.placeOrder('rest-1', 'Table 4', 'dev-customer-2', [{ name: 'Pasta', price: 350 }], 350);
+
+    // Both point to the exact same order!
+    expect(addedOrder.id).toBe(initialOrder.id);
+    expect(addedOrder.items.length).toBe(2);
+    expect(addedOrder.total).toBe(800);
+    expect(addedOrder.items[1].isAddon).toBe(true);
 
     const bill = await harness.getCombinedBill(primary.session.id);
-    expect(bill.orderCount).toBe(2);
     expect(bill.totalAmount).toBe(800);
   });
 
@@ -601,5 +621,53 @@ describe('EZRestro Single Device Ordering & Waiter Assistance Suite', () => {
     // Force clearance succeeds
     const forceRes = await harness.clearTableSession('rest-1', s1.session.id, true);
     expect(forceRes.success).toBe(true);
+  });
+
+  // TEST 19: Friend ordering at the same table automatically goes as add-on to ongoing order
+  test('19. Friend from the same table placing an order appends items as an add-on to the ongoing order', async () => {
+    // 1. Person 1 starts session and places initial order
+    const p1 = await harness.checkTableAccess('rest-1', 'Table 4', 'dev-person-1');
+    const orderP1 = await harness.placeOrder('rest-1', 'Table 4', 'dev-person-1', [
+      { name: 'Butter Chicken', price: 420 },
+      { name: 'Naan', price: 60 },
+    ], 480);
+    expect(orderP1.items.length).toBe(2);
+
+    // 2. Person 2 (friend) scans and validates code
+    const p2Access = await harness.validateAccessCode('rest-1', 'Table 4', p1.tableAccessCode, 'dev-person-2');
+    expect(p2Access.authorized).toBe(true);
+
+    // 3. Person 2 orders extra roti & dal makhani
+    const orderP2 = await harness.placeOrder('rest-1', 'Table 4', 'dev-person-2', [
+      { name: 'Dal Makhani', price: 320 },
+      { name: 'Tandoori Roti', price: 40 },
+    ], 360);
+
+    // 4. Must be identical ongoing order ID with add-on flag set!
+    expect(orderP2.id).toBe(orderP1.id);
+    expect(orderP2.items.length).toBe(4);
+    expect(orderP2.total).toBe(840);
+    expect(orderP2.addOnStatus).toBe('PREPARING');
+
+    const addedItems = orderP2.items.filter((i: any) => i.isAddon);
+    expect(addedItems.length).toBe(2);
+    expect(addedItems[0].name).toBe('Dal Makhani');
+  });
+
+  // TEST 20: Both the first person and the friend track the exact same order
+  test('20. Order tracking ID and details are identical on both the primary customer and friend phones', async () => {
+    const p1 = await harness.checkTableAccess('rest-1', 'Table 4', 'dev-person-1');
+    const orderP1 = await harness.placeOrder('rest-1', 'Table 4', 'dev-person-1', [{ name: 'Biryani', price: 350 }], 350);
+
+    await harness.validateAccessCode('rest-1', 'Table 4', p1.tableAccessCode, 'dev-person-2');
+    const orderP2 = await harness.placeOrder('rest-1', 'Table 4', 'dev-person-2', [{ name: 'Raita', price: 80 }], 80);
+
+    // Both devices have the exact same tracking target
+    const trackingIdP1 = orderP1.id;
+    const trackingIdP2 = orderP2.id;
+    expect(trackingIdP1).toBe(trackingIdP2);
+
+    const bill = await harness.getCombinedBill(p1.session.id);
+    expect(bill.totalAmount).toBe(430);
   });
 });

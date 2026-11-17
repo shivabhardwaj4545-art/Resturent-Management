@@ -243,6 +243,17 @@ export async function getActiveSession(
         status: 'ACTIVE',
       },
       include: {
+        orders: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            status: true,
+            total: true,
+            verificationCode: true,
+            createdAt: true,
+          },
+        },
         batches: {
           orderBy: { batchNumber: 'asc' },
           include: {
@@ -266,6 +277,7 @@ export async function getActiveSession(
     }
 
     const currentBatch = session.batches.find((b: any) => b.batchNumber === session.currentBatchNumber) || null;
+    const activeOrder = session.orders.find((o: any) => o.status !== 'CANCELLED') || null;
 
     res.json({
       success: true,
@@ -273,6 +285,8 @@ export async function getActiveSession(
         session: {
           ...session,
           currentBatch,
+          activeOrderId: activeOrder?.id || null,
+          activeOrder,
         },
       },
     });

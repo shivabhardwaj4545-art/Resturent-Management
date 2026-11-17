@@ -123,6 +123,12 @@ interface Order {
     isAddon?: boolean;
     createdAt?: string;
   }>;
+  tableSession?: {
+    id: string;
+    tableAccessCode?: string | null;
+    sessionCode?: string | null;
+    status?: string | null;
+  } | null;
   review?: { rating: number; comment?: string | null } | null;
 }
 
@@ -238,6 +244,17 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
       setCurrentStatus(order.status);
     }
   }, [order?.status]);
+
+  useEffect(() => {
+    if (orderId && typeof window !== 'undefined') {
+      localStorage.setItem('active_table_order_id', orderId);
+      localStorage.setItem(`active_table_order_id_${restaurantSlug}`, orderId);
+      sessionStorage.setItem('qr_restaurant_addon_order_id', orderId);
+      if (order?.id) {
+        sessionStorage.setItem('qr_restaurant_addon_order_num', order.id.slice(-8).toUpperCase());
+      }
+    }
+  }, [orderId, order?.id, restaurantSlug]);
 
   useEffect(() => {
     if (order?.paymentStatus) {
@@ -567,6 +584,39 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
               )}
             </div>
           </div>
+
+          {/* Table Access Code for Friends sharing this dining session */}
+          {order.tableSession?.tableAccessCode && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-3xl p-5 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-xl">🔑</span>
+                  <div>
+                    <h3 className="font-bold text-xs uppercase tracking-wider text-muted-foreground">
+                      Table Access Code
+                    </h3>
+                    <p className="text-[11px] text-muted-foreground">
+                      Share with friends at your table to add items to this bill
+                    </p>
+                  </div>
+                </div>
+                <div className="font-mono text-xl font-black px-3.5 py-1 bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-xl border border-amber-500/30">
+                  {order.tableSession.tableAccessCode}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(order.tableSession?.tableAccessCode || '');
+                  toast.success(`Table Access Code ${order.tableSession?.tableAccessCode} copied!`);
+                }}
+                className="w-full py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition shadow-sm flex items-center justify-center gap-1.5 active:scale-98"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>Copy 4-Digit Code</span>
+              </button>
+            </div>
+          )}
           {/* Add-on Order Journey Banner */}
           {order.addOnStatus && (
             <div className={`border-2 rounded-2xl p-5 shadow-lg space-y-3 ${order.addOnStatus === 'CANCELLED'

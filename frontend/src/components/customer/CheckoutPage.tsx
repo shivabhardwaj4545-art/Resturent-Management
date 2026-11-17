@@ -228,15 +228,21 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const storedId = sessionStorage.getItem('qr_restaurant_addon_order_id');
-      const storedNum = sessionStorage.getItem('qr_restaurant_addon_order_num');
+      const storedId =
+        sessionStorage.getItem('qr_restaurant_addon_order_id') ||
+        sessionStorage.getItem(`qr_restaurant_addon_order_id_${restaurantSlug}`) ||
+        localStorage.getItem(`active_table_order_id_${restaurantSlug}`) ||
+        localStorage.getItem('active_table_order_id');
+      const storedNum =
+        sessionStorage.getItem('qr_restaurant_addon_order_num') ||
+        (storedId ? storedId.slice(-8).toUpperCase() : null);
       if (storedId) {
         setAddonOrderId(storedId);
         setAddonOrderNum(storedNum);
         setSelectedPayment('PAY_TO_WAITER');
       }
     }
-  }, []);
+  }, [restaurantSlug]);
 
   useEffect(() => {
     api.get('/orders/razorpay-key')
