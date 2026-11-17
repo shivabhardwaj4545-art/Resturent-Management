@@ -1050,8 +1050,8 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
                 Reorder
               </button>
             </div>
-            {isPaymentConfirmed && ['CONFIRMED', 'PREPARING', 'BAKING', 'READY', 'ON_THE_WAY', 'DELIVERED'].includes(currentStatus) && (
-              <InvoiceDownload order={order} themeColor={themeColor} />
+            {isPaymentConfirmed && (
+              <InvoiceDownload order={{ ...order, paymentStatus: currentPaymentStatus || order.paymentStatus }} themeColor={themeColor} />
             )}
           </div>
         </div>

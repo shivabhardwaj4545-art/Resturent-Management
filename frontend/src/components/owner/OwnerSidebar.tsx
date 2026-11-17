@@ -84,10 +84,10 @@ export function OwnerSidebar({ mobileOpen = false, onMobileClose }: OwnerSidebar
   };
 
   const sidebarContent = (
-    <div className="w-64 h-full bg-card border-r border-border flex flex-col justify-between shrink-0">
-      {/* Top Header */}
-      <div>
-        <div className="p-6 border-b border-border flex items-center justify-between">
+    <div className="w-64 h-full bg-card border-r border-border flex flex-col justify-between shrink-0 overflow-hidden">
+      {/* Top Header & Nav Container */}
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        <div className="p-6 border-b border-border flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-2xl bg-primary text-primary-foreground flex items-center justify-center shadow-lg shadow-primary/25 shrink-0 overflow-hidden">
               {restaurantData?.logo ? (
@@ -109,17 +109,11 @@ export function OwnerSidebar({ mobileOpen = false, onMobileClose }: OwnerSidebar
                   <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-500 border border-amber-500/30 shrink-0">
                     DUAL
                   </span>
-                ) : restaurantData?.platformType === 'HOTEL' ? (
-                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-500 border border-blue-500/30 shrink-0">
-                    HOTEL
-                  </span>
                 ) : null}
               </div>
               <p className="text-[11px] text-muted-foreground font-medium truncate">
                 {restaurantData?.platformType === 'DUAL'
                   ? 'Restaurant & Hotel'
-                  : restaurantData?.platformType === 'HOTEL'
-                  ? 'Hotel Owner'
                   : 'Owner Panel'}
               </p>
             </div>
@@ -135,7 +129,7 @@ export function OwnerSidebar({ mobileOpen = false, onMobileClose }: OwnerSidebar
         </div>
 
         {/* Nav Links */}
-        <nav className="p-4 space-y-1.5 flex-1 min-h-0 overflow-y-auto">
+        <nav className="p-4 space-y-1.5 flex-1 min-h-0 overflow-y-auto max-h-[calc(100vh-210px)]">
           {OWNER_NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
@@ -166,7 +160,7 @@ export function OwnerSidebar({ mobileOpen = false, onMobileClose }: OwnerSidebar
       </div>
 
       {/* Bottom User Box */}
-      <div className="p-4 border-t border-border bg-card">
+      <div className="p-4 border-t border-border bg-card shrink-0 mt-auto">
         <div className="flex items-center gap-3 mb-3 p-2 rounded-2xl bg-muted/50 border border-border/60">
           <div className="w-9 h-9 rounded-xl bg-primary/20 text-primary font-extrabold flex items-center justify-center text-sm shrink-0 border border-primary/30">
             {user?.name?.[0]?.toUpperCase() ?? 'O'}

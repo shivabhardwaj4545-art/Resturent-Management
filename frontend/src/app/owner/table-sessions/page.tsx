@@ -531,19 +531,27 @@ export default function OwnerTableSessionsPage() {
                     <div className="mt-5 pt-3 border-t border-border space-y-2">
                       {/* Payment & Close Table Controls */}
                       {session.paymentStatus === 'PAID' ? (
-                        <button
-                          onClick={() =>
-                            closeSessionMutation.mutate({
-                              sessionId: session.id,
-                              paymentConfirmed: true,
-                              paymentMethod: 'CASH',
-                            })
-                          }
-                          disabled={closeSessionMutation.isPending}
-                          className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5"
-                        >
-                          <CheckCircle2 className="w-4 h-4" /> Close Table &amp; Free Table
-                        </button>
+                        <div className="space-y-2">
+                          <button
+                            onClick={() =>
+                              closeSessionMutation.mutate({
+                                sessionId: session.id,
+                                paymentConfirmed: true,
+                                paymentMethod: 'CASH',
+                              })
+                            }
+                            disabled={closeSessionMutation.isPending}
+                            className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5"
+                          >
+                            <CheckCircle2 className="w-4 h-4" /> Close Table &amp; Free Table
+                          </button>
+                          <button
+                            onClick={() => setViewBillSessionId(session.id)}
+                            className="w-full py-2.5 px-3 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/25 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-2xs"
+                          >
+                            <Receipt className="w-4 h-4" /> View / Print Bill
+                          </button>
+                        </div>
                       ) : (
                         <button
                           onClick={() => setMarkPaidModalSession(session)}
@@ -552,48 +560,6 @@ export default function OwnerTableSessionsPage() {
                           <Banknote className="w-4 h-4" /> Mark as Paid (₹{session.sessionTotal.toFixed(2)})
                         </button>
                       )}
-
-                      {/* Secondary Action Buttons */}
-                      <div className="grid grid-cols-4 gap-1.5 pt-1">
-                        <button
-                          onClick={() => setSelectedSessionId(session.id)}
-                          className="py-1.5 px-1 bg-muted hover:bg-muted/80 rounded-xl text-xs font-semibold text-foreground text-center transition-colors truncate"
-                          title="View all details & items"
-                        >
-                          Details
-                        </button>
-                        <button
-                          onClick={() => setViewBillSessionId(session.id)}
-                          className="py-1.5 px-1 bg-muted hover:bg-muted/80 rounded-xl text-xs font-semibold text-foreground text-center transition-colors truncate flex items-center justify-center gap-0.5"
-                          title="Consolidated bill summary"
-                        >
-                          <Receipt className="w-3 h-3 text-muted-foreground" /> Bill
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (session.paymentStatus === 'PAID') {
-                              closeSessionMutation.mutate({
-                                sessionId: session.id,
-                                paymentConfirmed: true,
-                                paymentMethod: 'CASH',
-                              });
-                            } else {
-                              setCloseModalSession(session);
-                            }
-                          }}
-                          className="py-1.5 px-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/20 rounded-xl text-xs font-bold text-center transition-colors truncate"
-                          title="Finish dining & close table"
-                        >
-                          Close Table
-                        </button>
-                        <button
-                          onClick={() => setCancelModalSession(session)}
-                          className="py-1.5 px-1 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 rounded-xl text-xs font-bold text-center transition-colors truncate flex items-center justify-center gap-0.5"
-                          title="Cancel order and free table"
-                        >
-                          <X className="w-3 h-3" /> Cancel
-                        </button>
-                      </div>
                     </div>
                   </motion.div>
                 );
@@ -824,7 +790,7 @@ export default function OwnerTableSessionsPage() {
                   <Receipt className="w-6 h-6" />
                 </div>
                 <h3 className="font-display font-black text-xl text-foreground">
-                  {sessionBillData?.restaurant?.name || 'Restaurant'}
+                  {sessionBillData?.restaurant?.name || 'Restaurant Tax Invoice'}
                 </h3>
                 <p className="text-xs text-muted-foreground font-mono">
                   {sessionBillData?.tableNumber} • Session Code: #{sessionBillData?.sessionCode}
@@ -832,7 +798,7 @@ export default function OwnerTableSessionsPage() {
                 <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black border">
                   {sessionBillData?.totals?.isPaid ? (
                     <span className="text-emerald-500 flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> PAID {sessionBillData?.totals?.paymentMethod ? `(${sessionBillData.totals.paymentMethod})` : ''}
+                      <CheckCircle2 className="w-3.5 h-3.5" /> PAID {sessionBillData?.totals?.paymentMethod ? `(${sessionBillData.totals.paymentMethod.replace('COUNTER_', '')})` : ''}
                     </span>
                   ) : (
                     <span className="text-amber-500 flex items-center gap-1">
@@ -851,55 +817,83 @@ export default function OwnerTableSessionsPage() {
                   <p className="text-xs text-muted-foreground text-center">No bill data found.</p>
                 ) : (
                   <>
-                    <div className="space-y-3">
-                      {sessionBillData.batches.map((batch: any) => (
-                        <div key={batch.batchId || batch.batchNumber} className="p-3 bg-muted/30 rounded-xl border border-border/80">
-                          <div className="flex items-center justify-between text-xs font-bold text-foreground mb-2">
-                            <span className="flex items-center gap-1.5">
-                              <span>Round {batch.batchNumber}</span>
-                              <span className={`text-[9px] uppercase px-1.5 py-0.2 rounded border ${getStatusBadge(batch.status)}`}>
-                                {batch.status}
-                              </span>
-                            </span>
-                            <span className="font-mono">₹{Number(batch.total || 0).toFixed(2)}</span>
-                          </div>
-                          <div className="space-y-1.5">
-                            {batch.items && batch.items.length > 0 ? (
-                              batch.items.map((it: any) => (
-                                <div key={it.id} className="text-xs text-muted-foreground flex justify-between items-center">
-                                  <span>
-                                    <strong className="text-foreground">{it.quantity}x</strong> {it.itemName}
-                                  </span>
-                                  <span className="font-mono font-medium text-foreground">₹{Number(it.subtotal || 0).toFixed(2)}</span>
-                                </div>
-                              ))
-                            ) : (
-                              <p className="text-[11px] text-muted-foreground italic">Items processed in kitchen</p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    {/* Itemized Bill Table */}
+                    {(() => {
+                      const itemMap = new Map<string, { itemName: string; quantity: number; unitPrice: number; subtotal: number }>();
+                      sessionBillData.batches.forEach((b: any) => {
+                        (b.items || []).forEach((it: any) => {
+                          const key = it.itemName;
+                          const existing = itemMap.get(key);
+                          const qty = it.quantity || 1;
+                          const price = it.unitPrice || (it.subtotal ? it.subtotal / qty : 0);
+                          const sub = it.subtotal || price * qty;
+                          if (existing) {
+                            existing.quantity += qty;
+                            existing.subtotal += sub;
+                          } else {
+                            itemMap.set(key, {
+                              itemName: it.itemName,
+                              quantity: qty,
+                              unitPrice: price,
+                              subtotal: sub,
+                            });
+                          }
+                        });
+                      });
+                      const consolidatedItems = Array.from(itemMap.values());
 
-                    {/* Grand Totals */}
-                    <div className="pt-3 border-t border-border space-y-1.5 text-xs">
-                      <div className="flex justify-between text-muted-foreground">
+                      return (
+                        <div className="border border-border/80 rounded-2xl p-4 bg-muted/20 space-y-3">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="border-b border-border/70 text-muted-foreground text-left">
+                                <th className="pb-2 font-bold">Item Description</th>
+                                <th className="pb-2 text-center font-bold">Qty</th>
+                                <th className="pb-2 text-right font-bold">Rate</th>
+                                <th className="pb-2 text-right font-bold">Amount</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border/30">
+                              {consolidatedItems.map((it, idx) => (
+                                <tr key={idx} className="hover:bg-muted/30">
+                                  <td className="py-2.5 font-semibold text-foreground max-w-[190px] truncate">{it.itemName}</td>
+                                  <td className="py-2.5 text-center font-mono font-bold text-foreground">{it.quantity}</td>
+                                  <td className="py-2.5 text-right font-mono text-muted-foreground">₹{Number(it.unitPrice).toFixed(2)}</td>
+                                  <td className="py-2.5 text-right font-mono font-bold text-foreground">₹{Number(it.subtotal).toFixed(2)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Grand Totals & Tax Calculation Breakdown */}
+                    <div className="p-4 rounded-2xl bg-muted/40 border border-border space-y-2 text-xs">
+                      <div className="flex justify-between text-muted-foreground font-medium">
                         <span>Items Subtotal</span>
-                        <span className="font-mono">₹{Number(sessionBillData.totals?.subtotal || 0).toFixed(2)}</span>
+                        <span className="font-mono text-foreground font-semibold">₹{Number(sessionBillData.totals?.subtotal || 0).toFixed(2)}</span>
                       </div>
-                      <div className="flex justify-between text-muted-foreground">
-                        <span>GST &amp; Taxes (18%)</span>
-                        <span className="font-mono">₹{Number(sessionBillData.totals?.tax || 0).toFixed(2)}</span>
+                      <div className="flex justify-between text-muted-foreground font-medium">
+                        <span>GST &amp; Applicable Taxes</span>
+                        <span className="font-mono text-foreground font-semibold">₹{Number(sessionBillData.totals?.tax || 0).toFixed(2)}</span>
                       </div>
                       {Number(sessionBillData.totals?.discount || 0) > 0 && (
-                        <div className="flex justify-between text-emerald-500 font-bold">
+                        <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-bold">
                           <span>Discount Applied</span>
                           <span className="font-mono">-₹{Number(sessionBillData.totals.discount).toFixed(2)}</span>
                         </div>
                       )}
-                      <div className="pt-2 border-t border-border flex justify-between text-base font-black text-foreground">
-                        <span>Grand Total</span>
-                        <span className="font-mono text-primary text-xl">
+                      <div className="pt-2.5 border-t border-border flex justify-between items-baseline text-base font-black text-foreground">
+                        <div>
+                          <span>Final Amount</span>
+                          {sessionBillData.totals?.isPaid && (
+                            <span className="text-[10px] text-emerald-600 font-bold block uppercase tracking-wider">
+                              Paid via {sessionBillData.totals?.paymentMethod ? sessionBillData.totals.paymentMethod.replace('COUNTER_', '') : 'Cash'}
+                            </span>
+                          )}
+                        </div>
+                        <span className="font-mono text-primary text-xl font-black">
                           ₹{Number(sessionBillData.totals?.grandTotal || 0).toFixed(2)}
                         </span>
                       </div>
@@ -912,9 +906,9 @@ export default function OwnerTableSessionsPage() {
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="px-4 py-2.5 bg-card border border-border hover:bg-muted text-foreground font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors"
+                  className="px-4 py-2.5 bg-card border border-border hover:bg-muted text-foreground font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors shadow-2xs"
                 >
-                  <Printer className="w-4 h-4 text-primary" /> Print Bill
+                  <Printer className="w-4 h-4 text-primary" /> Print Bill Receipt
                 </button>
                 <button
                   onClick={() => setViewBillSessionId(null)}
@@ -1070,58 +1064,56 @@ export default function OwnerTableSessionsPage() {
               <div className="space-y-2 pt-2">
                 <button
                   onClick={() =>
-                      markPaidMutation.mutate({
-                        sessionId: markPaidModalSession.id,
-                        paymentMethod: 'CASH',
-                      })
-                    }
-                  disabled = { markPaidMutation.isPending }
-                  className = "w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5"
-                      >
-                <Banknote className="w-4 h-4" /> 💵 Cash Received
-              </button>
-              <button
-                onClick={() =>
+                    markPaidMutation.mutate({
+                      sessionId: markPaidModalSession.id,
+                      paymentMethod: 'CASH',
+                    })
+                  }
+                  disabled={markPaidMutation.isPending}
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all"
+                >
+                  <Banknote className="w-4 h-4" /> 💵 Cash Received
+                </button>
+                <button
+                  onClick={() =>
                     markPaidMutation.mutate({
                       sessionId: markPaidModalSession.id,
                       paymentMethod: 'COUNTER_UPI',
                     })
                   }
-                  disabled = { markPaidMutation.isPending }
-                  className = "w-full py-3 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5"
-                    >
-              <CreditCard className="w-4 h-4" /> 📱 Counter UPI / Dynamic QR
-            </button>
-            <button
-              onClick={() =>
-                markPaidMutation.mutate({
-                  sessionId: markPaidModalSession.id,
-                  paymentMethod: 'CARD',
-                })
-              }
-              disabled={markPaidMutation.isPending}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5"
-            >
-              <CreditCard className="w-4 h-4" /> 💳 Card / POS Machine
-            </button>
-            <button
-              onClick={() => setMarkPaidModalSession(null)}
-              className="w-full py-2.5 bg-muted hover:bg-muted/80 text-foreground font-semibold text-xs rounded-xl"
-            >
-              Cancel
-            </button>
-          </div>
+                  disabled={markPaidMutation.isPending}
+                  className="w-full py-3 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all"
+                >
+                  <CreditCard className="w-4 h-4" /> 📱 Counter UPI / Dynamic QR
+                </button>
+                <button
+                  onClick={() =>
+                    markPaidMutation.mutate({
+                      sessionId: markPaidModalSession.id,
+                      paymentMethod: 'CARD',
+                    })
+                  }
+                  disabled={markPaidMutation.isPending}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all"
+                >
+                  <CreditCard className="w-4 h-4" /> 💳 Card / POS Machine
+                </button>
+                <button
+                  onClick={() => setMarkPaidModalSession(null)}
+                  className="w-full py-2.5 bg-muted hover:bg-muted/80 text-foreground font-semibold text-xs rounded-xl"
+                >
+                  Cancel
+                </button>
+              </div>
             </motion.div>
-    </div>
-  )
-}
-      </AnimatePresence >
+          </div>
+        )}
+      </AnimatePresence>
 
-  {/* MODAL 6: Cancel Table Session & Orders Modal */ }
-  <AnimatePresence>
-{
-  cancelModalSession && (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+      {/* MODAL 6: Cancel Table Session & Orders Modal */}
+      <AnimatePresence>
+        {cancelModalSession && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}

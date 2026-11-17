@@ -2020,15 +2020,18 @@ export async function getOwnerSubscription(req: AuthenticatedRequest, res: Respo
         (!s.isActive || new Date(s.expiresAt) <= now)
     );
 
-    let filteredPlans = plans;
+    // Exclude hotel-specific plans (only keep restaurant subscriptions)
+    let filteredPlans = plans.filter(
+      (p) => p.platformType !== 'HOTEL' && !p.name.toLowerCase().includes('hotel')
+    );
 
     if (hadCompletedTrial && !activeFreeTrial && !pendingTrialSub) {
       // Rule 3: After one month, remove ALL free trial plans completely for this restaurant!
-      filteredPlans = plans.filter((p) => p.price > 0);
+      filteredPlans = filteredPlans.filter((p) => p.price > 0);
     } else if (activeFreeTrial || pendingTrialSub) {
       // Rule 2: Once any free trial is taken/requested, the other two free trials are disabled and removed!
       const chosenTrialPlanId = (activeFreeTrial || pendingTrialSub)!.planId;
-      filteredPlans = plans.filter((p) => p.price > 0 || p.id === chosenTrialPlanId);
+      filteredPlans = filteredPlans.filter((p) => p.price > 0 || p.id === chosenTrialPlanId);
     }
 
     res.json({

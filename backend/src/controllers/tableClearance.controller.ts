@@ -562,47 +562,6 @@ export async function checkTableStatusAndAccess(
           data: { revokedAt: now },
         });
 
-        // Create fresh session with primary device assignment
-        const sessionCode = await generateUniqueSessionCode(restaurant.id);
-        const accessCode = generateRandomAccessCode();
-        const accessCodeHash = hashAccessCode(accessCode);
-
-        const newSession = await prisma.tableSession.create({
-          data: {
-            restaurantId: restaurant.id,
-            tableNumber: cleanTable,
-            sessionCode,
-            tableAccessCode: accessCode,
-            accessCodeHash,
-            primaryDeviceReference: deviceRef,
-            guestCount: guestCount ? Number(guestCount) : 1,
-            currentBatchNumber: 1,
-            status: 'ACTIVE',
-            paymentStatus: 'PENDING',
-            sessionManagementModeSnapshot: currentMode,
-            notes: guestName ? `Initiated by ${guestName}` : undefined,
-          },
-        });
-
-        await prisma.orderBatch.create({
-          data: {
-            sessionId: newSession.id,
-            restaurantId: restaurant.id,
-            batchNumber: 1,
-            status: 'OPEN',
-          },
-        });
-
-        if (deviceRef) {
-          await prisma.sessionDeviceAccess.create({
-            data: {
-              sessionId: newSession.id,
-              deviceReference: deviceRef,
-              role: 'PRIMARY',
-            },
-          });
-        }
-
         res.json({
           success: true,
           data: {
@@ -610,13 +569,11 @@ export async function checkTableStatusAndAccess(
             status: 'AVAILABLE',
             role: 'PRIMARY',
             isPrimary: true,
-            tableAccessCode: accessCode,
-            session: {
-              id: newSession.id,
-              sessionCode: newSession.sessionCode,
-              tableAccessCode: accessCode,
-              tableNumber: cleanTable,
-            },
+            isOccupied: false,
+            tableNumber: cleanTable,
+            restaurantId: restaurant.id,
+            restaurantSlug: restaurant.slug,
+            session: null,
           },
         });
         return;
@@ -732,47 +689,7 @@ export async function checkTableStatusAndAccess(
     }
 
     // SCENARIO A: TABLE AVAILABLE
-    // Atomically create a new table session and assign this device as PRIMARY
-    const sessionCode = await generateUniqueSessionCode(restaurant.id);
-    const accessCode = generateRandomAccessCode();
-    const accessCodeHash = hashAccessCode(accessCode);
-
-    const newSession = await prisma.tableSession.create({
-      data: {
-        restaurantId: restaurant.id,
-        tableNumber: cleanTable,
-        sessionCode,
-        tableAccessCode: accessCode,
-        accessCodeHash,
-        primaryDeviceReference: deviceRef,
-        guestCount: guestCount ? Number(guestCount) : 1,
-        currentBatchNumber: 1,
-        status: 'ACTIVE',
-        paymentStatus: 'PENDING',
-        sessionManagementModeSnapshot: currentMode,
-        notes: guestName ? `Initiated by ${guestName}` : undefined,
-      },
-    });
-
-    await prisma.orderBatch.create({
-      data: {
-        sessionId: newSession.id,
-        restaurantId: restaurant.id,
-        batchNumber: 1,
-        status: 'OPEN',
-      },
-    });
-
-    if (deviceRef) {
-      await prisma.sessionDeviceAccess.create({
-        data: {
-          sessionId: newSession.id,
-          deviceReference: deviceRef,
-          role: 'PRIMARY',
-        },
-      });
-    }
-
+    // Table is free and available for dining. A table session row is created upon order submission.
     res.json({
       success: true,
       data: {
@@ -780,13 +697,11 @@ export async function checkTableStatusAndAccess(
         status: 'AVAILABLE',
         role: 'PRIMARY',
         isPrimary: true,
-        tableAccessCode: accessCode,
-        session: {
-          id: newSession.id,
-          sessionCode: newSession.sessionCode,
-          tableAccessCode: accessCode,
-          tableNumber: cleanTable,
-        },
+        isOccupied: false,
+        tableNumber: cleanTable,
+        restaurantId: restaurant.id,
+        restaurantSlug: restaurant.slug,
+        session: null,
       },
     });
   } catch (error) {

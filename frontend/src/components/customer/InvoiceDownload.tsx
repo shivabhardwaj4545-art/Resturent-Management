@@ -47,6 +47,11 @@ interface InvoiceDownloadProps {
 }
 
 export function InvoiceDownload({ order, themeColor = '#E85D04' }: InvoiceDownloadProps) {
+  // Strict guard: Bill download invoice is ONLY visible once payment is marked as PAID
+  if (order?.paymentStatus !== 'PAID') {
+    return null;
+  }
+
   const handleDownload = () => {
     const itemsRows = order.items
       .map(

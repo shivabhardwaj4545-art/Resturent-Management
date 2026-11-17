@@ -119,7 +119,7 @@ export function OwnerSubscriptionPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedDuration, setSelectedDuration] = useState<Record<string, number>>({});
   const [subscribingPlanId, setSubscribingPlanId] = useState<string | null>(null);
-  const [selectedPlatformFilter, setSelectedPlatformFilter] = useState<'ALL' | 'FREE' | 'PAID' | 'DUAL' | 'RESTAURANT' | 'HOTEL' | 'ENTERPRISE'>('ALL');
+  const [selectedPlatformFilter, setSelectedPlatformFilter] = useState<'ALL' | 'FREE' | 'PAID' | 'ENTERPRISE'>('ALL');
   const [showEnterpriseModal, setShowEnterpriseModal] = useState<Plan | null>(null);
   const [enterpriseConfig, setEnterpriseConfig] = useState<{
     platformType: 'RESTAURANT' | 'HOTEL' | 'DUAL';
@@ -130,9 +130,9 @@ export function OwnerSubscriptionPage() {
     customDomain: boolean;
     dedicatedManager: boolean;
   }>({
-    platformType: 'DUAL',
+    platformType: 'RESTAURANT',
     tables: 30,
-    rooms: 30,
+    rooms: 0,
     maxOrders: 10000,
     multiBranch: true,
     customDomain: true,
@@ -570,19 +570,18 @@ export function OwnerSubscriptionPage() {
                   Available Subscription Plans
                 </h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Select your preferred package. Dual plans unlock both dine-in tables and hotel room services.
+                  Select your preferred restaurant package to power dine-in ordering, waiter calls, and restaurant management tools.
                 </p>
               </div>
 
               {/* Platform category selector tabs */}
               <div className="flex items-center gap-1.5 flex-wrap">
                 {(() => {
-                  const freePlansCount = data?.plans?.filter((p) => p.price === 0).length || 0;
+                  const freePlansCount = data?.plans?.filter((p) => p.price === 0 && p.platformType !== 'HOTEL' && !p.name.toLowerCase().includes('hotel')).length || 0;
                   const tabs = [
                     { id: 'ALL', label: 'All Plans' },
-                    ...(freePlansCount > 0 ? [{ id: 'FREE', label: `🎁 Free Trial${freePlansCount > 1 ? `s (${freePlansCount})` : ''}` }] : []),
-                    { id: 'PAID', label: '💼 Paid Plans (3)' },
-                    { id: 'DUAL', label: '🌟 Dual Plan' },
+                    ...(freePlansCount > 0 ? [{ id: 'FREE', label: `🎁 Free Trial` }] : []),
+                    { id: 'PAID', label: '💼 Paid Plans' },
                     { id: 'ENTERPRISE', label: '🏢 Enterprise' },
                   ];
                   return tabs.map((cat) => (
@@ -613,14 +612,13 @@ export function OwnerSubscriptionPage() {
               <div className="grid md:grid-cols-3 gap-6 items-stretch">
                 {data?.plans
                   ?.filter((plan) => {
+                    // Completely exclude hotel plans
+                    if (plan.platformType === 'HOTEL' || plan.name.toLowerCase().includes('hotel')) return false;
                     const isFree = plan.price === 0;
                     const isEnt = plan.name.toLowerCase().includes('enterprise');
                     if (selectedPlatformFilter === 'FREE') return isFree;
                     if (selectedPlatformFilter === 'PAID') return !isFree && !isEnt;
-                    if (selectedPlatformFilter === 'DUAL') return plan.platformType === 'DUAL';
                     if (selectedPlatformFilter === 'ENTERPRISE') return isEnt;
-                    if (selectedPlatformFilter === 'RESTAURANT') return plan.platformType === 'RESTAURANT';
-                    if (selectedPlatformFilter === 'HOTEL') return plan.platformType === 'HOTEL';
                     return true;
                   })
                   ?.map((plan) => {
@@ -1041,53 +1039,19 @@ export function OwnerSubscriptionPage() {
                 {/* 1. Platform Type Selector */}
                 <div>
                   <label className="text-xs font-bold text-foreground block mb-2">
-                    1. Select Venue Type / Platform
+                    1. Venue Type
                   </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      {
-                        type: 'RESTAURANT',
-                        label: 'Restaurant',
-                        icon: '🍽️',
-                        desc: 'Tables capacity only',
-                        base: '₹2,499/mo',
-                      },
-                      {
-                        type: 'HOTEL',
-                        label: 'Hotel',
-                        icon: '🏨',
-                        desc: 'Rooms capacity only',
-                        base: '₹2,499/mo',
-                      },
-                      {
-                        type: 'DUAL',
-                        label: 'Dual Suite',
-                        icon: '🌟',
-                        desc: 'Both Tables + Rooms',
-                        base: '₹4,998/mo (2x)',
-                      },
-                    ].map((item) => {
-                      const isSelected = enterpriseConfig.platformType === item.type;
-                      return (
-                        <button
-                          key={item.type}
-                          type="button"
-                          onClick={() => setEnterpriseConfig({ ...enterpriseConfig, platformType: item.type as any })}
-                          className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                            isSelected
-                              ? 'bg-indigo-500/10 border-indigo-500 ring-2 ring-indigo-500/20 text-foreground shadow-sm'
-                              : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted/60'
-                          }`}
-                        >
-                          <div className="text-lg mb-1">{item.icon}</div>
-                          <div className="text-xs font-black text-foreground">{item.label}</div>
-                          <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">{item.desc}</div>
-                          <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mt-1">
-                            Base {item.base}
-                          </div>
-                        </button>
-                      );
-                    })}
+                  <div className="p-3.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">🍽️</span>
+                      <div>
+                        <div className="text-xs font-black text-foreground">Restaurant Plan</div>
+                        <div className="text-[10px] text-muted-foreground">Smart QR Dine-In Tables &amp; Waiter Calling</div>
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                      Base ₹2,499/mo
+                    </span>
                   </div>
                 </div>
 

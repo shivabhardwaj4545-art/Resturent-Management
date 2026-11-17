@@ -1916,6 +1916,7 @@ export async function getSessionBill(
 
       if (session) {
         let isAutoClosed = false;
+        let allOrders: Array<{ id: string; total: number; status: string }> = [];
         await prisma.$transaction(async (tx) => {
           // Mark all orders in session as PAID
           await tx.order.updateMany({
@@ -1943,7 +1944,7 @@ export async function getSessionBill(
           }
 
           // Update payment records
-          const allOrders = await tx.order.findMany({
+          allOrders = await tx.order.findMany({
             where: {
               OR: [
                 { tableSessionId: sessionId },
@@ -1995,6 +1996,22 @@ export async function getSessionBill(
           }
         });
 
+        // Notify customer devices of real-time payment confirmation
+        for (const ord of allOrders) {
+          try {
+            emitOrderStatusUpdate(ord.id, session.restaurantId, {
+              orderId: ord.id,
+              status: ord.status,
+              paymentStatus: 'PAID',
+              counterPaymentMethod: paymentMethod,
+              paymentConfirmedAt: now.toISOString(),
+              updatedAt: now.toISOString(),
+            });
+          } catch (e) {
+            /* ignore socket emission error */
+          }
+        }
+
         emitTableSessionUpdate(session.restaurantId, session.tableNumber, {
           sessionId: session.id,
           event: isAutoClosed ? 'SESSION_CLOSED' : 'PAYMENT_CONFIRMED',
@@ -2044,6 +2061,19 @@ export async function getSessionBill(
             data: { status: 'PAID' },
           });
         });
+
+        try {
+          emitOrderStatusUpdate(order.id, order.restaurantId, {
+            orderId: order.id,
+            status: order.status,
+            paymentStatus: 'PAID',
+            counterPaymentMethod: paymentMethod,
+            paymentConfirmedAt: now.toISOString(),
+            updatedAt: now.toISOString(),
+          });
+        } catch (e) {
+          /* ignore socket error */
+        }
 
         emitTableSessionUpdate(order.restaurantId, order.tableNumber || '', {
           sessionId: order.id,

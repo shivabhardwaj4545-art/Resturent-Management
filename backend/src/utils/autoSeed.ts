@@ -95,52 +95,28 @@ export async function ensureDatabaseSeeded(): Promise<void> {
   try {
     await syncDatabaseSchema();
 
-    // Ensure Default Subscription Plans: 3 Free plans, 3 Paid plans (Dual = 2x price), and 1 Customizable Enterprise plan
+    // Ensure Default Subscription Plans: Restaurant plans only
     const defaultPlans = [
-      // 1. FREE TIER (3 Plans: Restaurant, Hotel, Dual)
+      // 1. FREE TIER (Restaurant)
       {
         name: 'Free Trial (Restaurant)',
         price: 0,
         platformType: 'RESTAURANT',
         features: { qrCodes: 15, maxOrders: 500, maxMenuItems: 60, aiEnabled: true, analyticsEnabled: true, callWaiterEnabled: true, roomServiceEnabled: false, trialDays: 14 },
       },
-      {
-        name: 'Free Trial (Hotel)',
-        price: 0,
-        platformType: 'HOTEL',
-        features: { qrCodes: 20, maxOrders: 500, maxMenuItems: 60, aiEnabled: true, analyticsEnabled: true, callWaiterEnabled: false, roomServiceEnabled: true, trialDays: 14 },
-      },
-      {
-        name: 'Free Trial (Dual All-Access)',
-        price: 0,
-        platformType: 'DUAL',
-        features: { qrCodes: 35, maxOrders: 1000, maxMenuItems: 120, aiEnabled: true, analyticsEnabled: true, callWaiterEnabled: true, roomServiceEnabled: true, trialDays: 14 },
-      },
-      // 2. PAID TIER (3 Plans: Restaurant, Hotel, Dual = double Restaurant + Hotel)
+      // 2. PAID TIER (Restaurant)
       {
         name: 'Restaurant Pro',
         price: 1499,
         platformType: 'RESTAURANT',
         features: { qrCodes: 30, maxOrders: 3000, maxMenuItems: 250, aiEnabled: true, analyticsEnabled: true, callWaiterEnabled: true, roomServiceEnabled: false, customBranding: true },
       },
+      // 3. CUSTOMIZABLE ENTERPRISE PLAN (Restaurant)
       {
-        name: 'Hotel Luxury Suite',
-        price: 1499,
-        platformType: 'HOTEL',
-        features: { qrCodes: 40, maxOrders: 3000, maxMenuItems: 250, aiEnabled: true, analyticsEnabled: true, callWaiterEnabled: false, roomServiceEnabled: true, customBranding: true },
-      },
-      {
-        name: 'Dual All-Access (Restaurant + Hotel)',
-        price: 2998, // Exactly 1499 + 1499 (double restaurant + hotel)
-        platformType: 'DUAL',
-        features: { qrCodes: 80, maxOrders: 6000, maxMenuItems: 500, aiEnabled: true, analyticsEnabled: true, callWaiterEnabled: true, roomServiceEnabled: true, customBranding: true, prioritySupport: true },
-      },
-      // 3. CUSTOMIZABLE ENTERPRISE PLAN
-      {
-        name: 'Enterprise (Customizable)',
-        price: 5999,
-        platformType: 'DUAL',
-        features: { qrCodes: -1, maxOrders: -1, maxMenuItems: -1, aiEnabled: true, analyticsEnabled: true, callWaiterEnabled: true, roomServiceEnabled: true, customDomain: true, customBranding: true, multiBranch: true, dedicatedManager: true, prioritySupport: true, customIntegrations: true, isCustomizable: true },
+        name: 'Restaurant Enterprise',
+        price: 3999,
+        platformType: 'RESTAURANT',
+        features: { qrCodes: -1, maxOrders: -1, maxMenuItems: -1, aiEnabled: true, analyticsEnabled: true, callWaiterEnabled: true, roomServiceEnabled: false, customDomain: true, customBranding: true, multiBranch: true, dedicatedManager: true, prioritySupport: true, customIntegrations: true, isCustomizable: true },
       },
     ];
 
