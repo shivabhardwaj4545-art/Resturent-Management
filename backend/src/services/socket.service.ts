@@ -162,6 +162,11 @@ export function emitOrderStatusUpdate(orderId: string, restaurantId: string, dat
   io.to(`restaurant:${restaurantId}`).emit('order:status_updated', data);
   io.to(`restaurant:${restaurantId}`).emit('order_status_changed', data);
 
+  if (data.paymentStatus === 'PAID') {
+    io.to(`order:${orderId}`).emit('payment:confirmed', data);
+    io.to(`restaurant:${restaurantId}`).emit('payment:confirmed', data);
+  }
+
   if (data.status === 'CANCELLED') {
     io.to(`order:${orderId}`).emit('order_cancelled', data);
     io.to(`restaurant:${restaurantId}`).emit('order_cancelled', data);

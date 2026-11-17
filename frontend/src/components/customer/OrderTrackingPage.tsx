@@ -21,7 +21,7 @@ import {
   Bell,
 } from 'lucide-react';
 import { CustomerNotificationModal } from './CustomerNotificationModal';
-import { playNewOrderSound, processRealTimeEvent } from '@/utils/audio';
+import { playNewOrderSound, processRealTimeEvent, sendDesktopNotification } from '@/utils/audio';
 import { getImageUrl } from '@/lib/image';
 import { io, Socket } from 'socket.io-client';
 import api, { getSocketUrl } from '@/services/api';
@@ -312,7 +312,18 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
           }
 
           if (data.paymentStatus === 'PAID') {
-            toast.success('✅ Payment Confirmed by Restaurant!', { id: 'payment-confirmed-toast' });
+            toast.success('🎉 Payment Successful! Download bill below.', {
+              id: 'payment-confirmed-toast',
+              duration: 8000,
+              description: 'Your payment has been received and verified. You can now download your tax invoice.',
+            });
+            try {
+              sendDesktopNotification('🎉 Payment Successful!', {
+                body: 'Payment confirmed by restaurant. Download your bill below.',
+              });
+            } catch {
+              /* ignore notification error */
+            }
           } else if (data.paymentStatus === 'FAILED') {
             toast.error('⚠️ Payment Not Confirmed by Restaurant.', { id: 'payment-failed-toast' });
           }
@@ -352,6 +363,28 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
       if (data.orderId === orderId) {
         processRealTimeEvent('driver_assigned', () => {
           toast.info(`🚗 Driver Assigned to your order!`, { duration: 7000 });
+          qc.invalidateQueries({ queryKey: ['order', orderId] });
+        });
+      }
+    });
+
+    // Listen for direct payment confirmed notification
+    socket.on('payment:confirmed', (data: any) => {
+      if (data?.orderId === orderId || !data?.orderId) {
+        processRealTimeEvent('order_status_changed', () => {
+          setCurrentPaymentStatus('PAID');
+          toast.success('🎉 Payment Successful! Download bill below.', {
+            id: 'payment-confirmed-toast',
+            duration: 8000,
+            description: 'Your payment has been received and verified. You can now download your tax invoice.',
+          });
+          try {
+            sendDesktopNotification('🎉 Payment Successful!', {
+              body: 'Payment confirmed by restaurant. Download your bill below.',
+            });
+          } catch {
+            /* ignore notification error */
+          }
           qc.invalidateQueries({ queryKey: ['order', orderId] });
         });
       }
@@ -553,11 +586,12 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
 
             {isPaymentConfirmed ? (
               <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-700 dark:text-emerald-400 leading-relaxed space-y-1 text-center">
-                <p className="font-semibold text-emerald-800 dark:text-emerald-300">
-                  🎉 Payment Confirmed by Restaurant Counter!
+                <p className="font-extrabold text-sm text-emerald-800 dark:text-emerald-300 flex items-center justify-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Payment Successful!</span>
                 </p>
                 <p className="text-[11px]">
-                  Thank you! Your payment has been received and verified. Your bill invoice is now available for download below.
+                  Thank you! Your payment has been received and verified. Download bill below.
                 </p>
               </div>
             ) : (
@@ -1051,7 +1085,15 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
               </button>
             </div>
             {isPaymentConfirmed && (
-              <InvoiceDownload order={{ ...order, paymentStatus: currentPaymentStatus || order.paymentStatus }} themeColor={themeColor} />
+              <div className="space-y-2 pt-1">
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/25 rounded-2xl flex items-center justify-between text-xs text-emerald-800 dark:text-emerald-300">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="font-bold">Payment Successful! Download your bill below:</span>
+                  </div>
+                </div>
+                <InvoiceDownload order={{ ...order, paymentStatus: currentPaymentStatus || order.paymentStatus }} themeColor={themeColor} />
+              </div>
             )}
           </div>
         </div>
