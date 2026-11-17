@@ -201,9 +201,9 @@ async function resolveOrCreateTableSession(
         });
       }
 
-      // Identify active ongoing order for this dining session if one exists
+      // Identify active ongoing order for this dining session if one exists (must be un-settled and not delivered)
       const existingActiveOrder = session.orders.find(
-        (o) => o.status !== 'CANCELLED'
+        (o) => o.status !== 'CANCELLED' && o.status !== 'DELIVERED' && o.paymentStatus !== 'PAID'
       );
 
       return {
@@ -1489,6 +1489,27 @@ async function resolveOrCreateTableSession(
 
       if (!order) {
         throw new AppError('Order not found.', 404, 'ORDER_NOT_FOUND');
+      }
+
+      if (order.paymentStatus === 'PAID' || order.status === 'DELIVERED' || order.status === 'CANCELLED') {
+        throw new AppError(
+          'Cannot add items to an order that is already paid, served, or cancelled. Please place a fresh order.',
+          400,
+          'ORDER_ALREADY_SETTLED'
+        );
+      }
+
+      const { tableNumber: reqTable } = req.body as { tableNumber?: string };
+      if (reqTable) {
+        const cleanReqTable = normalizeTableNumber(reqTable);
+        const cleanOrderTable = normalizeTableNumber(order.tableNumber || '');
+        if (cleanReqTable.toLowerCase() !== cleanOrderTable.toLowerCase()) {
+          throw new AppError(
+            `Table mismatch: cannot add items for ${cleanReqTable} to an order on ${cleanOrderTable}. Please place a new order for ${cleanReqTable}.`,
+            400,
+            'TABLE_MISMATCH'
+          );
+        }
       }
 
       // Retrieve menuItem details to calculate prices

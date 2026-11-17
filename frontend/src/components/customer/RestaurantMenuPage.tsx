@@ -467,6 +467,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
     }
   }, []);
 
+  // Sync addon order ID with active session; clear stale IDs when no active order for the current table
   useEffect(() => {
     if (tableAccessData?.data?.activeOrderId) {
       const actId = tableAccessData.data.activeOrderId;
@@ -478,6 +479,16 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
         sessionStorage.setItem('qr_restaurant_addon_order_num', actNum);
         localStorage.setItem(`active_table_order_id_${slug}`, actId);
         localStorage.setItem('active_table_order_id', actId);
+      }
+    } else {
+      // No active order for this table – clear any stale addon IDs to avoid cross‑table add‑ons
+      setAddonOrderId(null);
+      setAddonOrderNum(null);
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('qr_restaurant_addon_order_id');
+        sessionStorage.removeItem('qr_restaurant_addon_order_num');
+        localStorage.removeItem(`active_table_order_id_${slug}`);
+        localStorage.removeItem('active_table_order_id');
       }
     }
   }, [tableAccessData?.data?.activeOrderId, tableAccessData?.data?.activeOrder, slug]);
