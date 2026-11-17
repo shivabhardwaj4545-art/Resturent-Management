@@ -49,6 +49,7 @@ enum PaymentMethod {
 enum PaymentStatus {
   PENDING
   PAID
+  PARTIALLY_PAID
   FAILED
   REFUNDED
 }
@@ -199,6 +200,7 @@ model Restaurant {
   disabledTabs      Json?
   platformType      String   @default("RESTAURANT") // RESTAURANT, HOTEL, DUAL
   maxLogins         Int      @default(1)
+  sessionManagementMode String @default("MANUAL") // AUTO, MANUAL
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -211,6 +213,7 @@ model Restaurant {
   menuItems      MenuItem[]
   orders         Order[]
   tableSessions  TableSession[]
+  tableClearanceLogs TableClearanceLog[]
   orderBatches   OrderBatch[]
   coupons        Coupon[]
   notifications  Notification[]
@@ -471,30 +474,57 @@ model OrderItem {
 }
 
 model TableSession {
-  id                 String        @id @default(cuid())
-  restaurantId       String
-  tableNumber        String
-  sessionCode        String        // 4-digit verification code, e.g. "4827"
-  guestCount         Int           @default(1)
-  currentBatchNumber Int           @default(1)
-  status             SessionStatus @default(ACTIVE)
-  notes              String?
-  closedBy           String?
-  completedAt        DateTime?
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  id                            String        @id @default(cuid())
+  restaurantId                  String
+  tableNumber                   String
+  sessionCode                   String        // 4-digit verification code, e.g. "4827"
+  guestCount                    Int           @default(1)
+  currentBatchNumber            Int           @default(1)
+  status                        SessionStatus @default(ACTIVE)
+  paymentStatus                 PaymentStatus @default(PENDING)
+  totalAmount                   Float         @default(0)
+  paidAmount                    Float         @default(0)
+  notes                         String?
+  closedBy                      String?
+  closureReason                 String?
+  sessionManagementModeSnapshot String        @default("MANUAL") // AUTO, MANUAL
+  completedAt                   DateTime?
+  closedAt                      DateTime?
+  createdAt                     DateTime      @default(now())
+  updatedAt                     DateTime      @updatedAt
 
   // Relations
-  restaurant         Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  batches            OrderBatch[]
-  orders             Order[]
+  restaurant                    Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  batches                       OrderBatch[]
+  orders                        Order[]
+  clearanceLogs                 TableClearanceLog[]
 
   @@index([restaurantId])
   @@index([restaurantId, tableNumber])
   @@index([restaurantId, sessionCode])
   @@index([restaurantId, status])
   @@index([status])
+  @@index([paymentStatus])
   @@map("table_sessions")
+}
+
+model TableClearanceLog {
+  id           String       @id @default(cuid())
+  restaurantId String
+  tableNumber  String
+  sessionId    String
+  staffId      String
+  staffName    String?
+  action       String       @default("CLEAR_TABLE")
+  reason       String?
+  clearedAt    DateTime     @default(now())
+
+  session      TableSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  restaurant   Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+  @@index([sessionId])
+  @@map("table_clearance_logs")
 }
 
 model OrderBatch {

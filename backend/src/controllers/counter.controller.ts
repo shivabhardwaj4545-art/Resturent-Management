@@ -226,6 +226,7 @@ export async function confirmCounterPayment(
     const pointsEarned = loyaltyEnabled ? Math.floor(Number(order.total) / pointsPerSpendRupees) : 0;
 
     const now = new Date();
+    let sessionClosedAuto = false;
 
     // Atomic database update
     await prisma.$transaction(async (tx) => {
@@ -240,8 +241,9 @@ export async function confirmCounterPayment(
         },
       });
 
-      // If part of a Table Session, also mark sibling orders for this table session as PAID
+      // If part of a Table Session, handle Dual Mode Session Resolution
       if (order.tableSessionId) {
+        // Mark all sibling non-cancelled orders of this session as PAID
         await tx.order.updateMany({
           where: {
             tableSessionId: order.tableSessionId,
@@ -254,6 +256,69 @@ export async function confirmCounterPayment(
             counterPaymentMethod: instrument,
           },
         });
+
+        // Retrieve current table session and evaluate all orders
+        const tableSession = await tx.tableSession.findUnique({
+          where: { id: order.tableSessionId },
+          include: {
+            orders: {
+              where: { deletedAt: null, status: { not: 'CANCELLED' } },
+            },
+            restaurant: {
+              select: { id: true, sessionManagementMode: true },
+            },
+          },
+        });
+
+        if (tableSession && tableSession.status === 'ACTIVE') {
+          const sessionOrders = tableSession.orders;
+          const unpaidCount = sessionOrders.filter((o) => o.id !== order.id && o.paymentStatus !== 'PAID').length;
+          const totalAmt = sessionOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+
+          const sessionMode = tableSession.sessionManagementModeSnapshot || tableSession.restaurant?.sessionManagementMode || 'MANUAL';
+
+          if (unpaidCount === 0) {
+            // ALL orders for this session are settled
+            if (sessionMode === 'AUTO') {
+              // MODE A: AUTO SESSION RESET
+              // Automatically close session and release table
+              await tx.tableSession.update({
+                where: { id: tableSession.id },
+                data: {
+                  status: 'COMPLETED',
+                  completedAt: now,
+                  closedAt: now,
+                  closedBy: req.user!.id,
+                  closureReason: 'Auto Session Reset: All orders settled',
+                  paymentStatus: 'PAID',
+                  totalAmount: totalAmt,
+                  paidAmount: totalAmt,
+                },
+              });
+              sessionClosedAuto = true;
+            } else {
+              // MODE B: MANUAL TABLE CLEARANCE
+              // Payment is PAID, but table remains ACTIVE and LOCKED until staff clears it
+              await tx.tableSession.update({
+                where: { id: tableSession.id },
+                data: {
+                  paymentStatus: 'PAID',
+                  totalAmount: totalAmt,
+                  paidAmount: totalAmt,
+                },
+              });
+            }
+          } else {
+            // Partial payment: some orders remain unpaid
+            await tx.tableSession.update({
+              where: { id: tableSession.id },
+              data: {
+                paymentStatus: 'PARTIALLY_PAID',
+                totalAmount: totalAmt,
+              },
+            });
+          }
+        }
       }
 
       // 2. Update Payment records
@@ -321,14 +386,18 @@ export async function confirmCounterPayment(
       updatedAt: now.toISOString(),
     });
 
-    // Also emit TableSession real-time update so Table Sessions page shows PAID immediately
+    // Also emit TableSession real-time update so Table Sessions & Clearance pages reflect live status
     if (order.tableSessionId && order.tableNumber) {
       emitTableSessionUpdate(restaurant.id, order.tableNumber, {
         sessionId: order.tableSessionId,
         orderId: order.id,
         paymentStatus: 'PAID',
         counterPaymentMethod: instrument,
-        event: 'PAYMENT_CONFIRMED',
+        status: sessionClosedAuto ? 'AVAILABLE' : 'PAID_AWAITING_CLEARANCE',
+        event: sessionClosedAuto ? 'SESSION_CLOSED' : 'PAYMENT_CONFIRMED',
+        message: sessionClosedAuto
+          ? `Table ${order.tableNumber} session closed automatically and is now available.`
+          : `Payment confirmed for ${order.tableNumber}. Table is awaiting staff clearance.`,
       });
     }
 

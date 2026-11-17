@@ -43,6 +43,13 @@ async function resolveOrCreateTableSession(
 
   const cleanTable = normalizeTableNumber(rawTableNumber);
 
+  // Check restaurant session management mode
+  const restConfig = await prisma.restaurant.findUnique({
+    where: { id: restaurantId },
+    select: { sessionManagementMode: true },
+  });
+  const restaurantMode = restConfig?.sessionManagementMode || 'MANUAL';
+
   // Check for an active table session
   let session = await prisma.tableSession.findFirst({
     where: {
@@ -55,8 +62,43 @@ async function resolveOrCreateTableSession(
         orderBy: { batchNumber: 'desc' },
         take: 1,
       },
+      orders: {
+        where: { deletedAt: null },
+      },
     },
   });
+
+  if (session) {
+    const sessionMode = session.sessionManagementModeSnapshot || restaurantMode;
+    const nonCancelledOrders = session.orders.filter((o) => o.status !== 'CANCELLED');
+    const isAllPaid = nonCancelledOrders.length > 0 && nonCancelledOrders.every((o) => o.paymentStatus === 'PAID');
+
+    // If session is PAID in MANUAL mode, lock the table until cleared by staff
+    if (sessionMode === 'MANUAL' && (session.paymentStatus === 'PAID' || isAllPaid)) {
+      throw new AppError(
+        'This table has completed payment and is awaiting staff clearance. No new orders can be placed. Please contact restaurant staff.',
+        403,
+        'TABLE_LOCKED'
+      );
+    }
+
+    // If session was all paid in AUTO mode, auto-close the previous session and let a new session be created below
+    if (sessionMode === 'AUTO' && (session.paymentStatus === 'PAID' || isAllPaid)) {
+      const now = new Date();
+      await prisma.tableSession.update({
+        where: { id: session.id },
+        data: {
+          status: 'COMPLETED',
+          completedAt: now,
+          closedAt: now,
+          closedBy: 'AUTO_SESSION_RESET',
+          closureReason: 'Auto Session Reset: All orders settled before new order placement',
+          paymentStatus: 'PAID',
+        },
+      });
+      session = null;
+    }
+  }
 
   if (session) {
     const currentBatch = session.batches[0];
@@ -154,6 +196,10 @@ async function resolveOrCreateTableSession(
         guestCount: 1,
         currentBatchNumber: 1,
         status: 'ACTIVE',
+        paymentStatus: 'PENDING',
+        totalAmount: orderTotal || 0,
+        paidAmount: 0,
+        sessionManagementModeSnapshot: restaurantMode,
         notes: guestName ? `Initiated by ${guestName}` : undefined,
       },
     });

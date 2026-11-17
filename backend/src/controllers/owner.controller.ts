@@ -375,7 +375,7 @@ export async function updateRestaurant(req: AuthenticatedRequest, res: Response,
       'themeColor', 'menuTemplate', 'customFields', 'paymentEnabled',
       'upiEnabled', 'merchantName', 'paymentProvider', 'paymentQrCode',
       'paymentUpiId', 'paymentPhone', 'bankName', 'bankAccountNumber',
-      'bankIfsc', 'bankAccountHolder', 'qrSettings',
+      'bankIfsc', 'bankAccountHolder', 'qrSettings', 'sessionManagementMode',
     ];
 
     const body: Record<string, any> = {};

@@ -7,7 +7,7 @@ import {
   Settings, UtensilsCrossed, LayoutDashboard, ShoppingBag, Tag, BarChart3, LogOut,
   Menu, Save, Globe, Phone, MapPin, Clock, Palette, QrCode, Download, CreditCard, Banknote, Building2, Smartphone, Star, Printer,
   Upload, Trash2, CheckCircle2, Sparkles, RefreshCw, FileImage, Info, Bed, Power, Ban, Plus, Check, CheckCheck, Lock, X, Loader2,
-  ShieldCheck, FileText
+  ShieldCheck, FileText, SlidersHorizontal, Users
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/services/api';
@@ -79,6 +79,7 @@ type Restaurant = {
   bankIfsc: string | null;
   bankAccountHolder: string | null;
   qrSettings?: { enabled?: boolean; disabledLocations?: string[]; customLocations?: string[]; deletedLocations?: string[] } | null;
+  sessionManagementMode?: 'AUTO' | 'MANUAL';
 };
 
 export function OwnerSettingsPage() {
@@ -110,6 +111,29 @@ export function OwnerSettingsPage() {
     disabledLocations: [],
     customLocations: [],
     deletedLocations: [],
+  });
+
+  const [confirmModeModal, setConfirmModeModal] = useState<'AUTO' | 'MANUAL' | null>(null);
+
+  const modeMutation = useMutation({
+    mutationFn: async (targetMode: 'AUTO' | 'MANUAL') => {
+      const res = await api.patch('/owner/table-management/session-mode', { mode: targetMode });
+      return res.data;
+    },
+    onSuccess: (resData, targetMode) => {
+      toast.success(
+        resData.message ||
+          `Session management mode updated to ${targetMode === 'AUTO' ? 'Auto Session Reset' : 'Manual Table Clearance'}!`
+      );
+      setForm((prev) => ({ ...prev, sessionManagementMode: targetMode }));
+      setConfirmModeModal(null);
+      qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
+      qc.invalidateQueries({ queryKey: ['table-clearance-overview'] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || err.message || 'Failed to update session management mode.');
+      setConfirmModeModal(null);
+    },
   });
 
   const handleAddCustomLocation = () => {
@@ -520,6 +544,7 @@ export function OwnerSettingsPage() {
         ...data,
         paymentEnabled: data.paymentEnabled ?? true,
         upiEnabled: data.paymentUpiId ? true : (data.upiEnabled ?? true),
+        sessionManagementMode: data.sessionManagementMode || 'MANUAL',
       });
       if (data.operatingHours) {
         setOperatingHours(data.operatingHours);
@@ -1382,6 +1407,172 @@ export function OwnerSettingsPage() {
               </motion.div>
               ========================================================================= */}
 
+              {/* Table Management → Session Management Mode */}
+              {data && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-card border border-border rounded-2xl p-6 space-y-6"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-border gap-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Users className="w-5 h-5 text-primary" />
+                        <h2 className="font-display font-semibold text-lg text-foreground">
+                          Table Management — Session Management Mode
+                        </h2>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Choose how dining table sessions and QR code availability are cleared upon bill settlement.
+                      </p>
+                    </div>
+                    <Link
+                      href="/owner/table-clearance"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-xs font-bold hover:bg-amber-500/20 transition-all self-start sm:self-auto"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Open Table Clearance
+                    </Link>
+                  </div>
+
+                  {/* Mode Selection Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* CARD A: Auto Session Reset */}
+                    <div
+                      onClick={() => {
+                        const current = form.sessionManagementMode || 'MANUAL';
+                        if (current !== 'AUTO') {
+                          setConfirmModeModal('AUTO');
+                        } else {
+                          toast.info('Auto Session Reset is already active.');
+                        }
+                      }}
+                      className={`relative p-5 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                        (form.sessionManagementMode || 'MANUAL') === 'AUTO'
+                          ? 'border-emerald-500 bg-emerald-500/5 shadow-md ring-1 ring-emerald-500/20'
+                          : 'border-border bg-card hover:border-border/80 hover:bg-muted/30'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+                            <RefreshCw className="w-5 h-5" />
+                          </div>
+                          {(form.sessionManagementMode || 'MANUAL') === 'AUTO' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-extrabold bg-emerald-500 text-white shadow-sm">
+                              <Check className="w-3.5 h-3.5" /> Active Mode
+                            </span>
+                          ) : (
+                            <span className="text-xs font-semibold text-muted-foreground bg-muted px-2.5 py-1 rounded-full">
+                              Select
+                            </span>
+                          )}
+                        </div>
+
+                        <h3 className="font-display font-bold text-base text-foreground mb-1.5">
+                          Auto Session Reset
+                        </h3>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          Automatically release tables after all associated orders have been successfully paid.
+                        </p>
+
+                        <div className="mt-4 space-y-1.5 text-[11px] text-muted-foreground border-t border-border/50 pt-3">
+                          <div className="flex items-center gap-1.5 text-foreground/80">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            <span>Instant table release upon billing counter confirmation</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-foreground/80">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            <span>Next QR scan immediately creates a fresh session</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-foreground/80">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            <span>Ideal for cafes, QSRs &amp; fast table turnover</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-border/40 flex items-center justify-between text-xs">
+                        <span className="font-semibold text-muted-foreground">Mode A</span>
+                        <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                          {(form.sessionManagementMode || 'MANUAL') === 'AUTO' ? 'Currently Selected' : 'Click to Switch'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* CARD B: Manual Table Clearance */}
+                    <div
+                      onClick={() => {
+                        const current = form.sessionManagementMode || 'MANUAL';
+                        if (current !== 'MANUAL') {
+                          setConfirmModeModal('MANUAL');
+                        } else {
+                          toast.info('Manual Table Clearance is already active.');
+                        }
+                      }}
+                      className={`relative p-5 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                        (form.sessionManagementMode || 'MANUAL') === 'MANUAL'
+                          ? 'border-primary bg-primary/5 shadow-md ring-1 ring-primary/20'
+                          : 'border-border bg-card hover:border-border/80 hover:bg-muted/30'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                            <Sparkles className="w-5 h-5" />
+                          </div>
+                          {(form.sessionManagementMode || 'MANUAL') === 'MANUAL' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-extrabold bg-primary text-primary-foreground shadow-sm">
+                              <Check className="w-3.5 h-3.5" /> Active Mode
+                            </span>
+                          ) : (
+                            <span className="text-xs font-semibold text-muted-foreground bg-muted px-2.5 py-1 rounded-full">
+                              Select
+                            </span>
+                          )}
+                        </div>
+
+                        <h3 className="font-display font-bold text-base text-foreground mb-1.5">
+                          Manual Table Clearance
+                        </h3>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          Manage payments and table availability separately. Clear tables manually during busy restaurant hours.
+                        </p>
+
+                        <div className="mt-4 space-y-1.5 text-[11px] text-muted-foreground border-t border-border/50 pt-3">
+                          <div className="flex items-center gap-1.5 text-foreground/80">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-primary shrink-0" />
+                            <span>Payment leaves table locked until staff clearance</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-foreground/80">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-primary shrink-0" />
+                            <span>Dedicated Table Clearance Dashboard for staff</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-foreground/80">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-primary shrink-0" />
+                            <span>Prevents walk-in ordering at occupied / uncleared tables</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-border/40 flex items-center justify-between text-xs">
+                        <span className="font-semibold text-muted-foreground">Mode B (Recommended Default)</span>
+                        <span className="font-bold text-primary">
+                          {(form.sessionManagementMode || 'MANUAL') === 'MANUAL' ? 'Currently Selected' : 'Click to Switch'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-muted/40 border border-border text-xs text-muted-foreground flex items-start gap-2">
+                    <Info className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                    <span>
+                      <strong>Mode Switching Policy:</strong> Switching modes never resets or affects existing active dining sessions. New sessions created after switching will adhere to the chosen policy.
+                    </span>
+                  </div>
+                </motion.div>
+              )}
+
               {/* QR Code Builder & Room Service Generator */}
               {data && (
                 <motion.div
@@ -2234,6 +2425,78 @@ export function OwnerSettingsPage() {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+        {/* Confirmation Modal: Switch Session Mode */}
+        {confirmModeModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-card border border-border rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4"
+            >
+              <div className="flex items-center justify-between pb-2 border-b border-border">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                    <SlidersHorizontal className="w-5 h-5" />
+                  </div>
+                  <h3 className="font-display font-bold text-lg text-foreground">
+                    Switch Session Mode?
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setConfirmModeModal(null)}
+                  className="p-1 rounded-lg text-muted-foreground hover:bg-muted"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-sm">
+                <p className="text-muted-foreground leading-relaxed">
+                  Are you sure you want to switch your restaurant to{' '}
+                  <strong className="text-foreground">
+                    {confirmModeModal === 'AUTO' ? 'Auto Session Reset' : 'Manual Table Clearance'}
+                  </strong>
+                  ?
+                </p>
+
+                <div className="p-3.5 rounded-2xl bg-muted/40 border border-border text-xs text-muted-foreground space-y-1.5">
+                  <p>
+                    {confirmModeModal === 'AUTO'
+                      ? 'In Auto Session Reset mode, tables will automatically clear and release for new customer QR scans as soon as counter payment is confirmed.'
+                      : 'In Manual Table Clearance mode, payment completion leaves the table locked until staff explicitly clicks "Clear Table" in the Table Clearance dashboard.'}
+                  </p>
+                  <p className="font-semibold text-foreground pt-1">
+                    ✓ Existing active sessions will retain their current lifecycle.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmModeModal(null)}
+                  className="px-4 py-2.5 rounded-xl border border-border text-xs font-semibold hover:bg-muted transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => modeMutation.mutate(confirmModeModal)}
+                  disabled={modeMutation.isPending}
+                  className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold shadow-md hover:bg-primary/90 transition-all flex items-center gap-1.5"
+                >
+                  {modeMutation.isPending ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Check className="w-4 h-4" />
+                  )}
+                  Confirm Switch
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

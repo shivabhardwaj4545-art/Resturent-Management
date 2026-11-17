@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import api, { getSocketUrl } from '@/services/api';
 import { toast } from 'sonner';
 import { io } from 'socket.io-client';
@@ -350,6 +351,14 @@ export default function OwnerTableSessionsPage() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <Link
+              href="/owner/table-clearance"
+              className="px-3 py-2 bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 shrink-0"
+              title="Open Table Clearance Dashboard"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Table Clearance</span>
+            </Link>
             <WaiterBell />
             <button
               onClick={() => setNewSessionModal(true)}

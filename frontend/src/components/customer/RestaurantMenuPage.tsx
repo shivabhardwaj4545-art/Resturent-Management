@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
-import { Search, Filter, ShoppingCart, Clock, MapPin, Star, Bot, X, ChevronUp, QrCode, ChevronRight, BellRing, Gift, Ban, Bed, Sparkles, Utensils, Shirt, Bath, Luggage, Wrench, MessageSquare, CheckCircle2, ChevronDown, Lock } from 'lucide-react';
+import { Search, Filter, ShoppingCart, Clock, MapPin, Star, Bot, X, ChevronUp, QrCode, ChevronRight, BellRing, Gift, Ban, Bed, Sparkles, Utensils, Shirt, Bath, Luggage, Wrench, MessageSquare, CheckCircle2, ChevronDown, Lock, RefreshCw, Phone } from 'lucide-react';
 import api, { getSocketUrl } from '@/services/api';
 import { useCartStore } from '@/store/cart.store';
 import { useAuthStore } from '@/store/auth.store';
@@ -108,9 +108,45 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
   const [manualTableNumber, setManualTableNumber] = useState('');
   const [waiterComingTimer, setWaiterComingTimer] = useState(0);
   const [waiterPendingTimer, setWaiterPendingTimer] = useState(0);
+  const [tableLockedState, setTableLockedState] = useState<{
+    locked: boolean;
+    reason?: string;
+    message?: string;
+    tableNumber?: string;
+  } | null>(null);
   const waiterComingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const waiterTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const socketRef = useRef<any>(null);
+
+  const effectiveTableForCheck = tableNumber || manualTableNumber || (typeof window !== 'undefined' ? localStorage.getItem(`table_num_${slug}`) : null);
+
+  const { data: tableAccessData, refetch: refetchTableAccess } = useQuery({
+    queryKey: ['table-session-check-access', slug, effectiveTableForCheck],
+    queryFn: async () => {
+      if (!effectiveTableForCheck || !slug) return null;
+      try {
+        const res = await api.post('/table-sessions/check-access', {
+          restaurantSlug: slug,
+          tableNumber: effectiveTableForCheck,
+        });
+        setTableLockedState(null);
+        return res.data;
+      } catch (err: any) {
+        if (err.response?.data?.code === 'TABLE_CURRENTLY_OCCUPIED') {
+          setTableLockedState({
+            locked: true,
+            reason: 'TABLE_CURRENTLY_OCCUPIED',
+            message: err.response.data.message || 'This table is currently unavailable for new orders. Please contact restaurant staff.',
+            tableNumber: effectiveTableForCheck,
+          });
+        }
+        return null;
+      }
+    },
+    enabled: !!effectiveTableForCheck && !!slug,
+    retry: false,
+    refetchInterval: 8000,
+  });
 
   const clearWaiterTimers = useCallback(() => {
     if (waiterTimerRef.current) {
@@ -996,6 +1032,55 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
             display: none !important;
           }
         `}</style>
+      )}
+
+      {/* Occupied Table Access Control Screen */}
+      {tableLockedState?.locked && !isPreview && (
+        <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-md flex flex-col items-center justify-center p-4 sm:p-6 text-center">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="max-w-md w-full bg-card border border-destructive/30 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-5"
+          >
+            <div className="w-16 h-16 rounded-2xl bg-destructive/10 text-destructive mx-auto flex items-center justify-center border border-destructive/20 shadow-inner">
+              <Lock className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider px-3 py-1 rounded-full bg-destructive/15 text-destructive border border-destructive/25 inline-block">
+                {tableLockedState.tableNumber || 'Table'}
+              </span>
+              <h2 className="text-xl sm:text-2xl font-display font-black text-foreground">
+                TABLE CURRENTLY OCCUPIED
+              </h2>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                This table is currently unavailable for new orders.
+              </p>
+              <p className="text-xs font-semibold text-foreground/80">
+                Please contact restaurant staff.
+              </p>
+            </div>
+
+            <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
+              <button
+                type="button"
+                onClick={() => refetchTableAccess()}
+                className="flex-1 py-3 px-4 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-all flex items-center justify-center gap-2 shadow-md active:scale-95"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Refresh Status
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCallWaiter('General Inquiry')}
+                className="py-3 px-4 rounded-xl border border-border text-foreground hover:bg-muted text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+              >
+                <Phone className="w-4 h-4 text-muted-foreground" />
+                Call Waiter
+              </button>
+            </div>
+          </motion.div>
+        </div>
       )}
       {isLocationDisabled && !isPreview && (
         <div className="bg-red-600 text-white px-4 py-2.5 text-center text-xs sm:text-sm font-bold shadow-lg flex items-center justify-center gap-2 relative z-40 border-b border-red-700">

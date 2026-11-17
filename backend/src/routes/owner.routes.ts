@@ -69,6 +69,12 @@ import {
   getCounterPendingOrders,
 } from '../controllers/counter.controller';
 import { counterLookupLimiter } from '../middlewares/rateLimiter.middleware';
+import {
+  getSessionManagementMode,
+  updateSessionManagementMode,
+  getTableClearanceDashboard,
+  clearTableManual,
+} from '../controllers/tableClearance.controller';
 
 const router = Router();
 
@@ -93,6 +99,12 @@ router.post('/restaurant/payment-qr', upload.single('paymentQr'), uploadPaymentQ
 router.get('/restaurant/sign-table', signTable);
 router.get('/upi-account', getOwnerUpiAccount);
 router.post('/upi-account', registerOwnerUpiAccount);
+
+// Table Session Mode & Table Clearance Dashboard (Dual Mode Table Session Management)
+router.get('/table-management/session-mode', getSessionManagementMode);
+router.patch('/table-management/session-mode', updateSessionManagementMode);
+router.get('/table-clearance', getTableClearanceDashboard);
+router.post('/table-clearance/clear', clearTableManual);
 
 // Restaurant payment account multi-stage verification & onboarding
 router.get('/payment-account/stages', getPaymentAccountStages);

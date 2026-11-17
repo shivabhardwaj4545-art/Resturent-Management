@@ -73,6 +73,11 @@ export const restaurantProfileSchema = z.object({
   bankIfsc: z.string().optional().nullable(),
   bankAccountHolder: z.string().optional().nullable(),
   qrSettings: z.any().optional().nullable(),
+  sessionManagementMode: z.enum(['AUTO', 'MANUAL']).optional(),
+});
+
+export const sessionModeSchema = z.object({
+  mode: z.enum(['AUTO', 'MANUAL']),
 });
 
 export const restaurantToggleSchema = z.object({

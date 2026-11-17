@@ -1901,6 +1901,7 @@ export async function getSessionBill(
       });
 
       if (session) {
+        let isAutoClosed = false;
         await prisma.$transaction(async (tx) => {
           // Mark all orders in session as PAID
           await tx.order.updateMany({
@@ -1935,7 +1936,7 @@ export async function getSessionBill(
                 { id: { in: batchOrderIds } },
               ],
             },
-            select: { id: true },
+            select: { id: true, total: true, status: true },
           });
 
           const orderIds = allOrders.map((o) => o.id);
@@ -1945,19 +1946,63 @@ export async function getSessionBill(
               data: { status: 'PAID' },
             });
           }
+
+          const nonCancelled = allOrders.filter((o) => o.status !== 'CANCELLED');
+          const totalAmt = nonCancelled.reduce((sum, o) => sum + (o.total || 0), 0);
+
+          const sessionMode = session.sessionManagementModeSnapshot || session.restaurant?.sessionManagementMode || 'MANUAL';
+
+          if (sessionMode === 'AUTO') {
+            // MODE A: AUTO SESSION RESET
+            await tx.tableSession.update({
+              where: { id: sessionId },
+              data: {
+                status: 'COMPLETED',
+                completedAt: now,
+                closedAt: now,
+                closedBy: req.user?.id || 'Staff',
+                closureReason: 'Auto Session Reset: All orders marked as paid',
+                paymentStatus: 'PAID',
+                totalAmount: totalAmt,
+                paidAmount: totalAmt,
+              },
+            });
+            isAutoClosed = true;
+          } else {
+            // MODE B: MANUAL TABLE CLEARANCE
+            await tx.tableSession.update({
+              where: { id: sessionId },
+              data: {
+                paymentStatus: 'PAID',
+                totalAmount: totalAmt,
+                paidAmount: totalAmt,
+              },
+            });
+          }
         });
 
         emitTableSessionUpdate(session.restaurantId, session.tableNumber, {
           sessionId: session.id,
-          event: 'PAYMENT_CONFIRMED',
+          event: isAutoClosed ? 'SESSION_CLOSED' : 'PAYMENT_CONFIRMED',
+          status: isAutoClosed ? 'AVAILABLE' : 'PAID_AWAITING_CLEARANCE',
           paymentStatus: 'PAID',
           paymentMethod,
-          message: `Payment confirmed for ${session.tableNumber}.`,
+          message: isAutoClosed
+            ? `Payment confirmed and table ${session.tableNumber} released automatically.`
+            : `Payment confirmed for ${session.tableNumber}. Awaiting staff clearance.`,
         });
 
         res.json({
           success: true,
-          message: `Payment confirmed for ${session.tableNumber}.`,
+          data: {
+            sessionId: session.id,
+            tableNumber: session.tableNumber,
+            status: isAutoClosed ? 'AVAILABLE' : 'PAID_AWAITING_CLEARANCE',
+            paymentStatus: 'PAID',
+          },
+          message: isAutoClosed
+            ? `Payment confirmed and table ${session.tableNumber} released automatically.`
+            : `Payment confirmed for ${session.tableNumber}. Awaiting staff clearance.`,
         });
         return;
       }

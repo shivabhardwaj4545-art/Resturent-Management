@@ -15,10 +15,16 @@ import {
   markSessionAsPaid,
   cancelTableSession,
 } from '../controllers/tableSession.controller';
+import {
+  checkTableStatusAndAccess,
+  getTableClearanceDashboard,
+  clearTableManual,
+} from '../controllers/tableClearance.controller';
 
 const router = Router();
 
 // Public / Customer Endpoints
+router.post('/check-access', checkTableStatusAndAccess);
 router.post('/join-or-create', joinOrCreateSession);
 router.get('/active', getActiveSession);
 router.get('/:sessionId', getSessionById);
@@ -31,6 +37,8 @@ router.post('/:sessionId/batches/submit', submitCurrentBatch);
 
 // Staff Protected Endpoints (Waitstaff, Kitchen, Restaurant Owner)
 router.get('/', authenticate, requireOwnerOrKitchen, listActiveSessions);
+router.get('/clearance', authenticate, requireOwnerOrKitchen, getTableClearanceDashboard);
+router.post('/clear', authenticate, requireOwnerOrKitchen, clearTableManual);
 router.patch('/:sessionId/batches/:batchId/status', authenticate, requireOwnerOrKitchen, updateBatchStatus);
 router.post('/:sessionId/close', authenticate, requireOwnerOrKitchen, closeTableSession);
 router.post('/:sessionId/mark-paid', authenticate, requireOwnerOrKitchen, markSessionAsPaid);
