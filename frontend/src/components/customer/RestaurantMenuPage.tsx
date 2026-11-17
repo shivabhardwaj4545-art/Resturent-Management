@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
-import { Search, Filter, ShoppingCart, Clock, MapPin, Star, Bot, X, ChevronUp, QrCode, ChevronRight, BellRing, Gift, Ban, Bed, Sparkles, Utensils, Shirt, Bath, Luggage, Wrench, MessageSquare, CheckCircle2, ChevronDown, Lock, RefreshCw, Phone } from 'lucide-react';
+import { Search, Filter, ShoppingCart, Clock, MapPin, Star, Bot, X, ChevronUp, QrCode, ChevronRight, BellRing, Gift, Ban, Bed, Sparkles, Utensils, Shirt, Bath, Luggage, Wrench, MessageSquare, CheckCircle2, ChevronDown, Lock, RefreshCw, Phone, Check } from 'lucide-react';
 import api, { getSocketUrl } from '@/services/api';
 import { useCartStore } from '@/store/cart.store';
 import { useAuthStore } from '@/store/auth.store';
@@ -114,9 +114,24 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
     message?: string;
     tableNumber?: string;
   } | null>(null);
+  const [tableAccessCodeInput, setTableAccessCodeInput] = useState('');
+  const [accessCodeError, setAccessCodeError] = useState<string | null>(null);
+  const [isValidatingCode, setIsValidatingCode] = useState(false);
+  const [isCallingWaiterFromOccupied, setIsCallingWaiterFromOccupied] = useState(false);
+  const [waiterCalledSuccess, setWaiterCalledSuccess] = useState(false);
   const waiterComingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const waiterTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const socketRef = useRef<any>(null);
+
+  const getOrCreateDeviceId = useCallback(() => {
+    if (typeof window === 'undefined') return 'device-anon';
+    let devId = localStorage.getItem('ez_device_id');
+    if (!devId) {
+      devId = 'dev_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+      localStorage.setItem('ez_device_id', devId);
+    }
+    return devId;
+  }, []);
 
   const effectiveTableForCheck = tableNumber || manualTableNumber || (typeof window !== 'undefined' ? localStorage.getItem(`table_num_${slug}`) : null);
 
@@ -125,18 +140,28 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
     queryFn: async () => {
       if (!effectiveTableForCheck || !slug) return null;
       try {
+        const devId = getOrCreateDeviceId();
         const res = await api.post('/table-sessions/check-access', {
           restaurantSlug: slug,
           tableNumber: effectiveTableForCheck,
+          deviceReference: devId,
+        }, {
+          headers: {
+            'x-device-id': devId,
+          },
         });
         setTableLockedState(null);
         return res.data;
       } catch (err: any) {
-        if (err.response?.data?.code === 'TABLE_CURRENTLY_OCCUPIED') {
+        if (
+          err.response?.data?.code === 'TABLE_CURRENTLY_OCCUPIED' ||
+          err.response?.data?.code === 'TABLE_ALREADY_OCCUPIED' ||
+          err.response?.status === 409
+        ) {
           setTableLockedState({
             locked: true,
-            reason: 'TABLE_CURRENTLY_OCCUPIED',
-            message: err.response.data.message || 'This table is currently unavailable for new orders. Please contact restaurant staff.',
+            reason: err.response?.data?.code || 'TABLE_ALREADY_OCCUPIED',
+            message: err.response?.data?.message || 'An active order already exists for this table.',
             tableNumber: effectiveTableForCheck,
           });
         }
@@ -147,6 +172,64 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
     retry: false,
     refetchInterval: 8000,
   });
+
+  const handleValidateTableAccessCode = async () => {
+    if (!tableAccessCodeInput || tableAccessCodeInput.trim().length !== 4) {
+      setAccessCodeError('Please enter a valid 4-digit code.');
+      return;
+    }
+    setIsValidatingCode(true);
+    setAccessCodeError(null);
+    try {
+      const devId = getOrCreateDeviceId();
+      const res = await api.post('/table-sessions/validate-access-code', {
+        restaurantSlug: slug,
+        tableNumber: effectiveTableForCheck,
+        accessCode: tableAccessCodeInput.trim(),
+        deviceReference: devId,
+      }, {
+        headers: {
+          'x-device-id': devId,
+        },
+      });
+
+      if (res.data?.success) {
+        toast.success('Access granted! Connected to table bill.');
+        setTableLockedState(null);
+        setTableAccessCodeInput('');
+        refetchTableAccess();
+      }
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || 'Invalid Table Access Code. Please check the code with the person who started the order.';
+      setAccessCodeError(errorMsg);
+    } finally {
+      setIsValidatingCode(false);
+    }
+  };
+
+  const handleCallWaiterFromOccupied = async () => {
+    setIsCallingWaiterFromOccupied(true);
+    try {
+      const devId = getOrCreateDeviceId();
+      await api.post('/waiter-requests', {
+        restaurantSlug: slug,
+        tableNumber: effectiveTableForCheck,
+        requestType: 'TABLE_OCCUPIED_PHYSICALLY_EMPTY',
+        reason: 'Guest reported table appears empty but is digitally marked occupied.',
+        deviceReference: devId,
+      }, {
+        headers: {
+          'x-device-id': devId,
+        },
+      });
+      setWaiterCalledSuccess(true);
+      toast.success('Staff notified! A waiter will assist you shortly.');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to call waiter. Please try again.');
+    } finally {
+      setIsCallingWaiterFromOccupied(false);
+    }
+  };
 
   const clearWaiterTimers = useCallback(() => {
     if (waiterTimerRef.current) {
@@ -1036,47 +1119,111 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
 
       {/* Occupied Table Access Control Screen */}
       {tableLockedState?.locked && !isPreview && (
-        <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-md flex flex-col items-center justify-center p-4 sm:p-6 text-center">
+        <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-md flex flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto">
           <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
+            initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="max-w-md w-full bg-card border border-destructive/30 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-5"
+            className="max-w-md w-full bg-card border border-border/80 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 text-center my-auto"
           >
-            <div className="w-16 h-16 rounded-2xl bg-destructive/10 text-destructive mx-auto flex items-center justify-center border border-destructive/20 shadow-inner">
-              <Lock className="w-8 h-8" />
-            </div>
-
+            {/* Header */}
             <div className="space-y-2">
-              <span className="text-[11px] font-extrabold uppercase tracking-wider px-3 py-1 rounded-full bg-destructive/15 text-destructive border border-destructive/25 inline-block">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider px-3 py-1 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25 inline-block">
                 {tableLockedState.tableNumber || 'Table'}
               </span>
               <h2 className="text-xl sm:text-2xl font-display font-black text-foreground">
-                TABLE CURRENTLY OCCUPIED
+                TABLE ALREADY OCCUPIED
               </h2>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                This table is currently unavailable for new orders.
-              </p>
-              <p className="text-xs font-semibold text-foreground/80">
-                Please contact restaurant staff.
+                An active order already exists for this table.
               </p>
             </div>
 
-            <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
+            {/* SECTION A: Add items to current bill */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-muted/40 border border-border/60 text-left space-y-3">
+              <div>
+                <h3 className="text-sm font-bold text-foreground">
+                  Want to add items to the current bill?
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                  Enter the 4-digit Table Access Code shared by the person who started the table order.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={tableAccessCodeInput}
+                  onChange={(e) => {
+                    setTableAccessCodeInput(e.target.value.replace(/\D/g, '').slice(0, 4));
+                    setAccessCodeError(null);
+                  }}
+                  placeholder="e.g. 4821"
+                  className="w-full text-center text-lg font-mono tracking-widest py-2.5 px-3 rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary font-bold"
+                />
+                {accessCodeError && (
+                  <p className="text-xs text-destructive font-medium text-center">
+                    {accessCodeError}
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleValidateTableAccessCode}
+                disabled={isValidatingCode || tableAccessCodeInput.length !== 4}
+                className="w-full py-2.5 px-4 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 active:scale-95"
+              >
+                {isValidatingCode ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4" />
+                )}
+                <span>Continue to Current Bill</span>
+              </button>
+            </div>
+
+            {/* SECTION B: Is this table physically empty? */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-muted/40 border border-border/60 text-left space-y-3">
+              <div>
+                <h3 className="text-sm font-bold text-foreground">
+                  Is this table physically empty?
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                  If the previous guests have left, you can request assistance from the restaurant staff.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCallWaiterFromOccupied}
+                disabled={isCallingWaiterFromOccupied || waiterCalledSuccess}
+                className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border shadow-sm ${
+                  waiterCalledSuccess
+                    ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                    : 'border-border text-foreground hover:bg-muted active:scale-95'
+                }`}
+              >
+                {isCallingWaiterFromOccupied ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : waiterCalledSuccess ? (
+                  <Check className="w-4 h-4 text-emerald-600" />
+                ) : (
+                  <Phone className="w-4 h-4 text-muted-foreground" />
+                )}
+                <span>{waiterCalledSuccess ? 'Waiter Notified — Please Wait' : 'Call Waiter'}</span>
+              </button>
+            </div>
+
+            <div className="pt-1">
               <button
                 type="button"
                 onClick={() => refetchTableAccess()}
-                className="flex-1 py-3 px-4 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-all flex items-center justify-center gap-2 shadow-md active:scale-95"
+                className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 transition"
               >
-                <RefreshCw className="w-4 h-4" />
-                Refresh Status
-              </button>
-              <button
-                type="button"
-                onClick={() => handleCallWaiter('General Inquiry')}
-                className="py-3 px-4 rounded-xl border border-border text-foreground hover:bg-muted text-xs font-bold transition-all flex items-center justify-center gap-1.5"
-              >
-                <Phone className="w-4 h-4 text-muted-foreground" />
-                Call Waiter
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Refresh Table Status</span>
               </button>
             </div>
           </motion.div>
@@ -1333,6 +1480,46 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                       Table {displayTableNumber}
                     </>
                   )}
+                </div>
+              )}
+
+              {/* Primary Device Table Access Code Banner */}
+              {tableAccessData?.data?.isPrimary && tableAccessData?.data?.tableAccessCode && (
+                <div className="mt-2.5 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-sm shrink-0">
+                      🔑
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Your Table Access Code:</span>
+                        <span className="font-mono text-sm font-extrabold px-2 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                          {tableAccessData.data.tableAccessCode}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Share this code with your friends if they want to add items to the current table bill from their phones.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(tableAccessData.data.tableAccessCode);
+                      toast.success(`Access code ${tableAccessData.data.tableAccessCode} copied!`);
+                    }}
+                    className="px-2.5 py-1 text-[11px] font-bold bg-amber-500 text-white hover:bg-amber-600 rounded-lg shadow-sm transition active:scale-95 shrink-0 self-end sm:self-center"
+                  >
+                    Copy Code
+                  </button>
+                </div>
+              )}
+
+              {/* Secondary Device Badge */}
+              {tableAccessData?.data?.role === 'SECONDARY' && (
+                <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 rounded-full text-[11px] font-semibold">
+                  <CheckCircle2 className="w-3 h-3" />
+                  <span>Joined Table Bill • Secondary Ordering Device</span>
                 </div>
               )}
             </div>

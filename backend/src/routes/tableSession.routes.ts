@@ -17,6 +17,7 @@ import {
 } from '../controllers/tableSession.controller';
 import {
   checkTableStatusAndAccess,
+  validateTableAccessCode,
   getTableClearanceDashboard,
   clearTableManual,
 } from '../controllers/tableClearance.controller';
@@ -25,6 +26,7 @@ const router = Router();
 
 // Public / Customer Endpoints
 router.post('/check-access', checkTableStatusAndAccess);
+router.post('/validate-access-code', validateTableAccessCode);
 router.post('/join-or-create', joinOrCreateSession);
 router.get('/active', getActiveSession);
 router.get('/:sessionId', getSessionById);

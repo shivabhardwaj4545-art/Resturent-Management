@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { isRestaurantOpen } from '../utils/operatingHours';
 import { AppError } from '../utils/AppError';
@@ -30,7 +31,8 @@ async function resolveOrCreateTableSession(
   orderTotal?: number,
   orderSubtotal?: number,
   orderTax?: number,
-  orderDiscount?: number
+  orderDiscount?: number,
+  deviceReference?: string
 ): Promise<{
   tableSessionId?: string;
   batchNumber?: number;
@@ -65,6 +67,9 @@ async function resolveOrCreateTableSession(
       orders: {
         where: { deletedAt: null },
       },
+      deviceAccesses: {
+        where: { revokedAt: null },
+      },
     },
   });
 
@@ -96,11 +101,27 @@ async function resolveOrCreateTableSession(
           paymentStatus: 'PAID',
         },
       });
+      await prisma.sessionDeviceAccess.updateMany({
+        where: { sessionId: session.id, revokedAt: null },
+        data: { revokedAt: now },
+      });
       session = null;
     }
   }
 
   if (session) {
+    // If deviceReference provided, verify access authorization
+    if (deviceReference && session.primaryDeviceReference && session.primaryDeviceReference !== deviceReference) {
+      const hasAccess = session.deviceAccesses.some((d) => d.deviceReference === deviceReference && !d.revokedAt);
+      if (!hasAccess) {
+        throw new AppError(
+          'An active table session is in progress. Please enter the 4-digit Table Access Code before adding items to this table bill.',
+          403,
+          'TABLE_ACCESS_CODE_REQUIRED'
+        );
+      }
+    }
+
     const currentBatch = session.batches[0];
     let targetBatchNumber = session.currentBatchNumber;
 
@@ -188,11 +209,17 @@ async function resolveOrCreateTableSession(
 
     // If no active session exists yet for this table, create one atomically
     const sessionCode = await generateUniqueSessionCode(restaurantId);
+    const accessCode = Math.floor(1000 + crypto.randomInt(9000)).toString();
+    const accessCodeHash = crypto.createHash('sha256').update(accessCode).digest('hex');
+
     const newSession = await prisma.tableSession.create({
       data: {
         restaurantId,
         tableNumber: cleanTable,
         sessionCode,
+        tableAccessCode: accessCode,
+        accessCodeHash,
+        primaryDeviceReference: deviceReference || null,
         guestCount: 1,
         currentBatchNumber: 1,
         status: 'ACTIVE',
@@ -203,6 +230,16 @@ async function resolveOrCreateTableSession(
         notes: guestName ? `Initiated by ${guestName}` : undefined,
       },
     });
+
+    if (deviceReference) {
+      await prisma.sessionDeviceAccess.create({
+        data: {
+          sessionId: newSession.id,
+          deviceReference,
+          role: 'PRIMARY',
+        },
+      });
+    }
 
     // Create Batch 1 with status SUBMITTED
     await prisma.orderBatch.create({
@@ -406,6 +443,7 @@ async function resolveOrCreateTableSession(
       }
 
       const effectivePaymentMethod = (paymentMethod as string) === 'RAZORPAY' ? 'UPI_INTENT' : paymentMethod;
+      const deviceReference = (req.headers['x-device-id'] as string) || (req.body.deviceReference as string) || undefined;
       const sessionRes = await resolveOrCreateTableSession(
         restaurant.id,
         tableNumber,
@@ -413,7 +451,8 @@ async function resolveOrCreateTableSession(
         total,
         subtotal,
         gstAmount,
-        discount
+        discount,
+        deviceReference
       );
       const verificationCode = sessionRes.verificationCode;
 
@@ -739,6 +778,7 @@ async function resolveOrCreateTableSession(
       }
 
       const effectivePaymentMethod = (paymentMethod as string) === 'RAZORPAY' ? 'UPI_INTENT' : paymentMethod;
+      const deviceReference = (req.headers['x-device-id'] as string) || (req.body.deviceReference as string) || undefined;
       const sessionRes = await resolveOrCreateTableSession(
         restaurant.id,
         tableNumber,
@@ -746,7 +786,8 @@ async function resolveOrCreateTableSession(
         finalTotal,
         subtotal,
         gstAmount,
-        discount + walletDeduction + pointsValue
+        discount + walletDeduction + pointsValue,
+        deviceReference
       );
       const verificationCode = sessionRes.verificationCode;
 

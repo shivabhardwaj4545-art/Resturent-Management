@@ -214,6 +214,7 @@ model Restaurant {
   orders         Order[]
   tableSessions  TableSession[]
   tableClearanceLogs TableClearanceLog[]
+  waiterRequests WaiterRequest[]
   orderBatches   OrderBatch[]
   coupons        Coupon[]
   notifications  Notification[]
@@ -478,6 +479,9 @@ model TableSession {
   restaurantId                  String
   tableNumber                   String
   sessionCode                   String        // 4-digit verification code, e.g. "4827"
+  tableAccessCode               String?       // 4-digit numeric code to join table session, e.g. "4821"
+  accessCodeHash                String?       // Secure SHA-256 hash of table access code
+  primaryDeviceReference        String?       // Device UUID / token of primary ordering customer
   guestCount                    Int           @default(1)
   currentBatchNumber            Int           @default(1)
   status                        SessionStatus @default(ACTIVE)
@@ -498,6 +502,8 @@ model TableSession {
   batches                       OrderBatch[]
   orders                        Order[]
   clearanceLogs                 TableClearanceLog[]
+  deviceAccesses                SessionDeviceAccess[]
+  waiterRequests                WaiterRequest[]
 
   @@index([restaurantId])
   @@index([restaurantId, tableNumber])
@@ -505,7 +511,50 @@ model TableSession {
   @@index([restaurantId, status])
   @@index([status])
   @@index([paymentStatus])
+  @@index([primaryDeviceReference])
   @@map("table_sessions")
+}
+
+model SessionDeviceAccess {
+  id              String       @id @default(cuid())
+  sessionId       String
+  deviceReference String
+  role            String       @default("SECONDARY") // PRIMARY, SECONDARY
+  grantedAt       DateTime     @default(now())
+  revokedAt       DateTime?
+
+  session         TableSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, deviceReference])
+  @@index([sessionId])
+  @@index([deviceReference])
+  @@map("session_device_accesses")
+}
+
+model WaiterRequest {
+  id              String       @id @default(cuid())
+  restaurantId    String
+  tableNumber     String
+  sessionId       String?
+  requestType     String       @default("TABLE_OCCUPIED_ASSISTANCE")
+  reason          String?
+  status          String       @default("PENDING") // PENDING, ACKNOWLEDGED, RESOLVED
+  deviceReference String?
+  acknowledgedAt  DateTime?
+  acknowledgedBy  String?
+  resolvedAt      DateTime?
+  resolvedBy      String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  restaurant      Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  session         TableSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([restaurantId])
+  @@index([restaurantId, status])
+  @@index([sessionId])
+  @@index([tableNumber])
+  @@map("waiter_requests")
 }
 
 model TableClearanceLog {

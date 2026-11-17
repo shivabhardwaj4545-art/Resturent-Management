@@ -75,6 +75,12 @@ import {
   getTableClearanceDashboard,
   clearTableManual,
 } from '../controllers/tableClearance.controller';
+import {
+  listWaiterRequests,
+  acknowledgeWaiterRequest,
+  resolveWaiterRequest,
+  clearTableFromWaiterRequest,
+} from '../controllers/waiterRequest.controller';
 
 const router = Router();
 
@@ -105,6 +111,12 @@ router.get('/table-management/session-mode', getSessionManagementMode);
 router.patch('/table-management/session-mode', updateSessionManagementMode);
 router.get('/table-clearance', getTableClearanceDashboard);
 router.post('/table-clearance/clear', clearTableManual);
+
+// Waiter Assistance Requests
+router.get('/waiter-requests', listWaiterRequests);
+router.patch('/waiter-requests/:requestId/acknowledge', acknowledgeWaiterRequest);
+router.patch('/waiter-requests/:requestId/resolve', resolveWaiterRequest);
+router.post('/waiter-requests/:requestId/clear-table', clearTableFromWaiterRequest);
 
 // Restaurant payment account multi-stage verification & onboarding
 router.get('/payment-account/stages', getPaymentAccountStages);

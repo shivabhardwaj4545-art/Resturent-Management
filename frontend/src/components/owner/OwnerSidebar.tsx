@@ -18,6 +18,7 @@ import {
   CreditCard,
   Users,
   Sparkles,
+  BellRing,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -30,6 +31,7 @@ export const OWNER_NAV_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
   { key: 'table-sessions', label: 'Table Sessions', icon: Users, href: '/owner/table-sessions' },
   { key: 'table-clearance', label: 'Table Clearance', icon: Sparkles, href: '/owner/table-clearance' },
+  { key: 'waiter-requests', label: 'Waiter Requests', icon: BellRing, href: '/owner/waiter-requests' },
   { key: 'menu', label: 'Menu', icon: UtensilsCrossed, href: '/owner/menu' },
   { key: 'orders', label: 'Orders', icon: ShoppingBag, href: '/owner/orders' },
   { key: 'kitchen-staff', label: 'Kitchen Staff', icon: ChefHat, href: '/owner/kitchen-staff' },

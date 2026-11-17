@@ -27,6 +27,7 @@ import chatRoutes from './routes/chat.routes';
 import paymentRoutes from './routes/payment.routes';
 import saasRoutes from './routes/saas.routes';
 import tableSessionRoutes from './routes/tableSession.routes';
+import waiterRequestRoutes from './routes/waiterRequest.routes';
 import { getSocketServer } from './services/socket.service';
 
 const app = express();
@@ -182,6 +183,8 @@ app.use('/api/payments', paymentRoutes);
 app.use(`${API}/payments`, paymentRoutes);
 app.use('/api/table-sessions', tableSessionRoutes);
 app.use(`${API}/table-sessions`, tableSessionRoutes);
+app.use('/api/waiter-requests', waiterRequestRoutes);
+app.use(`${API}/waiter-requests`, waiterRequestRoutes);
 app.use(`${API}/saas`, saasRoutes);
 app.use(`${API}/webhooks`, webhookRoutes);
 

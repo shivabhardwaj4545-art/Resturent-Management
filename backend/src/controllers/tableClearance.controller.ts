@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
@@ -442,9 +443,36 @@ export async function clearTableManual(
 }
 
 /**
+ * Rate limit tracking for 4-digit Table Access Code validation.
+ * 5 failed attempts per table/device locks verification for 5 minutes.
+ */
+interface AccessCodeRateLimitEntry {
+  attempts: number;
+  lockedUntil?: number;
+}
+const accessCodeRateLimitMap = new Map<string, AccessCodeRateLimitEntry>();
+const MAX_ACCESS_CODE_ATTEMPTS = 5;
+const ACCESS_CODE_LOCKOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Generates a random 4-digit numeric table access code (1000-9999).
+ */
+export function generateRandomAccessCode(): string {
+  return Math.floor(1000 + crypto.randomInt(9000)).toString();
+}
+
+/**
+ * Computes SHA-256 hash of an access code.
+ */
+export function hashAccessCode(code: string): string {
+  return crypto.createHash('sha256').update(code.trim()).digest('hex');
+}
+
+/**
  * POST /api/v1/table-sessions/check-access
  * Customer QR scan access control endpoint.
- * Evaluates current table status, enforces dual mode rules, and manages session creation.
+ * Evaluates current table status, enforces single primary device ownership,
+ * dual mode rules, and handles table access codes.
  */
 export async function checkTableStatusAndAccess(
   req: Request,
@@ -452,18 +480,20 @@ export async function checkTableStatusAndAccess(
   next: NextFunction
 ): Promise<void> {
   try {
-    const { restaurantSlug, restaurantId, tableNumber, guestName, guestCount } = req.body as {
+    const { restaurantSlug, restaurantId, tableNumber, guestName, guestCount, deviceReference } = req.body as {
       restaurantSlug?: string;
       restaurantId?: string;
       tableNumber?: string;
       guestName?: string;
       guestCount?: number;
+      deviceReference?: string;
     };
 
     if (!tableNumber) {
       throw new AppError('Table number is required.', 400, 'TABLE_REQUIRED');
     }
 
+    const deviceRef = (req.headers['x-device-id'] as string) || deviceReference || (req.query.deviceReference as string) || null;
     const cleanTable = normalizeTableNumber(tableNumber);
 
     // Resolve restaurant
@@ -497,6 +527,9 @@ export async function checkTableStatusAndAccess(
         orders: {
           where: { deletedAt: null },
         },
+        deviceAccesses: {
+          where: { revokedAt: null },
+        },
       },
     });
 
@@ -522,13 +555,25 @@ export async function checkTableStatusAndAccess(
           },
         });
 
-        // Create fresh session
+        // Revoke previous session device accesses
+        await prisma.sessionDeviceAccess.updateMany({
+          where: { sessionId: session.id, revokedAt: null },
+          data: { revokedAt: now },
+        });
+
+        // Create fresh session with primary device assignment
         const sessionCode = await generateUniqueSessionCode(restaurant.id);
+        const accessCode = generateRandomAccessCode();
+        const accessCodeHash = hashAccessCode(accessCode);
+
         const newSession = await prisma.tableSession.create({
           data: {
             restaurantId: restaurant.id,
             tableNumber: cleanTable,
             sessionCode,
+            tableAccessCode: accessCode,
+            accessCodeHash,
+            primaryDeviceReference: deviceRef,
             guestCount: guestCount ? Number(guestCount) : 1,
             currentBatchNumber: 1,
             status: 'ACTIVE',
@@ -547,14 +592,28 @@ export async function checkTableStatusAndAccess(
           },
         });
 
+        if (deviceRef) {
+          await prisma.sessionDeviceAccess.create({
+            data: {
+              sessionId: newSession.id,
+              deviceReference: deviceRef,
+              role: 'PRIMARY',
+            },
+          });
+        }
+
         res.json({
           success: true,
           data: {
             isAvailable: true,
             status: 'AVAILABLE',
+            role: 'PRIMARY',
+            isPrimary: true,
+            tableAccessCode: accessCode,
             session: {
               id: newSession.id,
               sessionCode: newSession.sessionCode,
+              tableAccessCode: accessCode,
               tableNumber: cleanTable,
             },
           },
@@ -562,17 +621,40 @@ export async function checkTableStatusAndAccess(
         return;
       }
 
+      // Check device authorization for active session
+      let isAuthorized = false;
+      let deviceRole = 'SECONDARY';
+
+      if (deviceRef) {
+        if (session.primaryDeviceReference && session.primaryDeviceReference === deviceRef) {
+          isAuthorized = true;
+          deviceRole = 'PRIMARY';
+        } else {
+          const deviceAccess = session.deviceAccesses.find(
+            (d) => d.deviceReference === deviceRef && !d.revokedAt
+          );
+          if (deviceAccess) {
+            isAuthorized = true;
+            deviceRole = deviceAccess.role;
+          }
+        }
+      }
+
       // In Manual Table Clearance Mode:
       // If orders are paid, the table remains locked and unavailable until cleared by staff
       if (mode === 'MANUAL' && (isAllPaid || session.paymentStatus === 'PAID')) {
-        res.status(403).json({
+        res.status(409).json({
           success: false,
-          code: 'TABLE_CURRENTLY_OCCUPIED',
-          message: 'This table is currently unavailable for new orders. Please contact restaurant staff.',
+          code: 'TABLE_ALREADY_OCCUPIED',
+          message: 'This table is currently marked as occupied. If the table is physically empty, you can call the waiter.',
           data: {
             isAvailable: false,
-            locked: true,
+            isOccupied: true,
+            requiresAccessCode: true,
             tableNumber: cleanTable,
+            sessionId: session.id,
+            restaurantId: restaurant.id,
+            restaurantSlug: restaurant.slug,
             status: 'PAID_AWAITING_CLEARANCE',
           },
         });
@@ -580,30 +662,74 @@ export async function checkTableStatusAndAccess(
       }
 
       // If session is active and dining in progress:
-      // Allow customers at this table to join and order under the SAME session
-      res.json({
-        success: true,
-        data: {
-          isAvailable: true,
-          status: 'OCCUPIED_DINING',
-          session: {
-            id: session.id,
-            sessionCode: session.sessionCode,
-            tableNumber: cleanTable,
+      // 1. Authorized device (Primary or authorized Secondary) can browse and order
+      if (isAuthorized) {
+        let accessCode = session.tableAccessCode;
+        if (!accessCode) {
+          accessCode = generateRandomAccessCode();
+          await prisma.tableSession.update({
+            where: { id: session.id },
+            data: {
+              tableAccessCode: accessCode,
+              accessCodeHash: hashAccessCode(accessCode),
+            },
+          });
+        }
+
+        res.json({
+          success: true,
+          data: {
+            isAvailable: true,
+            isAuthorized: true,
+            status: 'OCCUPIED_DINING',
+            role: deviceRole,
+            isPrimary: deviceRole === 'PRIMARY',
+            tableAccessCode: deviceRole === 'PRIMARY' ? accessCode : undefined,
+            session: {
+              id: session.id,
+              sessionCode: session.sessionCode,
+              tableAccessCode: deviceRole === 'PRIMARY' ? accessCode : undefined,
+              tableNumber: cleanTable,
+            },
           },
+        });
+        return;
+      }
+
+      // 2. Unrecognized device scanning an active table:
+      // Reject with 409 TABLE_ALREADY_OCCUPIED to trigger dedicated Occupied View
+      res.status(409).json({
+        success: false,
+        code: 'TABLE_ALREADY_OCCUPIED',
+        message: 'An active order already exists for this table.',
+        data: {
+          isAvailable: false,
+          isOccupied: true,
+          requiresAccessCode: true,
+          tableNumber: cleanTable,
+          sessionId: session.id,
+          restaurantId: restaurant.id,
+          restaurantSlug: restaurant.slug,
+          status: 'OCCUPIED_DINING',
         },
       });
       return;
     }
 
     // SCENARIO A: TABLE AVAILABLE
-    // Atomically create a new table session
+    // Atomically create a new table session and assign this device as PRIMARY
     const sessionCode = await generateUniqueSessionCode(restaurant.id);
+    const accessCode = generateRandomAccessCode();
+    const accessCodeHash = hashAccessCode(accessCode);
+
     const newSession = await prisma.tableSession.create({
       data: {
         restaurantId: restaurant.id,
         tableNumber: cleanTable,
         sessionCode,
+        tableAccessCode: accessCode,
+        accessCodeHash,
+        primaryDeviceReference: deviceRef,
         guestCount: guestCount ? Number(guestCount) : 1,
         currentBatchNumber: 1,
         status: 'ACTIVE',
@@ -622,15 +748,204 @@ export async function checkTableStatusAndAccess(
       },
     });
 
+    if (deviceRef) {
+      await prisma.sessionDeviceAccess.create({
+        data: {
+          sessionId: newSession.id,
+          deviceReference: deviceRef,
+          role: 'PRIMARY',
+        },
+      });
+    }
+
     res.json({
       success: true,
       data: {
         isAvailable: true,
         status: 'AVAILABLE',
+        role: 'PRIMARY',
+        isPrimary: true,
+        tableAccessCode: accessCode,
         session: {
           id: newSession.id,
           sessionCode: newSession.sessionCode,
+          tableAccessCode: accessCode,
           tableNumber: cleanTable,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * POST /api/v1/table-sessions/validate-access-code
+ * Server-side validation of 4-digit Table Access Code for secondary devices.
+ * Enforces rate limiting, locks out after 5 attempts, and grants access to shared table bill.
+ */
+export async function validateTableAccessCode(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { restaurantId, restaurantSlug, tableNumber, accessCode, deviceReference } = req.body as {
+      restaurantId?: string;
+      restaurantSlug?: string;
+      tableNumber?: string;
+      accessCode?: string;
+      deviceReference?: string;
+    };
+
+    if (!tableNumber) {
+      throw new AppError('Table number is required.', 400, 'TABLE_REQUIRED');
+    }
+
+    if (!accessCode || !/^\d{4}$/.test(accessCode.trim())) {
+      throw new AppError('A valid 4-digit Table Access Code is required.', 400, 'INVALID_ACCESS_CODE_FORMAT');
+    }
+
+    const deviceRef = (req.headers['x-device-id'] as string) || deviceReference || 'secondary-device';
+    const cleanTable = normalizeTableNumber(tableNumber);
+
+    // Resolve restaurant
+    let restaurant = null;
+    if (restaurantId) {
+      restaurant = await prisma.restaurant.findUnique({
+        where: { id: restaurantId },
+        select: { id: true, name: true, slug: true },
+      });
+    } else if (restaurantSlug) {
+      restaurant = await prisma.restaurant.findUnique({
+        where: { slug: restaurantSlug },
+        select: { id: true, name: true, slug: true },
+      });
+    }
+
+    if (!restaurant) {
+      throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
+    }
+
+    // Rate Limiting Check
+    const rateLimitKey = `${restaurant.id}_${cleanTable.toLowerCase()}_${deviceRef}`;
+    const now = Date.now();
+    const rateEntry = accessCodeRateLimitMap.get(rateLimitKey);
+
+    if (rateEntry && rateEntry.lockedUntil && rateEntry.lockedUntil > now) {
+      const remainingSeconds = Math.ceil((rateEntry.lockedUntil - now) / 1000);
+      res.status(429).json({
+        success: false,
+        code: 'ACCESS_CODE_LOCKED_OUT',
+        message: `Too many incorrect attempts. Table access verification is temporarily locked. Please try again in ${remainingSeconds} seconds or call the waiter.`,
+        data: { remainingSeconds, locked: true },
+      });
+      return;
+    }
+
+    // Look up active table session
+    const session = await prisma.tableSession.findFirst({
+      where: {
+        restaurantId: restaurant.id,
+        tableNumber: cleanTable,
+        status: 'ACTIVE',
+      },
+      include: {
+        orders: {
+          where: { deletedAt: null },
+          select: {
+            id: true,
+            status: true,
+            paymentStatus: true,
+            total: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+
+    if (!session) {
+      throw new AppError('No active table session found for this table.', 404, 'SESSION_NOT_FOUND');
+    }
+
+    const inputCode = accessCode.trim();
+    const inputHash = hashAccessCode(inputCode);
+
+    const isValid =
+      (session.tableAccessCode && session.tableAccessCode === inputCode) ||
+      (session.accessCodeHash && session.accessCodeHash === inputHash) ||
+      (session.sessionCode === inputCode);
+
+    if (!isValid) {
+      const attempts = (rateEntry ? rateEntry.attempts : 0) + 1;
+      if (attempts >= MAX_ACCESS_CODE_ATTEMPTS) {
+        accessCodeRateLimitMap.set(rateLimitKey, {
+          attempts,
+          lockedUntil: now + ACCESS_CODE_LOCKOUT_MS,
+        });
+        res.status(429).json({
+          success: false,
+          code: 'ACCESS_CODE_LOCKED_OUT',
+          message: 'Too many incorrect attempts. Table access verification is locked for 5 minutes. Please call the waiter for assistance.',
+          data: { remainingSeconds: 300, locked: true, remainingAttempts: 0 },
+        });
+        return;
+      } else {
+        accessCodeRateLimitMap.set(rateLimitKey, { attempts });
+        const remainingAttempts = MAX_ACCESS_CODE_ATTEMPTS - attempts;
+        res.status(401).json({
+          success: false,
+          code: 'INVALID_TABLE_ACCESS_CODE',
+          message: 'Invalid Table Access Code. Please check the code with the person who started the table order.',
+          data: { remainingAttempts, locked: false },
+        });
+        return;
+      }
+    }
+
+    // Code is valid! Clear rate limit entry
+    accessCodeRateLimitMap.delete(rateLimitKey);
+
+    // Grant SECONDARY device authorization
+    await prisma.sessionDeviceAccess.upsert({
+      where: {
+        sessionId_deviceReference: {
+          sessionId: session.id,
+          deviceReference: deviceRef,
+        },
+      },
+      create: {
+        sessionId: session.id,
+        deviceReference: deviceRef,
+        role: 'SECONDARY',
+      },
+      update: {
+        role: 'SECONDARY',
+        revokedAt: null,
+      },
+    });
+
+    // Calculate current table bill rollup
+    const nonCancelledOrders = session.orders.filter((o) => o.status !== 'CANCELLED');
+    const totalAmount = nonCancelledOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+    const paidOrders = nonCancelledOrders.filter((o) => o.paymentStatus === 'PAID');
+    const paidAmount = paidOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+
+    res.json({
+      success: true,
+      message: 'Access granted. You are now connected to the table bill.',
+      data: {
+        authorized: true,
+        role: 'SECONDARY',
+        isPrimary: false,
+        session: {
+          id: session.id,
+          sessionCode: session.sessionCode,
+          tableNumber: cleanTable,
+          status: session.status,
+          orderCount: nonCancelledOrders.length,
+          totalAmount: Number(totalAmount.toFixed(2)),
+          paidAmount: Number(paidAmount.toFixed(2)),
         },
       },
     });
