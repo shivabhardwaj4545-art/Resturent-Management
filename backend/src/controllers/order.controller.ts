@@ -1637,30 +1637,9 @@ async function resolveOrCreateTableSession(
         items: updatedOrder.items,
       });
 
-      // Also broadcast order update so kitchen display system (KDS) and owner see new items instantly
-      void emitNewOrder(order.restaurantId, updatedOrder, order.restaurant?.ownerId);
-
-      // Build items summary for only the newly added items
-      const itemsSummary = itemsToCreate.map((item: any) => {
-        const mItem = menuItems.find((m) => m.id === item.menuItemId);
-        const addOnsLabel = item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0
-          ? ` (+ ${item.addOns.map((ao: any) => ao.name).join(', ')})`
-          : '';
-        return `${mItem?.name || 'Item'}${addOnsLabel} × ${item.quantity}`;
-      }).join(', ');
-
-      // Send a waiter call notification to alert the owner that items were added!
-      emitWaiterCall(
-        order.restaurantId,
-        order.tableNumber || 'Delivery',
-        'addons',
-        addedTotal,
-        paymentMethod,
-        itemsSummary,
-        undefined,
-        undefined,
-        order.restaurant?.ownerId
-      );
+      // NOTE: Do NOT call emitNewOrder here — this is an add-on to an existing order,
+      // not a brand-new order. emitOrderStatusUpdate above already refreshes the
+      // owner dashboard, KDS, and all connected clients in real time.
 
       res.json({
         success: true,

@@ -210,6 +210,17 @@ export default function KitchenDashboardPage() {
     }
   };
 
+  // Add-on status update handler
+  const handleUpdateAddonStatus = async (orderId: string, nextAddonStatus: string) => {
+    try {
+      await api.patch(`/kitchen/orders/${orderId}/status`, { addOnStatus: nextAddonStatus });
+      toast.success(`Add-on status updated to ${nextAddonStatus}`);
+      queryClient.invalidateQueries({ queryKey: ['kitchen-orders'] });
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed to update add-on status');
+    }
+  };
+
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => { });
@@ -587,37 +598,67 @@ export default function KitchenDashboardPage() {
                       })}
                           </div>
 
-                    {/* Action Button Footer */ }
-                          < div className = "p-2.5 sm:p-4 bg-slate-950 border-t border-slate-800 mt-auto" >
-                          {
-                            order.status === 'CONFIRMED' && (
-                              <button
-                                onClick={() => handleUpdateStatus(order.id, 'PREPARING')}
-                                className="w-full py-2 sm:py-3 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-1.5 active:scale-98"
-                              >
-                                <Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" /> Start Preparing
-                              </button>
-                            )
-                          }
-
-                      {(order.status === 'PREPARING' || order.status === 'BAKING') && (
+                    {/* Action Button Footer */}
+                    <div className="p-2.5 sm:p-4 bg-slate-950 border-t border-slate-800 mt-auto space-y-2">
+                      {/* Add-on Status Action Controls */}
+                      {order.addOnStatus && (
+                        <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                          <div className="flex items-center justify-between text-[11px] font-bold text-amber-300 mb-1.5 px-0.5">
+                            <span className="flex items-center gap-1">
+                              <Sparkles className="w-3 h-3 text-amber-400" />
+                              Add-on Items
+                            </span>
+                            <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200">
+                              {order.addOnStatus}
+                            </span>
+                          </div>
+                          {(order.addOnStatus === 'PREPARING' || order.addOnStatus === 'CONFIRMED') && (
                             <button
-                              onClick={() => handleUpdateStatus(order.id, 'READY')}
-                              className="w-full py-2 sm:py-3 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-emerald-600/20 transition-all flex items-center justify-center gap-1.5 active:scale-98"
+                              onClick={() => handleUpdateAddonStatus(order.id, 'READY')}
+                              className="w-full py-1.5 px-3 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-black text-xs rounded-lg shadow transition-all flex items-center justify-center gap-1.5 active:scale-98"
                             >
-                              <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" /> Mark Order Ready
+                              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> Mark Add-ons Ready
                             </button>
                           )}
+                          {order.addOnStatus === 'READY' && (
+                            <button
+                              onClick={() => handleUpdateAddonStatus(order.id, 'DELIVERED')}
+                              className="w-full py-1.5 px-3 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-black text-xs rounded-lg shadow transition-all flex items-center justify-center gap-1.5 active:scale-98"
+                            >
+                              <Utensils className="w-3.5 h-3.5 shrink-0" /> Mark Add-ons Served
+                            </button>
+                          )}
+                        </div>
+                      )}
 
-                        {order.status === 'READY' && (
-                          <button
-                            onClick={() => handleUpdateStatus(order.id, 'DELIVERED')}
-                            className="w-full py-2 sm:py-3 px-3 bg-gradient-to-r from-slate-800 to-slate-700 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 font-black text-xs sm:text-sm rounded-xl transition-all flex items-center justify-center gap-1.5 active:scale-98"
-                          >
-                            <Utensils className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" /> Complete / Served
-                          </button>
-                        )}
-                      </div>
+                      {/* Main Order Status Action Controls */}
+                      {order.status === 'CONFIRMED' && (
+                        <button
+                          onClick={() => handleUpdateStatus(order.id, 'PREPARING')}
+                          className="w-full py-2 sm:py-3 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-1.5 active:scale-98"
+                        >
+                          <Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" /> Start Preparing
+                        </button>
+                      )}
+
+                      {(order.status === 'PREPARING' || order.status === 'BAKING') && (
+                        <button
+                          onClick={() => handleUpdateStatus(order.id, 'READY')}
+                          className="w-full py-2 sm:py-3 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-emerald-600/20 transition-all flex items-center justify-center gap-1.5 active:scale-98"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" /> Mark Order Ready
+                        </button>
+                      )}
+
+                      {order.status === 'READY' && (
+                        <button
+                          onClick={() => handleUpdateStatus(order.id, 'DELIVERED')}
+                          className="w-full py-2 sm:py-3 px-3 bg-gradient-to-r from-slate-800 to-slate-700 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 font-black text-xs sm:text-sm rounded-xl transition-all flex items-center justify-center gap-1.5 active:scale-98"
+                        >
+                          <Utensils className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" /> Complete / Served
+                        </button>
+                      )}
+                    </div>
                   </motion.div>
                 );
               })}

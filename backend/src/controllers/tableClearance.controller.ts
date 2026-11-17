@@ -579,6 +579,54 @@ export async function checkTableStatusAndAccess(
         return;
       }
 
+      // If active session has no orders placed yet, allow customer to order freely as primary device
+      if (nonCancelledOrders.length === 0) {
+        if (deviceRef && (!session.primaryDeviceReference || session.primaryDeviceReference !== deviceRef)) {
+          await prisma.tableSession.update({
+            where: { id: session.id },
+            data: { primaryDeviceReference: deviceRef },
+          });
+          await prisma.sessionDeviceAccess.upsert({
+            where: {
+              sessionId_deviceReference: {
+                sessionId: session.id,
+                deviceReference: deviceRef,
+              },
+            },
+            create: {
+              sessionId: session.id,
+              deviceReference: deviceRef,
+              role: 'PRIMARY',
+            },
+            update: {
+              role: 'PRIMARY',
+              revokedAt: null,
+            },
+          });
+        }
+
+        res.json({
+          success: true,
+          data: {
+            isAvailable: true,
+            isAuthorized: true,
+            status: 'AVAILABLE',
+            role: 'PRIMARY',
+            isPrimary: true,
+            isOccupied: false,
+            tableNumber: cleanTable,
+            restaurantId: restaurant.id,
+            restaurantSlug: restaurant.slug,
+            session: {
+              id: session.id,
+              sessionCode: session.sessionCode,
+              tableNumber: cleanTable,
+            },
+          },
+        });
+        return;
+      }
+
       // Check device authorization for active session
       let isAuthorized = false;
       let deviceRole = 'SECONDARY';

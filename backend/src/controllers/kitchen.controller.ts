@@ -97,11 +97,21 @@ export async function updateKitchenOrderStatus(
   try {
     const restaurantId = await getTargetRestaurantId(req);
     const id = req.params.id as string;
-    const { status } = req.body as { status?: string };
+    const { status, addOnStatus } = req.body as { status?: string; addOnStatus?: string };
 
     const allowedStatuses = ['PREPARING', 'BAKING', 'READY', 'DELIVERED', 'CANCELLED'];
-    if (!status || !allowedStatuses.includes(status)) {
+    const allowedAddonStatuses = ['PREPARING', 'BAKING', 'READY', 'DELIVERED', 'CANCELLED', 'NONE'];
+
+    if (!status && !addOnStatus) {
+      throw new AppError('Either status or addOnStatus is required.', 400, 'STATUS_REQUIRED');
+    }
+
+    if (status && !allowedStatuses.includes(status)) {
       throw new AppError(`Invalid status. Allowed values: ${allowedStatuses.join(', ')}`, 400, 'INVALID_STATUS');
+    }
+
+    if (addOnStatus && !allowedAddonStatuses.includes(addOnStatus)) {
+      throw new AppError(`Invalid addOnStatus. Allowed values: ${allowedAddonStatuses.join(', ')}`, 400, 'INVALID_ADDON_STATUS');
     }
 
     const order = await prisma.order.findFirst({
@@ -121,12 +131,21 @@ export async function updateKitchenOrderStatus(
       CANCELLED: 'cancelledAt',
     };
 
-    const updateData: Record<string, any> = {
-      status,
-      ...(status === 'DELIVERED' && { paymentStatus: 'PAID' }),
-    };
-    if (statusDateFields[status]) {
-      updateData[statusDateFields[status]] = new Date();
+    const updateData: Record<string, any> = {};
+
+    if (status) {
+      updateData.status = status;
+      if (status === 'DELIVERED') {
+        updateData.paymentStatus = 'PAID';
+        updateData.addOnStatus = null;
+      }
+      if (statusDateFields[status]) {
+        updateData[statusDateFields[status]] = new Date();
+      }
+    }
+
+    if (addOnStatus !== undefined) {
+      updateData.addOnStatus = addOnStatus === 'NONE' || addOnStatus === 'DELIVERED' ? null : addOnStatus;
     }
 
     const updated = await prisma.order.update({
@@ -142,6 +161,8 @@ export async function updateKitchenOrderStatus(
       emitOrderStatusUpdate(updated.id, updated.restaurantId, {
         orderId: updated.id,
         status: updated.status,
+        addOnStatus: updated.addOnStatus,
+        paymentStatus: updated.paymentStatus,
         updatedAt: updated.updatedAt.toISOString(),
       });
 
