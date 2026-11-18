@@ -1124,6 +1124,27 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
       .filter((cat) => cat.items.length > 0);
   }, [data, searchQuery, activeFilter, maxPrice, priceSort]);
 
+  const suggestedAddons = useMemo(() => {
+    if (!data?.categories || data.categories.length === 0) return [];
+    const allItems = data.categories.flatMap((cat) =>
+      (cat.items || []).filter((item) => item.isAvailable).map((item) => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        image: item.image,
+        isVeg: item.isVeg,
+        categoryName: cat.name,
+        description: item.description,
+      }))
+    );
+
+    const priorityRegex = /(beverage|drink|shake|dessert|sweet|ice cream|side|snack|starter|appetizer|cooler|juice|chai|coffee)/i;
+    const prioritized = allItems.filter(
+      (item) => priorityRegex.test(item.categoryName || '') || priorityRegex.test(item.name)
+    );
+    return prioritized.length > 0 ? prioritized : allItems.slice(0, 8);
+  }, [data]);
+
   const cartCount = itemCount();
 
   if (isLoading) {
@@ -1142,27 +1163,6 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
 
   const { restaurant, categories = [] } = data;
   
-  const suggestedAddons = useMemo(() => {
-    if (!categories || categories.length === 0) return [];
-    const allItems = categories.flatMap((cat) =>
-      (cat.items || []).filter((item) => item.isAvailable).map((item) => ({
-        id: item.id,
-        name: item.name,
-        price: item.price,
-        image: item.image,
-        isVeg: item.isVeg,
-        categoryName: cat.name,
-        description: item.description,
-      }))
-    );
-
-    const priorityRegex = /(beverage|drink|shake|dessert|sweet|ice cream|side|snack|starter|appetizer|cooler|juice|chai|coffee)/i;
-    const prioritized = allItems.filter(
-      (item) => priorityRegex.test(item.categoryName || '') || priorityRegex.test(item.name)
-    );
-    return prioritized.length > 0 ? prioritized : allItems.slice(0, 8);
-  }, [categories]);
-
   const themeColor = isPreview && searchParams?.themeColor ? searchParams.themeColor : (restaurant.themeColor ?? '#E85D04');
   const restaurantName = isPreview && searchParams?.name !== undefined ? searchParams.name : restaurant.name;
   const restaurantDesc = isPreview && searchParams?.description !== undefined ? searchParams.description : restaurant.description;
