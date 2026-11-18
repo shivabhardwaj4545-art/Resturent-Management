@@ -132,18 +132,16 @@ export function OwnerDashboard() {
 
     const handleAddonNotification = (data?: any) => {
       handleRefresh();
-      // Show popup when addon items are added to an ongoing order
-      if (data?.addOnStatus === 'PREPARING' && data?.orderId) {
+      // Show popup ONLY when a new addon is placed, not when status is updated / order accepted
+      if (data?.isNewAddon && data?.orderId) {
         const orderIdShort = String(data.orderId).slice(-8).toUpperCase();
         toast.info(`⚡ Add-on Items Added! #${orderIdShort}`, {
-          id: `addon-order-toast-${data.orderId}`,
+          id: `addon-order-toast-${data.orderId}-${Date.now()}`,
           description: 'New items added to an ongoing table order and are being prepared.',
           duration: 8000,
           icon: '⚡',
         });
         try { playNewOrderSound(); } catch { /* ignore */ }
-      } else {
-        // fall back to plain refresh for other status updates
       }
     };
 

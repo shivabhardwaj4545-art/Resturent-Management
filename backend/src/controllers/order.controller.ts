@@ -524,6 +524,7 @@ async function resolveOrCreateTableSession(
             paymentStatus: updatedOrder.paymentStatus,
             updatedAt: updatedOrder.updatedAt.toISOString(),
             items: updatedOrder.items,
+            isNewAddon: true,
           });
 
           void emitNewOrder(restaurant.id, updatedOrder, restaurant.ownerId);
@@ -946,6 +947,7 @@ async function resolveOrCreateTableSession(
             paymentStatus: updatedOrder.paymentStatus,
             updatedAt: updatedOrder.updatedAt.toISOString(),
             items: updatedOrder.items,
+            isNewAddon: true,
           });
 
           void emitNewOrder(restaurant.id, updatedOrder, restaurant.ownerId);

@@ -119,6 +119,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
   const [isValidatingCode, setIsValidatingCode] = useState(false);
   const [isCallingWaiterFromOccupied, setIsCallingWaiterFromOccupied] = useState(false);
   const [waiterCalledSuccess, setWaiterCalledSuccess] = useState(false);
+  const [isJoinedViaCode, setIsJoinedViaCode] = useState(false);
   const waiterComingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const waiterTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const socketRef = useRef<any>(null);
@@ -194,7 +195,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
       });
 
       if (res.data?.success) {
-        toast.success('Access granted! Connected to table bill.');
+        setIsJoinedViaCode(true);
         setTableLockedState(null);
         setTableAccessCodeInput('');
 
@@ -209,7 +210,6 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
             localStorage.setItem(`active_table_order_id_${slug}`, actId);
             localStorage.setItem('active_table_order_id', actId);
           }
-          toast.info('Active order detected! Any items you add will be appended to this ongoing order.');
         }
 
         refetchTableAccess();
@@ -1412,7 +1412,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
           <ThemeToggle size="sm" className="shrink-0" />
         </div>
       </div>
-      {addonOrderId && (
+      {!isJoinedViaCode && tableAccessData?.data?.role !== 'SECONDARY' && addonOrderId && (
         <div className="bg-amber-500 text-white text-xs font-semibold px-4 py-3 flex items-center justify-between shadow-md">
           <div className="flex items-center gap-2">
             <span>📝</span>
@@ -1565,11 +1565,11 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                 </div>
               )}
 
-              {/* Secondary Device Badge — full width, below name row */}
-              {tableAccessData?.data?.role === 'SECONDARY' && (
-                <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 rounded-full text-[11px] font-semibold">
-                  <CheckCircle2 className="w-3 h-3 shrink-0" />
-                  <span>Joined Table Bill • Secondary Ordering Device</span>
+              {/* Joined to Table Code Badge — shown when joined via table code / secondary device */}
+              {(tableAccessData?.data?.role === 'SECONDARY' || isJoinedViaCode) && (
+                <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 rounded-full text-xs font-bold shadow-xs">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <span>Joined to Table Code</span>
                 </div>
               )}
 
@@ -1763,7 +1763,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
           )}
           {/* Tab Content: Active Orders */}
           {(activeTab === 'active' || !activeUser) && (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full min-w-0">
               {!activeOrdersDetails || activeOrdersDetails.length === 0 ? (
                 <div className="sm:col-span-2 py-8 text-center text-muted-foreground text-sm border border-dashed border-border rounded-2xl bg-card">
                   No active orders right now
@@ -1776,7 +1776,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                   return (
                     <div
                       key={order.id}
-                      className="relative group bg-card hover:bg-card/85 border border-border rounded-2xl p-4 shadow-sm transition-all duration-200"
+                      className="relative group bg-card hover:bg-card/85 border border-border rounded-2xl p-4 shadow-sm transition-all duration-200 overflow-hidden min-w-0 w-full"
                     >
                       {['DELIVERED', 'CANCELLED'].includes(order.status) && (
                         <button
@@ -1788,29 +1788,29 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                         </button>
                       )}
 
-                      <Link href={`/r/${slug}/order/${order.id}`} className="block space-y-3">
-                        <div className="flex items-center justify-between pr-6">
-                          <div className="space-y-0.5">
-                            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      <Link href={`/r/${slug}/order/${order.id}`} className="block space-y-3 min-w-0 w-full overflow-hidden">
+                        <div className="flex items-center justify-between gap-2 pr-7 min-w-0 w-full">
+                          <div className="space-y-0.5 min-w-0 shrink">
+                            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider truncate">
                               Order #{order.id.slice(-8).toUpperCase()}
                             </p>
                             <p className="text-[10px] text-muted-foreground">
                               {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </p>
                           </div>
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${statusDetails.color}`}>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border shrink-0 whitespace-nowrap ${statusDetails.color}`}>
                             {statusDetails.label}
                           </span>
                         </div>
 
-                        <div className="space-y-1">
-                          <p className="text-xs font-semibold text-foreground truncate">
+                        <div className="space-y-1 min-w-0 w-full">
+                          <p className="text-xs font-semibold text-foreground truncate w-full min-w-0">
                             {order.items?.map((item: any) => {
                               const addOnsLabel = item.addOns && item.addOns.length > 0 ? ` (+ ${item.addOns.map((ao: any) => ao.name).join(', ')})` : '';
                               return `${item.menuItem.name}${addOnsLabel} × ${item.quantity}`;
                             }).join(', ')}
                           </p>
-                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                          <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] text-muted-foreground flex-wrap min-w-0 w-full">
                             <span>₹{Number(order.total).toFixed(2)}</span>
                             <span>•</span>
                             <span>
@@ -1842,7 +1842,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                           </div>
                         </div>
 
-                        <div className="space-y-1">
+                        <div className="space-y-1 min-w-0 w-full">
                           <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
                             <div
                               className="h-full rounded-full transition-all duration-500 ease-out"
@@ -1854,9 +1854,9 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between pt-1 text-[11px] font-bold text-primary group-hover:translate-x-0.5 transition-transform">
+                        <div className="flex items-center justify-between pt-1 text-[11px] font-bold text-primary group-hover:translate-x-0.5 transition-transform min-w-0 w-full">
                           <span>Track Live Status</span>
-                          <ChevronRight className="w-3.5 h-3.5" style={{ color: themeColor }} />
+                          <ChevronRight className="w-3.5 h-3.5 shrink-0" style={{ color: themeColor }} />
                         </div>
                       </Link>
                     </div>
@@ -1868,7 +1868,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
 
           {/* Tab Content: Order History */}
           {activeTab === 'history' && activeUser && (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full min-w-0">
               {!previousOrders || previousOrders.length === 0 ? (
                 <div className="sm:col-span-2 py-8 text-center text-muted-foreground text-sm border border-dashed border-border rounded-2xl bg-card">
                   No previous orders found at this restaurant
@@ -1881,12 +1881,12 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                   return (
                     <div
                       key={order.id}
-                      className="group bg-card hover:bg-card/85 border border-border rounded-2xl p-4 shadow-sm transition-all duration-200"
+                      className="group bg-card hover:bg-card/85 border border-border rounded-2xl p-4 shadow-sm transition-all duration-200 overflow-hidden min-w-0 w-full"
                     >
-                      <Link href={`/r/${slug}/order/${order.id}`} className="block space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="space-y-0.5">
-                            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      <Link href={`/r/${slug}/order/${order.id}`} className="block space-y-3 min-w-0 w-full overflow-hidden">
+                        <div className="flex items-center justify-between gap-2 min-w-0 w-full">
+                          <div className="space-y-0.5 min-w-0 shrink">
+                            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider truncate">
                               Order #{order.id.slice(-8).toUpperCase()}
                             </p>
                             <p className="text-[10px] text-muted-foreground">
@@ -1894,19 +1894,19 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                               {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </p>
                           </div>
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${statusDetails.color}`}>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border shrink-0 whitespace-nowrap ${statusDetails.color}`}>
                             {statusDetails.label}
                           </span>
                         </div>
 
-                        <div className="space-y-1">
-                          <p className="text-xs font-semibold text-foreground truncate">
+                        <div className="space-y-1 min-w-0 w-full">
+                          <p className="text-xs font-semibold text-foreground truncate w-full min-w-0">
                             {order.items?.map((item: any) => {
                               const addOnsLabel = item.addOns && item.addOns.length > 0 ? ` (+ ${item.addOns.map((ao: any) => ao.name).join(', ')})` : '';
                               return `${item.menuItem.name}${addOnsLabel} × ${item.quantity}`;
                             }).join(', ')}
                           </p>
-                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                          <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] text-muted-foreground flex-wrap min-w-0 w-full">
                             <span>₹{Number(order.total).toFixed(2)}</span>
                             <span>•</span>
                             <span>
@@ -1930,9 +1930,9 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between pt-1 text-[11px] font-bold text-primary group-hover:translate-x-0.5 transition-transform">
+                        <div className="flex items-center justify-between pt-1 text-[11px] font-bold text-primary group-hover:translate-x-0.5 transition-transform min-w-0 w-full">
                           <span>View Order Details & Invoice</span>
-                          <ChevronRight className="w-3.5 h-3.5" style={{ color: themeColor }} />
+                          <ChevronRight className="w-3.5 h-3.5 shrink-0" style={{ color: themeColor }} />
                         </div>
                       </Link>
                     </div>

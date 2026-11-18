@@ -330,25 +330,9 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
             }
           }
 
-          if (data.addOnStatus) {
-            const addonLabels: Record<string, { title: string; msg: string }> = {
-              PREPARING: { title: '👨‍🍳 Add-ons Being Prepared!', msg: 'Your additional items are now being prepared by the kitchen.' },
-              READY:     { title: '🍽️ Add-ons Ready!',           msg: 'Your additional items are ready and will be served shortly.' },
-              DELIVERED: { title: '✅ Add-ons Served!',           msg: 'Your additional items have been served. Enjoy your meal!' },
-              CANCELLED: { title: '🚫 Add-ons Cancelled',         msg: 'Your additional items were cancelled by the restaurant.' },
-            };
-            const info = addonLabels[data.addOnStatus];
-            if (data.addOnStatus === 'CANCELLED') {
-              toast.error(info?.msg ?? `Add-on status: ${data.addOnStatus}`, { id: 'addon-cancelled-toast' });
-            } else if (info) {
-              setAddonAlert({
-                isOpen: true,
-                type: 'ADDON_ORDER',
-                title: info.title,
-                message: info.msg,
-                orderId,
-              });
-            }
+          // Handle add-on status changes quietly (sound + stage update already handled, no popup notification)
+          if (data.addOnStatus === 'CANCELLED') {
+            toast.error('Add-on items were cancelled by the restaurant.', { id: 'addon-cancelled-toast' });
           }
         });
 

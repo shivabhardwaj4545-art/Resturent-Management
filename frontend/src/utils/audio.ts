@@ -481,7 +481,8 @@ export function playRoleEventSound(event: EventType, role: UserRole = 'owner') {
       else if (event === 'waiter_called') synthPlayed = playOwnerWaiterSynth();
       else if (event === 'order_cancelled') synthPlayed = playOrderCancelledSynth();
       else if (event === 'driver_assigned') synthPlayed = playDriverAssignedSynth();
-      else synthPlayed = playOwnerOrderSynth();
+      else if (event === 'order_status_changed') synthPlayed = true; // Quiet status change - avoid replaying new order sound when accepting
+      else synthPlayed = false;
     }
   } catch {
     synthPlayed = false;
