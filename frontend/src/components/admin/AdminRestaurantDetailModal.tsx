@@ -235,6 +235,24 @@ export function AdminRestaurantDetailModal({
     },
   });
 
+  // Mutation: Direct Suspend / Reactivate
+  const suspendDirectMutation = useMutation({
+    mutationFn: async ({ suspend }: { suspend: boolean }) => {
+      if (!restaurantId) return;
+      await api.patch(`/admin/restaurants/${restaurantId}/suspend`, { isSuspended: suspend });
+    },
+    onSuccess: (_, { suspend }) => {
+      toast.success(suspend ? 'Restaurant suspended successfully' : 'Restaurant reactivated successfully');
+      qc.invalidateQueries({ queryKey: ['admin-restaurants'] });
+      qc.invalidateQueries({ queryKey: ['admin-restaurant-details', restaurantId] });
+      refetch();
+      onUpdated?.();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Failed to update suspension status');
+    },
+  });
+
   // Mutation: Save Tabs
   const tabsMutation = useMutation({
     mutationFn: async () => {
@@ -389,6 +407,32 @@ export function AdminRestaurantDetailModal({
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {restaurant && (
+              <button
+                onClick={() => {
+                  const willSuspend = !restaurant.isSuspended;
+                  if (confirm(`Are you sure you want to ${willSuspend ? 'suspend' : 'reactivate'} "${restaurant.name}"? ${willSuspend ? 'Digital menu and orders will be immediately halted.' : 'Digital ordering will be restored.'}`)) {
+                    suspendDirectMutation.mutate({ suspend: willSuspend });
+                  }
+                }}
+                disabled={suspendDirectMutation.isPending}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-sm ${
+                  restaurant.isSuspended
+                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25'
+                    : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30 hover:bg-rose-500/25'
+                }`}
+                title={restaurant.isSuspended ? 'Reactivate Restaurant' : 'Suspend Restaurant'}
+              >
+                {suspendDirectMutation.isPending ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : restaurant.isSuspended ? (
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                ) : (
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                )}
+                <span className="hidden sm:inline">{restaurant.isSuspended ? 'Reactivate' : 'Suspend'}</span>
+              </button>
+            )}
             <button
               onClick={() => refetch()}
               className="p-2 rounded-xl text-muted-foreground hover:bg-muted transition-colors"
@@ -469,6 +513,67 @@ export function AdminRestaurantDetailModal({
                       <p className="text-sm font-bold font-display text-primary mt-1 truncate">
                         {activeSub?.plan?.name || 'Free / None'}
                       </p>
+                    </div>
+                  </div>
+
+                  {/* Restaurant Status & Direct Control Banner */}
+                  <div className={`p-4 sm:p-5 rounded-2xl border transition-all ${
+                    restaurant.isSuspended
+                      ? 'bg-rose-500/5 border-rose-500/20'
+                      : !restaurant.isApproved
+                      ? 'bg-amber-500/5 border-amber-500/20'
+                      : 'bg-emerald-500/5 border-emerald-500/20'
+                  }`}>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2.5 h-2.5 rounded-full ${
+                            restaurant.isSuspended
+                              ? 'bg-rose-500 animate-pulse'
+                              : !restaurant.isApproved
+                              ? 'bg-amber-500'
+                              : 'bg-emerald-500'
+                          }`} />
+                          <h4 className="font-bold text-sm text-foreground">
+                            Restaurant Lifecycle Status:{' '}
+                            <span className={restaurant.isSuspended ? 'text-rose-500 font-extrabold' : !restaurant.isApproved ? 'text-amber-500 font-extrabold' : 'text-emerald-500 font-extrabold'}>
+                              {restaurant.isSuspended ? 'Suspended' : !restaurant.isApproved ? 'Pending Approval' : 'Active & Approved'}
+                            </span>
+                          </h4>
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {restaurant.isSuspended
+                            ? 'This restaurant is currently suspended. Digital QR menus, checkout, and ordering endpoints are blocked.'
+                            : !restaurant.isApproved
+                            ? 'This restaurant is awaiting administrative verification before going live.'
+                            : 'This restaurant is approved and operating normally. Suspend halts QR browsing and online ordering immediately.'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => {
+                            const willSuspend = !restaurant.isSuspended;
+                            if (confirm(`Are you sure you want to ${willSuspend ? 'suspend' : 'reactivate'} "${restaurant.name}"? ${willSuspend ? 'Digital menu and orders will be immediately halted.' : 'Digital ordering will be restored.'}`)) {
+                              suspendDirectMutation.mutate({ suspend: willSuspend });
+                            }
+                          }}
+                          disabled={suspendDirectMutation.isPending}
+                          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border shadow-sm ${
+                            restaurant.isSuspended
+                              ? 'bg-emerald-500 text-white hover:bg-emerald-600 border-emerald-600'
+                              : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500 hover:text-white border-rose-500/30'
+                          }`}
+                        >
+                          {suspendDirectMutation.isPending ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : restaurant.isSuspended ? (
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                          ) : (
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                          )}
+                          <span>{restaurant.isSuspended ? 'Reactivate Restaurant' : 'Suspend Restaurant'}</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
 

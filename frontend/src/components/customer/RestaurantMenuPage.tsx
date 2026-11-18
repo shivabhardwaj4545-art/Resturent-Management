@@ -1222,6 +1222,39 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
     return <MenuSkeleton />;
   }
 
+  const isSuspended =
+    ((error as any)?.response?.status === 403 &&
+      ((error as any)?.response?.data?.code === 'RESTAURANT_SUSPENDED' ||
+       (error as any)?.response?.data?.error === 'RESTAURANT_SUSPENDED')) ||
+    Boolean((data?.restaurant as any)?.isSuspended);
+
+  if (isSuspended) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background p-6 text-center">
+        <motion.div
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="max-w-md w-full bg-card border border-rose-500/20 rounded-3xl p-8 shadow-2xl space-y-5 text-center my-auto"
+        >
+          <div className="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mx-auto text-rose-500">
+            <Ban className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider px-3 py-1 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25 inline-block">
+              Service Unavailable
+            </span>
+            <h2 className="text-xl sm:text-2xl font-display font-black text-foreground">
+              Restaurant Suspended
+            </h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              {(error as any)?.response?.data?.message || 'This restaurant has been temporarily suspended by administration. Digital ordering and menu browsing are currently offline.'}
+            </p>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
   if (error || !data || !data.restaurant) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background p-8 text-center">

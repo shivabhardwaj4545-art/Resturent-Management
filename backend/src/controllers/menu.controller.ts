@@ -200,6 +200,35 @@ export async function getRestaurantMenu(
       });
 
       if (!retryRestaurant) {
+        const suspendedCheck = await prisma.restaurant.findFirst({
+          where: {
+            OR: [{ slug: restaurantSlug }, { slug: retrySlug }],
+            deletedAt: null,
+            isSuspended: true,
+          },
+          select: { id: true, name: true, slug: true, phone: true, isSuspended: true },
+        });
+
+        if (suspendedCheck) {
+          res.status(403).json({
+            success: false,
+            code: 'RESTAURANT_SUSPENDED',
+            error: 'This restaurant is currently suspended by administration.',
+            message: 'This restaurant is currently suspended by administration.',
+            data: {
+              isSuspended: true,
+              restaurant: {
+                id: suspendedCheck.id,
+                name: suspendedCheck.name,
+                slug: suspendedCheck.slug,
+                phone: suspendedCheck.phone,
+                isSuspended: true,
+              },
+            },
+          });
+          return;
+        }
+
         throw new AppError(
           'Restaurant not found or not yet approved.',
           404,

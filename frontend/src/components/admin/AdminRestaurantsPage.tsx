@@ -431,13 +431,30 @@ export function AdminRestaurantsPage() {
                                     </button>
                                   </>
                                 )}
-                                {r.isApproved && (
+                                {(r.isApproved || r.isSuspended) && (
                                   <button
-                                    onClick={() => suspendMutation.mutate({ id: r.id, suspend: !r.isSuspended })}
-                                    className={`p-1.5 rounded-lg transition-colors ${r.isSuspended ? 'text-green-600 hover:bg-green-100 dark:hover:bg-green-900/20' : 'text-orange-500 hover:bg-orange-100 dark:hover:bg-orange-900/20'}`}
-                                    title={r.isSuspended ? "Reactivate" : "Suspend"}
+                                    onClick={() => {
+                                      const willSuspend = !r.isSuspended;
+                                      if (confirm(`Are you sure you want to ${willSuspend ? 'suspend' : 'reactivate'} "${r.name}"? ${willSuspend ? 'Digital menu and orders will be immediately halted.' : 'Digital ordering will be restored.'}`)) {
+                                        suspendMutation.mutate({ id: r.id, suspend: willSuspend });
+                                      }
+                                    }}
+                                    disabled={suspendMutation.isPending && (suspendMutation.variables as any)?.id === r.id}
+                                    className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold transition-all border ${
+                                      r.isSuspended
+                                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
+                                        : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/20'
+                                    }`}
+                                    title={r.isSuspended ? "Reactivate Restaurant" : "Suspend Restaurant"}
                                   >
-                                    {r.isSuspended ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+                                    {suspendMutation.isPending && (suspendMutation.variables as any)?.id === r.id ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : r.isSuspended ? (
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                    ) : (
+                                      <AlertTriangle className="w-3.5 h-3.5" />
+                                    )}
+                                    <span className="hidden sm:inline">{r.isSuspended ? 'Reactivate' : 'Suspend'}</span>
                                   </button>
                                 )}
                                 {r.isSuspended && (

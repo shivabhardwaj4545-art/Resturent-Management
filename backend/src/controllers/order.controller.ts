@@ -402,10 +402,13 @@ async function resolveOrCreateTableSession(
       };
 
       const restaurant = await prisma.restaurant.findFirst({
-        where: { slug: restaurantSlug, isApproved: true, isSuspended: false, deletedAt: null },
+        where: { slug: restaurantSlug, isApproved: true, deletedAt: null },
       });
 
       if (!restaurant) throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
+      if (restaurant.isSuspended) {
+        throw new AppError('This restaurant is currently suspended by administration. Ordering is unavailable.', 403, 'RESTAURANT_SUSPENDED');
+      }
       if (!restaurant.isOpen || !isRestaurantOpen(restaurant.operatingHours, restaurant.isOpen)) {
         throw new AppError('Restaurant is currently closed or outside operating hours.', 400, 'RESTAURANT_CLOSED');
       }
@@ -765,10 +768,13 @@ async function resolveOrCreateTableSession(
       };
 
       const restaurant = await prisma.restaurant.findFirst({
-        where: { slug: restaurantSlug, isApproved: true, isSuspended: false, deletedAt: null },
+        where: { slug: restaurantSlug, isApproved: true, deletedAt: null },
       });
 
       if (!restaurant) throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
+      if (restaurant.isSuspended) {
+        throw new AppError('This restaurant is currently suspended by administration. Ordering is unavailable.', 403, 'RESTAURANT_SUSPENDED');
+      }
       if (!restaurant.isOpen || !isRestaurantOpen(restaurant.operatingHours, restaurant.isOpen)) {
         throw new AppError('Restaurant is currently closed or outside operating hours.', 400, 'RESTAURANT_CLOSED');
       }
@@ -1532,6 +1538,10 @@ async function resolveOrCreateTableSession(
 
       if (!order) {
         throw new AppError('Order not found.', 404, 'ORDER_NOT_FOUND');
+      }
+
+      if (order.restaurant.isSuspended) {
+        throw new AppError('This restaurant is currently suspended by administration. Ordering is unavailable.', 403, 'RESTAURANT_SUSPENDED');
       }
 
       if ((order.restaurant.qrSettings as any)?.enabled === false) {

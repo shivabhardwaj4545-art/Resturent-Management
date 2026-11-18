@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { cacheGet, cacheSet, cacheDelPattern } from '../services/redis.service';
-import { emitNotification } from '../services/socket.service';
+import { emitNotification, getSocketServer } from '../services/socket.service';
 import {
   sendBroadcastEmail,
   sendRestaurantWelcomeEmail,
@@ -204,8 +204,29 @@ export async function updateRestaurant(req: AuthenticatedRequest, res: Response,
       include: { owner: true },
     });
 
-    if (slug !== existing.slug || featureFlags !== undefined || platformType !== undefined) {
+    if (slug !== existing.slug || featureFlags !== undefined || platformType !== undefined || isSuspended !== undefined) {
       await cacheDelPattern(`menu:${existing.slug}*`);
+      await cacheDelPattern(`menu:${existing.slug.toLowerCase()}*`);
+      await cacheDelPattern(`menu:*`);
+
+      if (isSuspended !== undefined) {
+        try {
+          const io = getSocketServer();
+          io?.to(`restaurant:${existing.id}`).emit('restaurant:status_changed', {
+            isSuspended: updated.isSuspended,
+            isOpen: updated.isOpen,
+            restaurantId: existing.id,
+          });
+          io?.emit('restaurant:status_changed', {
+            isSuspended: updated.isSuspended,
+            isOpen: updated.isOpen,
+            restaurantId: existing.id,
+            restaurantSlug: existing.slug,
+          });
+        } catch (e) {
+          logger.warn('Failed to emit status socket:', e);
+        }
+      }
     }
 
     // Handle Owner Account Credentials Update
@@ -297,15 +318,34 @@ export async function suspendRestaurant(req: AuthenticatedRequest, res: Response
       data: { isSuspended, ...(isSuspended && { isOpen: false }) },
     });
 
-    // Also update connected owner user suspension status (keep deletedAt null so user stays visible as Suspended)
-    if (restaurant.ownerId) {
-      await prisma.user.update({
-        where: { id: restaurant.ownerId },
-        data: { verifyToken: isSuspended ? 'SUSPENDED' : null, deletedAt: null },
-      }).catch((err) => logger.warn('Failed to update owner user suspension:', err));
+    // Invalidate all menu and restaurant caches
+    await cacheDelPattern(`menu:${restaurant.slug}*`);
+    await cacheDelPattern(`menu:${restaurant.slug.toLowerCase()}*`);
+    await cacheDelPattern(`menu:*`);
+
+    // Emit real-time notification to owner dashboard and customer screens
+    try {
+      const io = getSocketServer();
+      io?.to(`restaurant:${restaurant.id}`).emit('restaurant:status_changed', {
+        isSuspended: updated.isSuspended,
+        isOpen: updated.isOpen,
+        restaurantId: restaurant.id,
+      });
+      io?.emit('restaurant:status_changed', {
+        isSuspended: updated.isSuspended,
+        isOpen: updated.isOpen,
+        restaurantId: restaurant.id,
+        restaurantSlug: restaurant.slug,
+      });
+    } catch (e) {
+      logger.warn('Failed to emit restaurant status socket:', e);
     }
 
-    res.json({ success: true, data: { isSuspended: updated.isSuspended }, message: `Restaurant ${isSuspended ? 'suspended' : 'reactivated'}` });
+    res.json({
+      success: true,
+      data: { isSuspended: updated.isSuspended, isOpen: updated.isOpen },
+      message: `Restaurant "${restaurant.name}" has been ${isSuspended ? 'suspended' : 'reactivated'} successfully`,
+    });
   } catch (error) { next(error); }
 }
 
@@ -920,7 +960,8 @@ export async function terminateRestaurantSessions(req: AuthenticatedRequest, res
 export async function updateRestaurantFeatures(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const id = req.params.id as string;
-    const { featureFlags } = req.body;
+    const rawFlags = req.body?.featureFlags !== undefined ? req.body.featureFlags : req.body;
+    const featureFlags = (typeof rawFlags === 'object' && rawFlags !== null) ? rawFlags : {};
 
     const restaurant = await prisma.restaurant.findFirst({ where: { id, deletedAt: null } });
     if (!restaurant) throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');

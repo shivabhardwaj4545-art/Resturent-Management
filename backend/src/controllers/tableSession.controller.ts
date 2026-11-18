@@ -52,14 +52,14 @@ async function resolveRestaurant(restaurantId?: string, restaurantSlug?: string)
   if (restaurantId) {
     const rest = await prisma.restaurant.findUnique({
       where: { id: restaurantId },
-      select: { id: true, name: true, slug: true, isOpen: true, qrSettings: true },
+      select: { id: true, name: true, slug: true, isOpen: true, qrSettings: true, isSuspended: true },
     });
     if (rest) return rest;
   }
   if (restaurantSlug) {
     const rest = await prisma.restaurant.findUnique({
       where: { slug: restaurantSlug },
-      select: { id: true, name: true, slug: true, isOpen: true, qrSettings: true },
+      select: { id: true, name: true, slug: true, isOpen: true, qrSettings: true, isSuspended: true },
     });
     if (rest) return rest;
   }
@@ -91,6 +91,14 @@ export async function joinOrCreateSession(
     }
 
     const restaurant = await resolveRestaurant(restaurantId, restaurantSlug);
+    if (restaurant.isSuspended) {
+      res.status(403).json({
+        success: false,
+        code: 'RESTAURANT_SUSPENDED',
+        message: 'This restaurant is currently suspended by administration.',
+      });
+      return;
+    }
     if ((restaurant.qrSettings as any)?.enabled === false) {
       res.status(503).json({
         success: false,
@@ -242,6 +250,14 @@ export async function getActiveSession(
     }
 
     const restaurant = await resolveRestaurant(restaurantId, restaurantSlug);
+    if (restaurant.isSuspended) {
+      res.status(403).json({
+        success: false,
+        code: 'RESTAURANT_SUSPENDED',
+        message: 'This restaurant is currently suspended by administration.',
+      });
+      return;
+    }
     if ((restaurant.qrSettings as any)?.enabled === false) {
       res.status(503).json({
         success: false,

@@ -503,17 +503,32 @@ export async function checkTableStatusAndAccess(
     if (restaurantId) {
       restaurant = await prisma.restaurant.findUnique({
         where: { id: restaurantId },
-        select: { id: true, name: true, slug: true, sessionManagementMode: true, qrSettings: true },
+        select: { id: true, name: true, slug: true, sessionManagementMode: true, qrSettings: true, isSuspended: true },
       });
     } else if (restaurantSlug) {
       restaurant = await prisma.restaurant.findUnique({
         where: { slug: restaurantSlug },
-        select: { id: true, name: true, slug: true, sessionManagementMode: true, qrSettings: true },
+        select: { id: true, name: true, slug: true, sessionManagementMode: true, qrSettings: true, isSuspended: true },
       });
     }
 
     if (!restaurant) {
       throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
+    }
+
+    if (restaurant.isSuspended) {
+      res.status(403).json({
+        success: false,
+        code: 'RESTAURANT_SUSPENDED',
+        message: 'This restaurant is currently suspended by administration.',
+        data: {
+          isAvailable: false,
+          isSuspended: true,
+          tableNumber: cleanTable,
+          restaurantName: restaurant.name,
+        },
+      });
+      return;
     }
 
     // Check if QR service is shut down / in maintenance
