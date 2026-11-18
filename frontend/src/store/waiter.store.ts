@@ -25,6 +25,8 @@ export interface LiveOrderAlert {
   createdAt?: string;
   items?: Array<{ name?: string; menuItem?: { name?: string }; quantity: number; subtotal?: number; unitPrice?: number }>;
   user?: { name?: string };
+  isNewAddon?: boolean;
+  isAddon?: boolean;
 }
 
 export interface GeneralNotificationAlert {

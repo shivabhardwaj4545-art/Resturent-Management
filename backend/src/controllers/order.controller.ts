@@ -473,6 +473,13 @@ async function resolveOrCreateTableSession(
         });
 
         if (existingOrder) {
+          let nextStatus = existingOrder.status;
+          if (existingOrder.status === 'READY') {
+            nextStatus = 'PREPARING';
+          } else if (existingOrder.status === 'DELIVERED') {
+            nextStatus = 'CONFIRMED';
+          }
+
           const updatedOrder = await prisma.$transaction(async (tx) => {
             await tx.orderItem.createMany({
               data: items.map((item) => ({
@@ -490,11 +497,13 @@ async function resolveOrCreateTableSession(
             const orderUpdate = await tx.order.update({
               where: { id: targetOrderId },
               data: {
+                status: nextStatus,
                 subtotal: { increment: subtotal },
                 gstAmount: { increment: gstAmount },
                 total: { increment: total },
                 addOnStatus: 'PREPARING',
                 lastAddOnAt: new Date(),
+                paymentStatus: existingOrder.paymentMethod === 'RAZORPAY' ? existingOrder.paymentStatus : 'PENDING',
               },
               include: {
                 items: { include: { menuItem: true } },
@@ -527,7 +536,14 @@ async function resolveOrCreateTableSession(
             isNewAddon: true,
           });
 
-          void emitNewOrder(restaurant.id, updatedOrder, restaurant.ownerId);
+          void emitNewOrder(restaurant.id, {
+            ...updatedOrder,
+            id: targetOrderId,
+            orderId: targetOrderId,
+            status: updatedOrder.status,
+            isAddon: true,
+            isNewAddon: true,
+          }, restaurant.ownerId);
 
           if (tableNumber) {
             emitTableSessionUpdate(restaurant.id, tableNumber, {
@@ -896,6 +912,13 @@ async function resolveOrCreateTableSession(
         });
 
         if (existingOrder) {
+          let nextStatus = existingOrder.status;
+          if (existingOrder.status === 'READY') {
+            nextStatus = 'PREPARING';
+          } else if (existingOrder.status === 'DELIVERED') {
+            nextStatus = 'CONFIRMED';
+          }
+
           const updatedOrder = await prisma.$transaction(async (tx) => {
             await tx.orderItem.createMany({
               data: items.map((item) => ({
@@ -913,11 +936,13 @@ async function resolveOrCreateTableSession(
             const orderUpdate = await tx.order.update({
               where: { id: targetOrderId },
               data: {
+                status: nextStatus,
                 subtotal: { increment: subtotal },
                 gstAmount: { increment: gstAmount },
                 total: { increment: total },
                 addOnStatus: 'PREPARING',
                 lastAddOnAt: new Date(),
+                paymentStatus: existingOrder.paymentMethod === 'RAZORPAY' ? existingOrder.paymentStatus : 'PENDING',
               },
               include: {
                 items: { include: { menuItem: true } },
@@ -950,7 +975,14 @@ async function resolveOrCreateTableSession(
             isNewAddon: true,
           });
 
-          void emitNewOrder(restaurant.id, updatedOrder, restaurant.ownerId);
+          void emitNewOrder(restaurant.id, {
+            ...updatedOrder,
+            id: targetOrderId,
+            orderId: targetOrderId,
+            status: updatedOrder.status,
+            isAddon: true,
+            isNewAddon: true,
+          }, restaurant.ownerId);
 
           if (tableNumber) {
             emitTableSessionUpdate(restaurant.id, tableNumber, {
@@ -1496,11 +1528,11 @@ async function resolveOrCreateTableSession(
         throw new AppError('Order not found.', 404, 'ORDER_NOT_FOUND');
       }
 
-      if (order.paymentStatus === 'PAID' || order.status === 'CANCELLED') {
+      if (order.status === 'CANCELLED') {
         throw new AppError(
-          'Cannot add items to an order that is already paid or cancelled. Please place a fresh order.',
+          'Cannot add items to an order that is cancelled. Please place a fresh order.',
           400,
-          'ORDER_ALREADY_SETTLED'
+          'ORDER_CANCELLED'
         );
       }
 
@@ -1569,6 +1601,13 @@ async function resolveOrCreateTableSession(
       const addedGst = addedSubtotal * 0.18; // 18% GST consistent with standard rate
       const addedTotal = addedSubtotal + addedGst;
 
+      let nextStatus = order.status;
+      if (order.status === 'READY') {
+        nextStatus = 'PREPARING';
+      } else if (order.status === 'DELIVERED') {
+        nextStatus = 'CONFIRMED';
+      }
+
       // Start a transaction to create items and update order totals
       const updatedOrder = await prisma.$transaction(async (tx) => {
         // Create new OrderItems
@@ -1580,6 +1619,7 @@ async function resolveOrCreateTableSession(
         const orderUpdate = await tx.order.update({
           where: { id: orderId },
           data: {
+            status: nextStatus,
             subtotal: { increment: addedSubtotal },
             gstAmount: { increment: addedGst },
             total: { increment: addedTotal },
@@ -1631,7 +1671,7 @@ async function resolveOrCreateTableSession(
         });
       }
 
-      // Emit order status update / socket events to update owner dashboard in real time
+      // Emit order status update / socket events to update owner dashboard and tracking in real time
       emitOrderStatusUpdate(orderId, order.restaurantId, {
         orderId,
         status: updatedOrder.status,
@@ -1640,11 +1680,17 @@ async function resolveOrCreateTableSession(
         paymentStatus: updatedOrder.paymentStatus,
         updatedAt: updatedOrder.updatedAt.toISOString(),
         items: updatedOrder.items,
+        isNewAddon: true,
       });
 
-      // NOTE: Do NOT call emitNewOrder here — this is an add-on to an existing order,
-      // not a brand-new order. emitOrderStatusUpdate above already refreshes the
-      // owner dashboard, KDS, and all connected clients in real time.
+      void emitNewOrder(order.restaurantId, {
+        ...updatedOrder,
+        id: orderId,
+        orderId,
+        status: updatedOrder.status,
+        isAddon: true,
+        isNewAddon: true,
+      }, order.restaurant?.ownerId);
 
       res.json({
         success: true,

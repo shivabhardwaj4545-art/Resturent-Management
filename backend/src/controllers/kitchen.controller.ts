@@ -80,9 +80,27 @@ export async function getKitchenOrders(
       },
     });
 
+    // Maintain a fair queue:
+    // Active orders are sorted by their queue entry time ascending (FIFO).
+    // An add-on joins the queue based on lastAddOnAt and does not jump to the front.
+    // Delivered orders are listed most recently served first.
+    const activeOrders = orders
+      .filter((o) => o.status !== 'DELIVERED')
+      .sort((a, b) => {
+        const timeA = new Date(a.lastAddOnAt || a.createdAt).getTime();
+        const timeB = new Date(b.lastAddOnAt || b.createdAt).getTime();
+        return timeA - timeB;
+      });
+
+    const deliveredOrders = orders
+      .filter((o) => o.status === 'DELIVERED')
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    const sortedOrders = [...activeOrders, ...deliveredOrders];
+
     res.json({
       success: true,
-      data: { orders, restaurantId },
+      data: { orders: sortedOrders, restaurantId },
     });
   } catch (error) {
     next(error);
@@ -139,6 +157,10 @@ export async function updateKitchenOrderStatus(
         // Food is served. Do NOT mark payment as PAID — serving food and receiving payment
         // are separate events. Payment must be manually confirmed at counter or via payment gateway.
         updateData.addOnStatus = null;
+      } else if (status === 'READY') {
+        if (order.addOnStatus) updateData.addOnStatus = 'READY';
+      } else if (status === 'PREPARING' || status === 'BAKING') {
+        if (order.addOnStatus) updateData.addOnStatus = 'PREPARING';
       }
       if (statusDateFields[status]) {
         updateData[statusDateFields[status]] = new Date();

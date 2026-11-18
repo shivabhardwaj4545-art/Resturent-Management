@@ -172,9 +172,10 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     const handleNewOrderEvent = (order: any) => {
       if (!order) return;
 
-      const eventKey = `order-${order.id || Date.now()}`;
+      const isAddonOrder = Boolean(order.isNewAddon || order.isAddon);
+      const eventKey = isAddonOrder ? `order-addon-${order.id}-${Date.now()}` : `order-${order.id || Date.now()}`;
       const now = Date.now();
-      if (order.id && processedEventsRef.current.has(eventKey) && now - (processedEventsRef.current.get(eventKey) || 0) < 3000) {
+      if (!isAddonOrder && order.id && processedEventsRef.current.has(eventKey) && now - (processedEventsRef.current.get(eventKey) || 0) < 3000) {
         return;
       }
       if (order.id) {
@@ -187,6 +188,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       const itemsLabel = order.items?.map((i: any) => `${i.menuItem?.name || i.name || 'Item'} × ${i.quantity}`).join(', ') || 'New order received';
       const locationLabel = order.tableNumber ? `Table ${order.tableNumber}` : 'Home Delivery';
       const totalLabel = order.total ? `₹${Number(order.total).toFixed(2)}` : '';
+      const alertTitle = isAddonOrder ? `⚡ ADD-ON ORDER RECEIVED #${orderIdShort}` : `🛍️ NEW ORDER RECEIVED #${orderIdShort}`;
 
       processRealTimeEvent(
         'new_order',
@@ -194,7 +196,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
           useWaiterStore.getState().setActiveNewOrderAlert(order);
         },
         {
-          title: `🛍️ NEW ORDER RECEIVED #${orderIdShort}`,
+          title: alertTitle,
           body: `${locationLabel} ${totalLabel ? `• ${totalLabel}` : ''}\nItems: ${itemsLabel}`,
           tag: `order-${order.id || Date.now()}`,
         },
@@ -217,6 +219,10 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     // 3. Order status updated
     const handleStatusUpdated = (payload?: any) => {
       const orderId = payload?.id || payload?.orderId;
+      if (payload?.isNewAddon) {
+        // Do not dismiss alert if a new add-on was placed
+        return;
+      }
       if (orderId) {
         useWaiterStore.getState().removeNewOrder(orderId);
         const currentAlert = useWaiterStore.getState().activeNewOrderAlert;
@@ -565,12 +571,12 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
         document.body
       )}
 
-      {/* Global New Order Alert Modal (Portalled to document.body) */}
+      {/* Global New Order / Add-on Alert Modal (Portalled to document.body) */}
       {mounted && typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {activeNewOrderAlert && (
             !activeNewOrderAlert.status ||
-            !['DELIVERED', 'CANCELLED', 'COMPLETED', 'SERVED'].includes(String(activeNewOrderAlert.status).toUpperCase())
+            !['CANCELLED'].includes(String(activeNewOrderAlert.status).toUpperCase())
           ) && (
               <motion.div
                 initial={{ opacity: 0 }}
@@ -588,14 +594,18 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                   <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 p-5 text-white flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-xs">
-                        <ShoppingBag className="w-5 h-5 text-white animate-bounce" />
+                        {activeNewOrderAlert.isNewAddon || activeNewOrderAlert.isAddon ? (
+                          <Sparkles className="w-5 h-5 text-white animate-spin" />
+                        ) : (
+                          <ShoppingBag className="w-5 h-5 text-white animate-bounce" />
+                        )}
                       </div>
                       <div>
                         <span className="text-[10px] font-extrabold uppercase tracking-widest bg-white/20 px-2 py-0.5 rounded-full">
-                          New Order Notification
+                          {activeNewOrderAlert.isNewAddon || activeNewOrderAlert.isAddon ? '⚡ Add-on Order Notification' : 'New Order Notification'}
                         </span>
                         <h3 className="font-display font-extrabold text-xl leading-tight">
-                          Order #{activeNewOrderAlert.id ? String(activeNewOrderAlert.id).slice(-8).toUpperCase() : 'NEW'}
+                          {activeNewOrderAlert.isNewAddon || activeNewOrderAlert.isAddon ? 'Add-on #' : 'Order #'}{activeNewOrderAlert.id ? String(activeNewOrderAlert.id).slice(-8).toUpperCase() : 'NEW'}
                         </h3>
                       </div>
                     </div>
@@ -678,7 +688,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                       }}
                       className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                     >
-                      <Check className="w-4 h-4" /> Confirm Order
+                      <Check className="w-4 h-4" /> {activeNewOrderAlert.isNewAddon || activeNewOrderAlert.isAddon ? 'Accept Add-on' : 'Confirm Order'}
                     </button>
                     <button
                       onClick={() => {

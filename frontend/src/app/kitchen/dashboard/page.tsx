@@ -210,17 +210,6 @@ export default function KitchenDashboardPage() {
     }
   };
 
-  // Add-on status update handler
-  const handleUpdateAddonStatus = async (orderId: string, nextAddonStatus: string) => {
-    try {
-      await api.patch(`/kitchen/orders/${orderId}/status`, { addOnStatus: nextAddonStatus });
-      toast.success(`Add-on status updated to ${nextAddonStatus}`);
-      queryClient.invalidateQueries({ queryKey: ['kitchen-orders'] });
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Failed to update add-on status');
-    }
-  };
-
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => { });
@@ -263,21 +252,37 @@ export default function KitchenDashboardPage() {
     );
   }
 
-  const activeOrders = orders.filter((o) => o.status !== 'DELIVERED' && o.status !== 'CANCELLED');
-  const confirmedOrders = orders.filter((o) => o.status === 'CONFIRMED');
-  const preparingOrders = orders.filter((o) => o.status === 'PREPARING' || o.status === 'BAKING');
-  const readyOrders = orders.filter((o) => o.status === 'READY');
-  const completedTodayOrders = orders.filter((o) => o.status === 'DELIVERED');
+  const getOrderQueueTimestamp = (order: KitchenOrder): number => {
+    // If order has an active addon, its queue position is determined by when the addon was placed
+    if (order.lastAddOnAt) {
+      const addonTime = new Date(order.lastAddOnAt).getTime();
+      if (!isNaN(addonTime)) return addonTime;
+    }
+    const createdTime = new Date(order.createdAt).getTime();
+    return isNaN(createdTime) ? Date.now() : createdTime;
+  };
+
+  const activeOrders = orders
+    .filter((o) => o.status !== 'DELIVERED' && o.status !== 'CANCELLED')
+    .sort((a, b) => getOrderQueueTimestamp(a) - getOrderQueueTimestamp(b));
+
+  const confirmedOrders = activeOrders.filter((o) => o.status === 'CONFIRMED');
+  const preparingOrders = activeOrders.filter((o) => o.status === 'PREPARING' || o.status === 'BAKING');
+  const readyOrders = activeOrders.filter((o) => o.status === 'READY');
+  const completedTodayOrders = orders
+    .filter((o) => o.status === 'DELIVERED')
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const filteredOrders = activeFilter === 'ALL'
     ? activeOrders
-    : orders.filter((o) => {
-      if (activeFilter === 'CONFIRMED') return o.status === 'CONFIRMED';
-      if (activeFilter === 'PREPARING') return o.status === 'PREPARING' || o.status === 'BAKING';
-      if (activeFilter === 'READY') return o.status === 'READY';
-      if (activeFilter === 'DELIVERED') return o.status === 'DELIVERED';
-      return true;
-    });
+    : activeFilter === 'DELIVERED'
+      ? completedTodayOrders
+      : activeOrders.filter((o) => {
+        if (activeFilter === 'CONFIRMED') return o.status === 'CONFIRMED';
+        if (activeFilter === 'PREPARING') return o.status === 'PREPARING' || o.status === 'BAKING';
+        if (activeFilter === 'READY') return o.status === 'READY';
+        return true;
+      });
 
   return (
     <div className="min-h-screen max-w-full overflow-x-hidden bg-slate-950 text-slate-100 font-sans flex flex-col selection:bg-orange-500/30">
@@ -515,10 +520,10 @@ export default function KitchenDashboardPage() {
                                 </>
                               );
                             })()}
-                            {order.addOnStatus && (
+                            {order.lastAddOnAt && (
                               <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 font-extrabold text-[9px] sm:text-[10px] px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs">
                                 <Sparkles className="w-2.5 h-2.5 animate-pulse text-amber-400" />
-                                Add-on: {order.addOnStatus}
+                                Add-on Active
                               </span>
                             )}
                           </div>
@@ -547,95 +552,74 @@ export default function KitchenDashboardPage() {
 
                       {/* Items List */}
                       <div className="p-2.5 sm:p-4 flex-1 space-y-2 sm:space-y-3 overflow-y-auto max-h-[260px] sm:max-h-[350px]">
-                              {order.items.map((item, idx) => {
-                                const isAddon = isItemAddon(item, order);
-                                return (
-                                  <div
-                                    key={item.id || idx}
-                                    className={`p-2 sm:p-3 rounded-xl border flex items-start gap-2 min-w-0 transition-all ${isAddon
-                                        ? 'bg-amber-950/40 border-amber-500/50 shadow-xs shadow-amber-500/10 ring-1 ring-amber-500/30'
-                                        : 'bg-slate-950/80 border-slate-800/80'
-                                      }`}
+                        {order.items.map((item, idx) => {
+                          const isAddon = isItemAddon(item, order);
+                          const isPreviousServed = !isAddon && Boolean(order.lastAddOnAt);
+                          return (
+                            <div
+                              key={item.id || idx}
+                              className={`p-2 sm:p-3 rounded-xl border flex items-start gap-2 min-w-0 transition-all ${
+                                isAddon
+                                  ? 'bg-amber-950/40 border-amber-500/50 shadow-xs shadow-amber-500/10 ring-1 ring-amber-500/30'
+                                  : isPreviousServed
+                                  ? 'bg-slate-950/40 border-slate-800/60 opacity-60'
+                                  : 'bg-slate-950/80 border-slate-800/80'
+                              }`}
+                            >
+                              <span
+                                className={`w-6 h-6 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center font-black text-xs sm:text-sm shrink-0 border ${
+                                  isAddon
+                                    ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm'
+                                    : isPreviousServed
+                                    ? 'bg-slate-800 text-slate-400 border-slate-700'
+                                    : 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+                                }`}
+                              >
+                                {item.quantity}x
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <h4
+                                    className={`font-extrabold text-xs sm:text-sm leading-snug break-words ${
+                                      isAddon
+                                        ? 'text-amber-200 font-black'
+                                        : isPreviousServed
+                                        ? 'text-slate-400 line-through'
+                                        : 'text-slate-100'
+                                    }`}
                                   >
-                                    <span
-                                      className={`w-6 h-6 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center font-black text-xs sm:text-sm shrink-0 border ${isAddon
-                                          ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm'
-                                          : 'bg-orange-500/20 text-orange-400 border-orange-500/30'
-                                        }`}
-                                    >
-                                      {item.quantity}x
+                                    {item.menuItem?.name || (item as any).name || 'Menu Item'}
+                                  </h4>
+                                  {isAddon ? (
+                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500 text-slate-950 flex items-center gap-0.5 shrink-0 shadow-xs">
+                                      <Sparkles className="w-2.5 h-2.5" /> ADD-ON (IN QUEUE)
                                     </span>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-1.5 flex-wrap">
-                                        <h4
-                                          className={`font-extrabold text-xs sm:text-sm leading-snug break-words ${isAddon ? 'text-amber-200 font-black' : 'text-slate-100'
-                                            }`}
-                                        >
-                                          {item.menuItem?.name || 'Menu Item'}
-                                        </h4>
-                                        {isAddon && (
-                                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500 text-slate-950 flex items-center gap-0.5 shrink-0 shadow-xs">
-                                            <Sparkles className="w-2.5 h-2.5" /> ADD-ON
-                                          </span>
-                                        )}
-                                      </div>
+                                  ) : isPreviousServed ? (
+                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-emerald-950/60 text-emerald-400 border border-emerald-500/30 flex items-center gap-0.5 shrink-0">
+                                      <CheckCircle2 className="w-2.5 h-2.5" /> SERVED
+                                    </span>
+                                  ) : null}
+                                </div>
 
-                                      {isAddon && order.addOnStatus && (
-                                        <p className="text-[10px] font-extrabold text-amber-400 mt-0.5 flex items-center gap-1">
-                                          ⚡ Status: {order.addOnStatus}
-                                        </p>
-                                      )}
-
-                                      {/* Item Notes / Customizations */}
-                                      {item.notes && (
-                                        <p className="text-[10px] sm:text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 p-1.5 rounded-lg mt-1 break-words">
-                                          ⚠️ Note: {item.notes}
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-                            );
-                      })}
-                          </div>
+                                {/* Item Notes / Customizations */}
+                                {item.notes && (
+                                  <p className="text-[10px] sm:text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 p-1.5 rounded-lg mt-1 break-words">
+                                    ⚠️ Note: {item.notes}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
 
                     {/* Action Button Footer */}
                     <div className="p-2.5 sm:p-4 bg-slate-950 border-t border-slate-800 mt-auto space-y-2">
-                      {/* Add-on Status Action Controls */}
-                      {order.addOnStatus && (
-                        <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/30">
-                          <div className="flex items-center justify-between text-[11px] font-bold text-amber-300 mb-1.5 px-0.5">
-                            <span className="flex items-center gap-1">
-                              <Sparkles className="w-3 h-3 text-amber-400" />
-                              Add-on Items
-                            </span>
-                            <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200">
-                              {order.addOnStatus}
-                            </span>
-                          </div>
-                          {(order.addOnStatus === 'PREPARING' || order.addOnStatus === 'CONFIRMED') && (
-                            <button
-                              onClick={() => handleUpdateAddonStatus(order.id, 'READY')}
-                              className="w-full py-1.5 px-3 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-black text-xs rounded-lg shadow transition-all flex items-center justify-center gap-1.5 active:scale-98"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> Mark Add-ons Ready
-                            </button>
-                          )}
-                          {order.addOnStatus === 'READY' && (
-                            <button
-                              onClick={() => handleUpdateAddonStatus(order.id, 'DELIVERED')}
-                              className="w-full py-1.5 px-3 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-black text-xs rounded-lg shadow transition-all flex items-center justify-center gap-1.5 active:scale-98"
-                            >
-                              <Utensils className="w-3.5 h-3.5 shrink-0" /> Mark Add-ons Served
-                            </button>
-                          )}
-                        </div>
-                      )}
-
                       {/* Main Order Status Action Controls */}
                       {order.status === 'CONFIRMED' && (
                         <button
                           onClick={() => handleUpdateStatus(order.id, 'PREPARING')}
-                          className="w-full py-2 sm:py-3 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-1.5 active:scale-98"
+                          className="w-full py-2 sm:py-3 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-1.5 active:scale-98 cursor-pointer"
                         >
                           <Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" /> Start Preparing
                         </button>
@@ -644,7 +628,7 @@ export default function KitchenDashboardPage() {
                       {(order.status === 'PREPARING' || order.status === 'BAKING') && (
                         <button
                           onClick={() => handleUpdateStatus(order.id, 'READY')}
-                          className="w-full py-2 sm:py-3 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-emerald-600/20 transition-all flex items-center justify-center gap-1.5 active:scale-98"
+                          className="w-full py-2 sm:py-3 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-emerald-600/20 transition-all flex items-center justify-center gap-1.5 active:scale-98 cursor-pointer"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" /> Mark Order Ready
                         </button>
@@ -653,7 +637,7 @@ export default function KitchenDashboardPage() {
                       {order.status === 'READY' && (
                         <button
                           onClick={() => handleUpdateStatus(order.id, 'DELIVERED')}
-                          className="w-full py-2 sm:py-3 px-3 bg-gradient-to-r from-slate-800 to-slate-700 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 font-black text-xs sm:text-sm rounded-xl transition-all flex items-center justify-center gap-1.5 active:scale-98"
+                          className="w-full py-2 sm:py-3 px-3 bg-gradient-to-r from-slate-800 to-slate-700 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 font-black text-xs sm:text-sm rounded-xl transition-all flex items-center justify-center gap-1.5 active:scale-98 cursor-pointer"
                         >
                           <Utensils className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" /> Complete / Served
                         </button>

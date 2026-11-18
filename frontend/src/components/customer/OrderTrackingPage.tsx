@@ -243,6 +243,9 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
   useEffect(() => {
     if (order?.status) {
       setCurrentStatus(order.status);
+      if (order.status !== 'DELIVERED') {
+        setShowRating(false);
+      }
     }
   }, [order?.status]);
 
@@ -306,6 +309,8 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
             }
             if (data.status === 'DELIVERED') {
               setShowRating(true);
+            } else {
+              setShowRating(false);
             }
           }
 

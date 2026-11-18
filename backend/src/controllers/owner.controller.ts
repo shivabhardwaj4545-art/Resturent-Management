@@ -1162,6 +1162,12 @@ export async function updateOrderStatus(req: AuthenticatedRequest, res: Response
       }
       if (status === 'CANCELLED' && order.addOnStatus) {
         updateData.addOnStatus = 'CANCELLED';
+      } else if (status === 'DELIVERED') {
+        updateData.addOnStatus = null;
+      } else if (status === 'READY') {
+        if (order.addOnStatus) updateData.addOnStatus = 'READY';
+      } else if (status === 'PREPARING' || status === 'BAKING') {
+        if (order.addOnStatus) updateData.addOnStatus = 'PREPARING';
       }
     }
 
