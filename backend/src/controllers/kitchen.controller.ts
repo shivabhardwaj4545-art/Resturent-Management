@@ -61,6 +61,8 @@ export async function getKitchenOrders(
             unitPrice: true,
             addOns: true,
             isAddon: true,
+            isServed: true,
+            servedAt: true,
             createdAt: true,
             menuItem: {
               select: {
@@ -157,6 +159,10 @@ export async function updateKitchenOrderStatus(
         // Food is served. Do NOT mark payment as PAID — serving food and receiving payment
         // are separate events. Payment must be manually confirmed at counter or via payment gateway.
         updateData.addOnStatus = null;
+        await prisma.orderItem.updateMany({
+          where: { orderId: id },
+          data: { isServed: true, servedAt: new Date() },
+        });
       } else if (status === 'READY') {
         if (order.addOnStatus) updateData.addOnStatus = 'READY';
       } else if (status === 'PREPARING' || status === 'BAKING') {
@@ -242,6 +248,144 @@ export async function updateKitchenOrderStatus(
       success: true,
       data: { order: updated },
       message: `Order status updated to ${status}`,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function toggleKitchenOrderItemServed(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const restaurantId = await getTargetRestaurantId(req);
+    const { orderId, itemId } = req.params as { orderId: string; itemId: string };
+    const { isServed } = req.body as { isServed?: boolean };
+
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, restaurantId, deletedAt: null },
+      include: {
+        items: true,
+      },
+    });
+
+    if (!order) {
+      throw new AppError('Order not found or does not belong to this restaurant.', 404, 'ORDER_NOT_FOUND');
+    }
+
+    const targetItem = order.items.find((item) => item.id === itemId);
+    if (!targetItem) {
+      throw new AppError('Order item not found in this order.', 404, 'ITEM_NOT_FOUND');
+    }
+
+    const nextServedStatus = typeof isServed === 'boolean' ? isServed : !targetItem.isServed;
+
+    // Update target item
+    const updatedItem = await prisma.orderItem.update({
+      where: { id: itemId },
+      data: {
+        isServed: nextServedStatus,
+        servedAt: nextServedStatus ? new Date() : null,
+      },
+    });
+
+    // Check all items of this order
+    const allItems = await prisma.orderItem.findMany({
+      where: { orderId: order.id },
+      include: {
+        menuItem: { select: { id: true, name: true, image: true } },
+        variant: { select: { name: true } },
+      },
+    });
+
+    const allServed = allItems.length > 0 && allItems.every((i) => i.isServed);
+    const anyServed = allItems.some((i) => i.isServed);
+
+    const updateOrderData: Record<string, any> = {};
+
+    if (allServed) {
+      updateOrderData.status = 'DELIVERED';
+      updateOrderData.deliveredAt = new Date();
+      updateOrderData.addOnStatus = null;
+    } else {
+      // If some items are served or none, but the order was already DELIVERED or READY, revert to PREPARING
+      // so chef continues cooking the remaining items!
+      if (order.status === 'DELIVERED' || order.status === 'READY') {
+        updateOrderData.status = 'PREPARING';
+        updateOrderData.preparingAt = order.preparingAt || new Date();
+      } else if (order.status === 'CONFIRMED' && anyServed) {
+        updateOrderData.status = 'PREPARING';
+        updateOrderData.preparingAt = order.preparingAt || new Date();
+      }
+    }
+
+    let updatedOrder = order;
+    if (Object.keys(updateOrderData).length > 0) {
+      updatedOrder = await prisma.order.update({
+        where: { id: order.id },
+        data: updateOrderData,
+        include: {
+          items: true,
+        },
+      });
+    }
+
+    // Socket broadcasts
+    try {
+      emitOrderStatusUpdate(order.id, restaurantId, {
+        orderId: order.id,
+        status: updatedOrder.status,
+        addOnStatus: updatedOrder.addOnStatus,
+        paymentStatus: updatedOrder.paymentStatus,
+        updatedAt: updatedOrder.updatedAt.toISOString(),
+        items: allItems,
+        toggledItemId: itemId,
+        isServed: nextServedStatus,
+      });
+
+      // Synchronize linked TableSession and OrderBatch
+      if (order.tableSessionId) {
+        const batchStatus = allServed ? 'SERVED' : 'PREPARING';
+        await prisma.orderBatch.updateMany({
+          where: {
+            OR: [
+              { orderId: order.id },
+              { sessionId: order.tableSessionId, batchNumber: order.batchNumber || 1 },
+            ],
+          },
+          data: {
+            status: batchStatus,
+            ...(allServed ? { servedAt: new Date() } : { preparingAt: new Date() }),
+          },
+        });
+
+        if (order.tableNumber) {
+          emitTableSessionUpdate(restaurantId, order.tableNumber, {
+            sessionId: order.tableSessionId,
+            orderId: order.id,
+            orderStatus: updatedOrder.status,
+            batchStatus,
+            paymentStatus: order.paymentStatus,
+            event: 'ORDER_ITEM_SERVED_UPDATED',
+          });
+        }
+      }
+    } catch (err) {
+      logger.warn('Failed to emit socket updates for kitchen order item served update:', err);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        order: {
+          ...updatedOrder,
+          items: allItems,
+        },
+        toggledItem: updatedItem,
+        allServed,
+      },
     });
   } catch (error) {
     next(error);

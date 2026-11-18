@@ -73,7 +73,7 @@ export const api = axios.create({
   timeout: 30000,
 });
 
-// Request interceptor — attach in-memory access token & fix FormData content-type header
+// Request interceptor — attach in-memory access token, device ID, & fix FormData content-type header
 api.interceptors.request.use((config) => {
   if (config.data instanceof FormData && config.headers) {
     delete config.headers['Content-Type'];
@@ -83,6 +83,17 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers = config.headers || {};
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  if (typeof window !== 'undefined') {
+    config.headers = config.headers || {};
+    const devId = localStorage.getItem('ez_device_id');
+    if (devId && !config.headers['x-device-id']) {
+      config.headers['x-device-id'] = devId;
+    }
+    const actId = sessionStorage.getItem('qr_restaurant_addon_order_id') || localStorage.getItem('active_table_order_id');
+    if (actId && !config.headers['x-active-order-id']) {
+      config.headers['x-active-order-id'] = actId;
+    }
   }
   return config;
 });

@@ -480,13 +480,14 @@ export async function checkTableStatusAndAccess(
   next: NextFunction
 ): Promise<void> {
   try {
-    const { restaurantSlug, restaurantId, tableNumber, guestName, guestCount, deviceReference } = req.body as {
+    const { restaurantSlug, restaurantId, tableNumber, guestName, guestCount, deviceReference, activeOrderId } = req.body as {
       restaurantSlug?: string;
       restaurantId?: string;
       tableNumber?: string;
       guestName?: string;
       guestCount?: number;
       deviceReference?: string;
+      activeOrderId?: string;
     };
 
     if (!tableNumber) {
@@ -494,6 +495,7 @@ export async function checkTableStatusAndAccess(
     }
 
     const deviceRef = (req.headers['x-device-id'] as string) || deviceReference || (req.query.deviceReference as string) || null;
+    const reqActiveOrderId = activeOrderId || (req.headers['x-active-order-id'] as string) || (req.query.activeOrderId as string) || null;
     const cleanTable = normalizeTableNumber(tableNumber);
 
     // Resolve restaurant
@@ -646,25 +648,64 @@ export async function checkTableStatusAndAccess(
         }
       }
 
+      // If customer provides their active order ID (or clicked Add More Items / Back to Menu),
+      // verify if that order belongs to this session's orders. If so, they are authorized!
+      if (reqActiveOrderId) {
+        const matchingOrder = session.orders.find((o) => o.id === reqActiveOrderId);
+        if (matchingOrder) {
+          isAuthorized = true;
+          if (session.primaryDeviceReference === deviceRef) {
+            deviceRole = 'PRIMARY';
+          }
+        }
+      }
+
+      if (isAuthorized && deviceRef) {
+        // Ensure device access is registered so subsequent calls without activeOrderId remain authorized
+        try {
+          await prisma.sessionDeviceAccess.upsert({
+            where: {
+              sessionId_deviceReference: {
+                sessionId: session.id,
+                deviceReference: deviceRef,
+              },
+            },
+            create: {
+              sessionId: session.id,
+              deviceReference: deviceRef,
+              role: deviceRole as any,
+            },
+            update: {
+              revokedAt: null,
+            },
+          });
+        } catch {
+          // ignore duplicate upsert race
+        }
+      }
+
       // In Manual Table Clearance Mode:
       // If orders are paid, the table remains locked and unavailable until cleared by staff
+      // EXCEPT when the authorized diner on this table is adding more items to their session!
       if (mode === 'MANUAL' && (isAllPaid || session.paymentStatus === 'PAID')) {
-        res.status(409).json({
-          success: false,
-          code: 'TABLE_ALREADY_OCCUPIED',
-          message: 'This table is currently marked as occupied. If the table is physically empty, you can call the waiter.',
-          data: {
-            isAvailable: false,
-            isOccupied: true,
-            requiresAccessCode: true,
-            tableNumber: cleanTable,
-            sessionId: session.id,
-            restaurantId: restaurant.id,
-            restaurantSlug: restaurant.slug,
-            status: 'PAID_AWAITING_CLEARANCE',
-          },
-        });
-        return;
+        if (!isAuthorized) {
+          res.status(409).json({
+            success: false,
+            code: 'TABLE_ALREADY_OCCUPIED',
+            message: 'This table is currently marked as occupied. If the table is physically empty, you can call the waiter.',
+            data: {
+              isAvailable: false,
+              isOccupied: true,
+              requiresAccessCode: true,
+              tableNumber: cleanTable,
+              sessionId: session.id,
+              restaurantId: restaurant.id,
+              restaurantSlug: restaurant.slug,
+              status: 'PAID_AWAITING_CLEARANCE',
+            },
+          });
+          return;
+        }
       }
 
       // If session is active and dining in progress:

@@ -66,6 +66,8 @@ export async function syncDatabaseSchema(): Promise<void> {
     'ALTER TABLE "menu_categories" ADD COLUMN IF NOT EXISTS "parentId" TEXT',
     'CREATE TABLE IF NOT EXISTS "item_variants" ("id" TEXT NOT NULL PRIMARY KEY, "menuItemId" TEXT NOT NULL, "name" TEXT NOT NULL, "price" DOUBLE PRECISION NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)',
     'CREATE TABLE IF NOT EXISTS "item_add_ons" ("id" TEXT NOT NULL PRIMARY KEY, "menuItemId" TEXT NOT NULL, "name" TEXT NOT NULL, "price" DOUBLE PRECISION NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+    'ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "isServed" BOOLEAN DEFAULT false',
+    'ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "servedAt" TIMESTAMP',
 
     // Platform Types & Concurrent Login Sessions
     'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "maxLogins" INT DEFAULT 1',

@@ -841,29 +841,36 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
           <div className="bg-card border border-border rounded-2xl p-4">
             <h2 className="font-display font-semibold mb-3">Your Order</h2>
             <div className="space-y-2">
-              {order.items.map((item) => {
-                const isAddon = isItemAddon(item, order);
+              {order.items.map((item: any) => {
+                const isItemServed = item.isServed || order.status === 'DELIVERED';
                 return (
                   <div
                     key={item.id}
-                    className={`space-y-0.5 border-b border-border/50 pb-2 last:border-0 last:pb-0 ${isAddon ? 'bg-amber-500/5 -mx-2 px-2 py-1.5 rounded-xl border border-amber-500/20' : ''
-                      }`}
+                    className={`space-y-0.5 border-b border-border/50 pb-2 last:border-0 last:pb-0 transition-colors ${
+                      isItemServed ? 'bg-emerald-500/5 -mx-2 px-2 py-1.5 rounded-xl border border-emerald-500/20' : ''
+                    }`}
                   >
                     <div className="flex justify-between text-sm items-center gap-2">
                       <span className="flex items-center gap-1.5 flex-wrap">
-                        <span className={isAddon ? 'font-bold text-foreground' : ''}>{item.menuItem.name}</span>
-                        {isAddon && (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/25 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                            ⚡ ADD-ON
-                          </span>
-                        )}
+                        <span className={`font-semibold ${isItemServed ? 'text-emerald-700 dark:text-emerald-300' : 'text-foreground'}`}>
+                          {item.menuItem?.name || item.name}
+                        </span>
                         {item.variant && (
-                          <span className="text-muted-foreground"> ({item.variant.name})</span>
+                          <span className="text-muted-foreground text-xs"> ({item.variant.name})</span>
                         )}
-                        <span className="text-muted-foreground"> × {item.quantity}</span>
+                        <span className="text-muted-foreground text-xs"> × {item.quantity}</span>
+                        {isItemServed ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" /> Served
+                          </span>
+                        ) : order.status === 'PREPARING' || order.status === 'BAKING' ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                            👨‍🍳 Preparing
+                          </span>
+                        ) : null}
                       </span>
-                      <span className={isAddon ? 'font-bold text-amber-600 dark:text-amber-400' : ''}>
-                        ₹{(item.unitPrice * item.quantity).toFixed(0)}
+                      <span className={`font-semibold ${isItemServed ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
+                        ₹{((item.unitPrice || item.price || 0) * item.quantity).toFixed(0)}
                       </span>
                     </div>
                     {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (

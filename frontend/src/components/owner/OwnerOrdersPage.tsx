@@ -91,6 +91,8 @@ type Order = {
     unitPrice: number;
     addOns?: any;
     isAddon?: boolean;
+    isServed?: boolean;
+    servedAt?: string | null;
     createdAt?: string;
   }>;
 };
@@ -189,6 +191,20 @@ export function OwnerOrdersPage() {
       qc.invalidateQueries({ queryKey: ['kitchen-orders'] });
     },
     onError: () => toast.error('Failed to update order status'),
+  });
+
+  const toggleItemServedMutation = useMutation({
+    mutationFn: async ({ orderId, itemId }: { orderId: string; itemId: string }) => {
+      await api.patch(`/kitchen/orders/${orderId}/items/${itemId}/served`);
+    },
+    onSuccess: () => {
+      toast.success('Item served status updated');
+      qc.invalidateQueries({ queryKey: ['owner-orders'] });
+      qc.invalidateQueries({ queryKey: ['owner-dashboard'] });
+      qc.invalidateQueries({ queryKey: ['owner-recent-orders'] });
+      qc.invalidateQueries({ queryKey: ['kitchen-orders'] });
+    },
+    onError: () => toast.error('Failed to update item served status'),
   });
 
   const confirmPaymentMutation = useMutation({
@@ -436,22 +452,42 @@ export function OwnerOrdersPage() {
                                         )}
                                       </div>
                                       <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border shadow-2xs">
-                                        {initialItems.map((item, idx) => (
-                                          <div key={idx} className="flex items-center justify-between p-3 text-sm">
-                                            <div className="flex-1">
-                                              <span className="font-medium text-foreground">{item.menuItem.name}</span>
-                                              <span className="text-xs text-muted-foreground ml-2">
-                                                ({item.quantity} × ₹{formatAmount(item.unitPrice || (item.subtotal / item.quantity))})
-                                              </span>
-                                              {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
-                                                <div className="text-[11px] text-muted-foreground mt-0.5 ml-2">
-                                                  + {item.addOns.map((ao: any) => ao.name).join(', ')}
-                                                </div>
-                                              )}
+                                        {initialItems.map((item, idx) => {
+                                          const isServed = item.isServed || order.status === 'DELIVERED';
+                                          return (
+                                            <div key={idx} className="flex items-center justify-between p-3 text-sm">
+                                              <div className="flex-1">
+                                                <span className={`font-medium ${isServed ? 'text-emerald-700 dark:text-emerald-300 line-through' : 'text-foreground'}`}>{item.menuItem.name}</span>
+                                                <span className="text-xs text-muted-foreground ml-2">
+                                                  ({item.quantity} × ₹{formatAmount(item.unitPrice || (item.subtotal / item.quantity))})
+                                                </span>
+                                                {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
+                                                  <div className="text-[11px] text-muted-foreground mt-0.5 ml-2">
+                                                    + {item.addOns.map((ao: any) => ao.name).join(', ')}
+                                                  </div>
+                                                )}
+                                              </div>
+                                              <div className="flex items-center gap-2">
+                                                <span className="font-semibold text-foreground">₹{formatAmount(item.subtotal)}</span>
+                                                {item.id && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => toggleItemServedMutation.mutate({ orderId: order.id, itemId: item.id! })}
+                                                    disabled={toggleItemServedMutation.isPending}
+                                                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase transition-all flex items-center gap-1 cursor-pointer ${
+                                                      isServed
+                                                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                                                        : 'bg-muted hover:bg-emerald-500/20 text-muted-foreground hover:text-emerald-600 border border-border'
+                                                    }`}
+                                                  >
+                                                    {isServed && <Check className="w-2.5 h-2.5 text-emerald-500" />}
+                                                    {isServed ? 'Served' : 'Serve'}
+                                                  </button>
+                                                )}
+                                              </div>
                                             </div>
-                                            <span className="font-semibold text-foreground">₹{formatAmount(item.subtotal)}</span>
-                                          </div>
-                                        ))}
+                                          );
+                                        })}
                                       </div>
                                     </div>
 
@@ -482,29 +518,49 @@ export function OwnerOrdersPage() {
                                         </div>
 
                                         <div className="bg-card/90 border border-amber-500/30 rounded-xl overflow-hidden divide-y divide-amber-500/15">
-                                          {addonItems.map((item, idx) => (
-                                            <div key={idx} className="flex items-center justify-between p-3 text-sm bg-amber-500/5">
-                                              <div className="flex-1">
-                                                <div className="flex items-center gap-2 flex-wrap">
-                                                  <span className="font-bold text-foreground">{item.menuItem.name}</span>
-                                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-black tracking-wider uppercase bg-amber-500/25 text-amber-600 dark:text-amber-300 border border-amber-500/40">
-                                                    ⚡ ADD-ON
-                                                  </span>
-                                                </div>
-                                                <span className="text-xs text-muted-foreground">
-                                                  ({item.quantity} × ₹{formatAmount(item.unitPrice || (item.subtotal / item.quantity))})
-                                                </span>
-                                                {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
-                                                  <div className="text-[11px] text-muted-foreground mt-0.5 ml-2">
-                                                    + {item.addOns.map((ao: any) => ao.name).join(', ')}
+                                          {addonItems.map((item, idx) => {
+                                            const isServed = item.isServed || order.status === 'DELIVERED';
+                                            return (
+                                              <div key={idx} className="flex items-center justify-between p-3 text-sm bg-amber-500/5">
+                                                <div className="flex-1">
+                                                  <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className={`font-bold ${isServed ? 'text-emerald-700 dark:text-emerald-300 line-through' : 'text-foreground'}`}>{item.menuItem.name}</span>
+                                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black tracking-wider uppercase bg-amber-500/25 text-amber-600 dark:text-amber-300 border border-amber-500/40">
+                                                      ⚡ ADD-ON
+                                                    </span>
                                                   </div>
-                                                )}
+                                                  <span className="text-xs text-muted-foreground">
+                                                    ({item.quantity} × ₹{formatAmount(item.unitPrice || (item.subtotal / item.quantity))})
+                                                  </span>
+                                                  {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
+                                                    <div className="text-[11px] text-muted-foreground mt-0.5 ml-2">
+                                                      + {item.addOns.map((ao: any) => ao.name).join(', ')}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                  <span className="font-bold text-amber-600 dark:text-amber-400">
+                                                    ₹{formatAmount(item.subtotal)}
+                                                  </span>
+                                                  {item.id && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => toggleItemServedMutation.mutate({ orderId: order.id, itemId: item.id! })}
+                                                      disabled={toggleItemServedMutation.isPending}
+                                                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase transition-all flex items-center gap-1 cursor-pointer ${
+                                                        isServed
+                                                          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                                                          : 'bg-muted hover:bg-emerald-500/20 text-muted-foreground hover:text-emerald-600 border border-border'
+                                                      }`}
+                                                    >
+                                                      {isServed && <Check className="w-2.5 h-2.5 text-emerald-500" />}
+                                                      {isServed ? 'Served' : 'Serve'}
+                                                    </button>
+                                                  )}
+                                                </div>
                                               </div>
-                                              <span className="font-bold text-amber-600 dark:text-amber-400">
-                                                ₹{formatAmount(item.subtotal)}
-                                              </span>
-                                            </div>
-                                          ))}
+                                            );
+                                          })}
                                         </div>
                                       </div>
                                     )}
@@ -681,81 +737,6 @@ export function OwnerOrdersPage() {
                                     </>
                                   )}
                                 </div>
-
-                                {/* Add-on Order Journey Banner & Actions */}
-                                {(order as any).addOnStatus && (
-                                  <div className={`rounded-xl p-3.5 space-y-2.5 my-2 border ${(order as any).addOnStatus === 'CANCELLED'
-                                    ? 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-900/50'
-                                    : 'bg-blue-50/70 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900/50'
-                                    }`}>
-                                    <div className="flex items-center justify-between border-b border-border/40 pb-2">
-                                      <div className={`flex items-center gap-1.5 font-bold text-xs ${(order as any).addOnStatus === 'CANCELLED' ? 'text-red-700 dark:text-red-300' : 'text-blue-700 dark:text-blue-300'
-                                        }`}>
-                                        <Sparkles className="w-4 h-4 text-primary" />
-                                        <span>⚡ Add-on Items Status: {(order as any).addOnStatus}</span>
-                                      </div>
-                                      {(order as any).lastAddOnAt && (
-                                        <span className="text-[10px] text-muted-foreground font-mono">
-                                          Added {new Date((order as any).lastAddOnAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        </span>
-                                      )}
-                                    </div>
-
-                                    {/* Customer Selected Payment Method for Add-ons */}
-                                    <div className="flex items-center justify-between text-xs bg-background/60 p-2 rounded-lg border border-border/40">
-                                      <div className="flex items-center gap-1.5 font-semibold text-foreground">
-                                        <CreditCard className="w-3.5 h-3.5 text-primary" />
-                                        <span>Payment Method:</span>
-                                        <span className="text-primary font-bold">
-                                          {order.paymentMethod === 'RAZORPAY' ? 'Pay Direct (Online)' : order.paymentMethod === 'PAY_TO_WAITER' ? 'Pay to Waiter' : 'Pay on Counter'}
-                                        </span>
-                                      </div>
-                                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase ${order.paymentStatus === 'PAID' ? 'bg-green-500/15 text-green-600 dark:text-green-400' : order.paymentStatus === 'FAILED' ? 'bg-red-500/15 text-red-600 dark:text-red-400' : 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400'
-                                        }`}>
-                                        {order.paymentStatus === 'PAID' ? 'PAID' : 'PAYMENT PENDING'}
-                                      </span>
-                                    </div>
-
-                                    {order.status !== 'DELIVERED' && order.status !== 'CANCELLED' && (order as any).addOnStatus !== 'DELIVERED' && (order as any).addOnStatus !== 'CANCELLED' && (
-                                      <div className="flex gap-2 flex-wrap pt-1">
-                                        {(order as any).addOnStatus !== 'PREPARING' && (order as any).addOnStatus !== 'READY' && (order as any).addOnStatus !== 'DELIVERED' && (
-                                          <button
-                                            onClick={() => updateStatusMutation.mutate({ id: order.id, addOnStatus: 'PREPARING' })}
-                                            disabled={updateStatusMutation.isPending}
-                                            className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-sm flex items-center gap-1"
-                                          >
-                                            👨‍🍳 Mark Add-ons Preparing
-                                          </button>
-                                        )}
-                                        {(order as any).addOnStatus !== 'READY' && (order as any).addOnStatus !== 'DELIVERED' && (
-                                          <button
-                                            onClick={() => updateStatusMutation.mutate({ id: order.id, addOnStatus: 'READY' })}
-                                            disabled={updateStatusMutation.isPending}
-                                            className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition-all shadow-sm flex items-center gap-1"
-                                          >
-                                            🍽️ Mark Add-ons Ready
-                                          </button>
-                                        )}
-                                        {(order as any).addOnStatus !== 'DELIVERED' && (
-                                          <button
-                                            onClick={() => updateStatusMutation.mutate({ id: order.id, addOnStatus: 'DELIVERED' })}
-                                            disabled={updateStatusMutation.isPending}
-                                            className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow-sm flex items-center gap-1"
-                                          >
-                                            ✅ Mark Add-ons Served
-                                          </button>
-                                        )}
-                                        <button
-                                          onClick={() => updateStatusMutation.mutate({ id: order.id, addOnStatus: 'CANCELLED' })}
-                                          disabled={updateStatusMutation.isPending}
-                                          className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-red-600 hover:bg-red-700 text-white transition-all shadow-sm flex items-center gap-1"
-                                        >
-                                          🚫 Cancel Add-ons
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
 
                                 {/* Action Buttons */}
                                 {NEXT_STATUS[order.status]?.length > 0 && (

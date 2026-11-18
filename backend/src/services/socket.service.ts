@@ -157,6 +157,8 @@ export function emitOrderStatusUpdate(orderId: string, restaurantId: string, dat
   paymentConfirmedAt?: string;
   counterPaymentMethod?: string;
   items?: any;
+  toggledItemId?: string;
+  isServed?: boolean;
 }): void {
   if (!io) return;
   io.to(`order:${orderId}`).emit('order:status_updated', data);

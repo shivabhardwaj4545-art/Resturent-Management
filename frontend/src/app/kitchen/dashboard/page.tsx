@@ -37,6 +37,8 @@ interface KitchenOrderItem {
   notes?: string | null;
   customizations?: any;
   isAddon?: boolean;
+  isServed?: boolean;
+  servedAt?: string | null;
   createdAt?: string;
   menuItem: {
     id: string;
@@ -73,6 +75,7 @@ export default function KitchenDashboardPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'CONFIRMED' | 'PREPARING' | 'READY' | 'DELIVERED'>('ALL');
   const [activeNewOrderAlert, setActiveNewOrderAlert] = useState<any | null>(null);
+  const [togglingItemId, setTogglingItemId] = useState<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
   const soundEnabledRef = useRef(soundEnabled);
@@ -207,6 +210,26 @@ export default function KitchenDashboardPage() {
       queryClient.invalidateQueries({ queryKey: ['kitchen-orders'] });
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Failed to update order status');
+    }
+  };
+
+  const handleToggleItemServed = async (orderId: string, itemId: string) => {
+    try {
+      setTogglingItemId(itemId);
+      const res = await api.patch(`/kitchen/orders/${orderId}/items/${itemId}/served`);
+      if (res.data?.success) {
+        const { toggledItem } = res.data.data;
+        if (toggledItem?.isServed) {
+          toast.success('🍽️ Item marked as served! Sent to table.');
+        } else {
+          toast.info('Item marked back as preparing.');
+        }
+        queryClient.invalidateQueries({ queryKey: ['kitchen-orders'] });
+      }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to update item served status');
+    } finally {
+      setTogglingItemId(null);
     }
   };
 
@@ -555,59 +578,89 @@ export default function KitchenDashboardPage() {
                         {order.items.map((item, idx) => {
                           const isAddon = isItemAddon(item, order);
                           const isPreviousServed = !isAddon && Boolean(order.lastAddOnAt);
+                          const isServed = Boolean(item.isServed) || (isPreviousServed && item.isServed !== false);
+                          const isToggling = togglingItemId === item.id;
                           return (
                             <div
                               key={item.id || idx}
-                              className={`p-2 sm:p-3 rounded-xl border flex items-start gap-2 min-w-0 transition-all ${
-                                isAddon
+                              onClick={() => handleToggleItemServed(order.id, item.id)}
+                              className={`p-2 sm:p-3 rounded-xl border flex items-center justify-between gap-2 min-w-0 transition-all cursor-pointer select-none active:scale-[0.99] hover:border-emerald-500/50 ${
+                                isServed
+                                  ? 'bg-emerald-950/30 border-emerald-500/40 opacity-80'
+                                  : isAddon
                                   ? 'bg-amber-950/40 border-amber-500/50 shadow-xs shadow-amber-500/10 ring-1 ring-amber-500/30'
-                                  : isPreviousServed
-                                  ? 'bg-slate-950/40 border-slate-800/60 opacity-60'
                                   : 'bg-slate-950/80 border-slate-800/80'
                               }`}
                             >
-                              <span
-                                className={`w-6 h-6 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center font-black text-xs sm:text-sm shrink-0 border ${
-                                  isAddon
-                                    ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm'
-                                    : isPreviousServed
-                                    ? 'bg-slate-800 text-slate-400 border-slate-700'
-                                    : 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+                              <div className="flex items-start gap-2 min-w-0 flex-1">
+                                <span
+                                  className={`w-6 h-6 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center font-black text-xs sm:text-sm shrink-0 border ${
+                                    isServed
+                                      ? 'bg-emerald-800 text-emerald-100 border-emerald-600'
+                                      : isAddon
+                                      ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm'
+                                      : 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+                                  }`}
+                                >
+                                  {item.quantity}x
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <h4
+                                      className={`font-extrabold text-xs sm:text-sm leading-snug break-words ${
+                                        isServed
+                                          ? 'text-emerald-300 line-through'
+                                          : isAddon
+                                          ? 'text-amber-200 font-black'
+                                          : 'text-slate-100'
+                                      }`}
+                                    >
+                                      {item.menuItem?.name || (item as any).name || 'Menu Item'}
+                                    </h4>
+                                    {isAddon && !isServed && (
+                                      <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500 text-slate-950 flex items-center gap-0.5 shrink-0 shadow-xs">
+                                        <Sparkles className="w-2.5 h-2.5" /> ADD-ON (IN QUEUE)
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Item Notes / Customizations */}
+                                  {item.notes && (
+                                    <p className="text-[10px] sm:text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 p-1.5 rounded-lg mt-1 break-words">
+                                      ⚠️ Note: {item.notes}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Interactive Per-Item Served Toggle */}
+                              <button
+                                type="button"
+                                disabled={isToggling}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleItemServed(order.id, item.id);
+                                }}
+                                className={`px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-wider flex items-center gap-1 transition-all shrink-0 cursor-pointer ${
+                                  isServed
+                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500/30'
+                                    : 'bg-slate-800 hover:bg-emerald-600 text-slate-300 hover:text-white border border-slate-700 hover:border-emerald-500 shadow-sm'
                                 }`}
                               >
-                                {item.quantity}x
-                              </span>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <h4
-                                    className={`font-extrabold text-xs sm:text-sm leading-snug break-words ${
-                                      isAddon
-                                        ? 'text-amber-200 font-black'
-                                        : isPreviousServed
-                                        ? 'text-slate-400 line-through'
-                                        : 'text-slate-100'
-                                    }`}
-                                  >
-                                    {item.menuItem?.name || (item as any).name || 'Menu Item'}
-                                  </h4>
-                                  {isAddon ? (
-                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500 text-slate-950 flex items-center gap-0.5 shrink-0 shadow-xs">
-                                      <Sparkles className="w-2.5 h-2.5" /> ADD-ON (IN QUEUE)
-                                    </span>
-                                  ) : isPreviousServed ? (
-                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-emerald-950/60 text-emerald-400 border border-emerald-500/30 flex items-center gap-0.5 shrink-0">
-                                      <CheckCircle2 className="w-2.5 h-2.5" /> SERVED
-                                    </span>
-                                  ) : null}
-                                </div>
-
-                                {/* Item Notes / Customizations */}
-                                {item.notes && (
-                                  <p className="text-[10px] sm:text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 p-1.5 rounded-lg mt-1 break-words">
-                                    ⚠️ Note: {item.notes}
-                                  </p>
+                                {isToggling ? (
+                                  <span className="animate-spin">⏳</span>
+                                ) : isServed ? (
+                                  <>
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span>SERVED</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Utensils className="w-3.5 h-3.5 text-amber-400" />
+                                    <span>SERVE</span>
+                                  </>
                                 )}
-                              </div>
+                              </button>
                             </div>
                           );
                         })}

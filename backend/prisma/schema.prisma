@@ -462,8 +462,10 @@ model OrderItem {
   unitPrice  Float
   addOns     Json     @default("[]")
   subtotal   Float
-  isAddon    Boolean  @default(false)
-  createdAt  DateTime @default(now())
+  isAddon    Boolean   @default(false)
+  isServed   Boolean   @default(false)
+  servedAt   DateTime?
+  createdAt  DateTime  @default(now())
 
   // Relations
   order    Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)

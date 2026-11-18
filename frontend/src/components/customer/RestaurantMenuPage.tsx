@@ -145,18 +145,42 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
       if (!effectiveTableForCheck || !slug) return null;
       try {
         const devId = getOrCreateDeviceId();
+        const storedActiveOrder =
+          addonOrderId ||
+          (typeof window !== 'undefined'
+            ? sessionStorage.getItem('qr_restaurant_addon_order_id') ||
+              localStorage.getItem(`active_table_order_id_${slug}`) ||
+              localStorage.getItem('active_table_order_id')
+            : null);
+
         const res = await api.post('/table-sessions/check-access', {
           restaurantSlug: slug,
           tableNumber: effectiveTableForCheck,
           deviceReference: devId,
+          activeOrderId: storedActiveOrder || undefined,
         }, {
           headers: {
             'x-device-id': devId,
+            ...(storedActiveOrder ? { 'x-active-order-id': storedActiveOrder } : {}),
           },
         });
         setTableLockedState(null);
         return res.data;
       } catch (err: any) {
+        const storedActiveOrder =
+          addonOrderId ||
+          (typeof window !== 'undefined'
+            ? sessionStorage.getItem('qr_restaurant_addon_order_id') ||
+              localStorage.getItem(`active_table_order_id_${slug}`) ||
+              localStorage.getItem('active_table_order_id')
+            : null);
+
+        // If diner is already on this table or added items, never lock them out
+        if (storedActiveOrder) {
+          setTableLockedState(null);
+          return null;
+        }
+
         if (
           err.response?.data?.code === 'TABLE_CURRENTLY_OCCUPIED' ||
           err.response?.data?.code === 'TABLE_ALREADY_OCCUPIED' ||
