@@ -670,20 +670,9 @@ export async function checkTableStatusAndAccess(
       // If session is active and dining in progress:
       // 1. Authorized device (Primary or authorized Secondary) can browse and order
       if (isAuthorized) {
-        let accessCode = session.tableAccessCode;
-        if (!accessCode) {
-          accessCode = generateRandomAccessCode();
-          await prisma.tableSession.update({
-            where: { id: session.id },
-            data: {
-              tableAccessCode: accessCode,
-              accessCodeHash: hashAccessCode(accessCode),
-            },
-          });
-        }
-
         const nonCancelledOrders = session.orders.filter((o) => o.status !== 'CANCELLED');
         const latestActiveOrder = nonCancelledOrders[0] || null;
+        const accessCode = latestActiveOrder?.verificationCode || session.sessionCode || session.tableAccessCode || '1234';
 
         res.json({
           success: true,
@@ -694,6 +683,7 @@ export async function checkTableStatusAndAccess(
             role: deviceRole,
             isPrimary: deviceRole === 'PRIMARY',
             tableAccessCode: deviceRole === 'PRIMARY' ? accessCode : undefined,
+            orderVerificationCode: accessCode,
             activeOrderId: latestActiveOrder?.id || null,
             activeOrder: latestActiveOrder
               ? {
@@ -701,7 +691,7 @@ export async function checkTableStatusAndAccess(
                   orderNumber: latestActiveOrder.id.slice(-8).toUpperCase(),
                   status: latestActiveOrder.status,
                   total: latestActiveOrder.total,
-                  verificationCode: latestActiveOrder.verificationCode,
+                  verificationCode: latestActiveOrder.verificationCode || accessCode,
                   createdAt: latestActiveOrder.createdAt,
                 }
               : null,
@@ -709,6 +699,7 @@ export async function checkTableStatusAndAccess(
               id: session.id,
               sessionCode: session.sessionCode,
               tableAccessCode: deviceRole === 'PRIMARY' ? accessCode : undefined,
+              orderVerificationCode: accessCode,
               tableNumber: cleanTable,
             },
           },
@@ -851,10 +842,16 @@ export async function validateTableAccessCode(
     const inputCode = accessCode.trim();
     const inputHash = hashAccessCode(inputCode);
 
+    // Reuse the existing 4-digit Order Verification Code system
+    const activeOrder = session.orders.find((o) => o.status !== 'CANCELLED' && o.paymentStatus !== 'PAID') || session.orders[0];
+    const orderVerificationCode = activeOrder?.verificationCode;
+
     const isValid =
+      (orderVerificationCode && orderVerificationCode === inputCode) ||
+      session.orders.some((o) => o.verificationCode === inputCode) ||
+      (session.sessionCode === inputCode) ||
       (session.tableAccessCode && session.tableAccessCode === inputCode) ||
-      (session.accessCodeHash && session.accessCodeHash === inputHash) ||
-      (session.sessionCode === inputCode);
+      (session.accessCodeHash && session.accessCodeHash === inputHash);
 
     if (!isValid) {
       const attempts = (rateEntry ? rateEntry.attempts : 0) + 1;
@@ -866,7 +863,7 @@ export async function validateTableAccessCode(
         res.status(429).json({
           success: false,
           code: 'ACCESS_CODE_LOCKED_OUT',
-          message: 'Too many incorrect attempts. Table access verification is locked for 5 minutes. Please call the waiter for assistance.',
+          message: 'Too many incorrect attempts. Table order verification is locked for 5 minutes. Please call the waiter for assistance.',
           data: { remainingSeconds: 300, locked: true, remainingAttempts: 0 },
         });
         return;
@@ -875,8 +872,8 @@ export async function validateTableAccessCode(
         const remainingAttempts = MAX_ACCESS_CODE_ATTEMPTS - attempts;
         res.status(401).json({
           success: false,
-          code: 'INVALID_TABLE_ACCESS_CODE',
-          message: 'Invalid Table Access Code. Please check the code with the person who started the table order.',
+          code: 'INVALID_ORDER_VERIFICATION_CODE',
+          message: 'Invalid Order Verification Code. Please check the 4-digit code shown on the screen of the person who placed the table order.',
           data: { remainingAttempts, locked: false },
         });
         return;

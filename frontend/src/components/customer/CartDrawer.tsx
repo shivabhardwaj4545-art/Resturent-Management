@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 import api from '@/services/api';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
+import { UpsellModal, UpsellItem } from './UpsellModal';
 
 const GST_RATE = 0.18;
 
@@ -20,15 +21,18 @@ interface CartDrawerProps {
   tableToken?: string;
   isTableVerified?: boolean;
   themeColor: string;
+  suggestedItems?: UpsellItem[];
 }
 
-export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, tableToken, isTableVerified, themeColor }: CartDrawerProps) {
+export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, tableToken, isTableVerified, themeColor, suggestedItems = [] }: CartDrawerProps) {
   const { items, updateQuantity, removeItem, couponCode, couponDiscount, applyCoupon, removeCoupon, subtotal, gstAmount, total } = useCartStore();
   const { user } = useAuthStore();
   const router = useRouter();
 
   const [couponInput, setCouponInput] = useState('');
   const [couponLoading, setCouponLoading] = useState(false);
+  const [showUpsell, setShowUpsell] = useState(false);
+  const [upsellDismissed, setUpsellDismissed] = useState(false);
 
   // Prevent background scrolling when cart drawer is open
   useEffect(() => {
@@ -154,6 +158,35 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, tableTo
       onClose();
       setNavigating(false);
     }, 120);
+  };
+
+  const handleProceedClick = () => {
+    if (navigating) return;
+
+    // Filter out items already in cart
+    const available = (suggestedItems || []).filter(
+      (s) => !items.some((ci) => ci.menuItemId === s.id)
+    );
+
+    // If upsell hasn't been shown yet and there are suggested items, present upsell modal
+    if (!upsellDismissed && available.length > 0) {
+      setShowUpsell(true);
+      return;
+    }
+
+    handleCheckout();
+  };
+
+  const handleUpsellProceed = () => {
+    setShowUpsell(false);
+    setUpsellDismissed(true);
+    handleCheckout();
+  };
+
+  const handleUpsellDismiss = () => {
+    setShowUpsell(false);
+    setUpsellDismissed(true);
+    handleCheckout();
   };
 
   return (
@@ -406,9 +439,9 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, tableTo
                 </div>
 
                 <button
-                  onClick={handleCheckout}
+                  onClick={handleProceedClick}
                   disabled={navigating}
-                  className="w-full py-4 rounded-2xl text-white font-bold text-base flex items-center justify-between px-5 shadow-lg active:scale-98 transition-all hover:opacity-95 disabled:opacity-90 cursor-pointer"
+                  className="w-full py-4 rounded-2xl text-white font-bold text-base flex items-center justify-between px-5 shadow-lg active:scale-98 transition-all hover:opacity-95 disabled:opacity-90 cursor-pointer min-h-[52px]"
                   style={{ background: `linear-gradient(135deg, ${themeColor}, #F48C06)` }}
                 >
                   <div className="flex items-center gap-2">
@@ -425,6 +458,15 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, tableTo
           </motion.div>
         </>
       )}
+
+      {/* Complete Your Meal Upsell Modal */}
+      <UpsellModal
+        isOpen={showUpsell}
+        onClose={handleUpsellDismiss}
+        onProceedToCheckout={handleUpsellProceed}
+        suggestedItems={suggestedItems}
+        themeColor={themeColor}
+      />
     </AnimatePresence>
   );
 }

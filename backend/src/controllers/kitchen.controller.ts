@@ -136,7 +136,8 @@ export async function updateKitchenOrderStatus(
     if (status) {
       updateData.status = status;
       if (status === 'DELIVERED') {
-        updateData.paymentStatus = 'PAID';
+        // Food is served. Do NOT mark payment as PAID — serving food and receiving payment
+        // are separate events. Payment must be manually confirmed at counter or via payment gateway.
         updateData.addOnStatus = null;
       }
       if (statusDateFields[status]) {

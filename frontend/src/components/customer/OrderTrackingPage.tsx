@@ -582,6 +582,20 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
                   #{order.verificationCode || order.id.slice(-4).toUpperCase()}
                 </span>
               </div>
+              <div className="flex items-center justify-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const code = order.verificationCode || order.id.slice(-4).toUpperCase();
+                    navigator.clipboard.writeText(code);
+                    toast.success(`Verification Code #${code} copied!`);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-primary/15 hover:bg-primary/25 text-primary font-bold text-xs transition active:scale-95 shadow-2xs"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Copy Code for Friends</span>
+                </button>
+              </div>
             </div>
 
             {isPaymentConfirmed ? (
@@ -597,10 +611,10 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
             ) : (
               <div className="p-3.5 rounded-2xl bg-muted/40 border border-border/80 text-xs text-muted-foreground leading-relaxed space-y-1 text-center">
                 <p className="font-semibold text-foreground">
-                  Please show this code to the restaurant counter staff or waiter to identify your order and confirm your payment.
+                  Show this code to restaurant staff to confirm your payment, or share it with friends at Table {order.tableNumber || ''} to add more items to this bill.
                 </p>
-                <p className="text-[11px]">
-                  Your order has been placed successfully. Please complete your payment at the restaurant counter.
+                <p className="text-[11px] text-muted-foreground">
+                  Please complete your payment at the counter when you finish dining.
                 </p>
               </div>
             )}
@@ -618,39 +632,6 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
               )}
             </div>
           </div>
-
-          {/* Table Access Code for Friends sharing this dining session */}
-          {order.tableSession?.tableAccessCode && (
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-3xl p-5 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <span className="text-xl">🔑</span>
-                  <div>
-                    <h3 className="font-bold text-xs uppercase tracking-wider text-muted-foreground">
-                      Table Access Code
-                    </h3>
-                    <p className="text-[11px] text-muted-foreground">
-                      Share with friends at your table to add items to this bill
-                    </p>
-                  </div>
-                </div>
-                <div className="font-mono text-xl font-black px-3.5 py-1 bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-xl border border-amber-500/30">
-                  {order.tableSession.tableAccessCode}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(order.tableSession?.tableAccessCode || '');
-                  toast.success(`Table Access Code ${order.tableSession?.tableAccessCode} copied!`);
-                }}
-                className="w-full py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition shadow-sm flex items-center justify-center gap-1.5 active:scale-98"
-              >
-                <Copy className="w-3.5 h-3.5" />
-                <span>Copy 4-Digit Code</span>
-              </button>
-            </div>
-          )}
           {/* Add-on Order Journey Banner */}
           {order.addOnStatus && (
             <div className={`border-2 rounded-2xl p-5 shadow-lg space-y-3 ${order.addOnStatus === 'CANCELLED'

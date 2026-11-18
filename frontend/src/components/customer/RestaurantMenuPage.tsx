@@ -215,7 +215,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
         refetchTableAccess();
       }
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || 'Invalid Table Access Code. Please check the code with the person who started the order.';
+      const errorMsg = err.response?.data?.message || 'Invalid Order Verification Code. Please check the 4-digit code shown on the screen of the person who placed the table order.';
       setAccessCodeError(errorMsg);
     } finally {
       setIsValidatingCode(false);
@@ -1142,6 +1142,27 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
 
   const { restaurant, categories = [] } = data;
   
+  const suggestedAddons = useMemo(() => {
+    if (!categories || categories.length === 0) return [];
+    const allItems = categories.flatMap((cat) =>
+      (cat.items || []).filter((item) => item.isAvailable).map((item) => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        image: item.image,
+        isVeg: item.isVeg,
+        categoryName: cat.name,
+        description: item.description,
+      }))
+    );
+
+    const priorityRegex = /(beverage|drink|shake|dessert|sweet|ice cream|side|snack|starter|appetizer|cooler|juice|chai|coffee)/i;
+    const prioritized = allItems.filter(
+      (item) => priorityRegex.test(item.categoryName || '') || priorityRegex.test(item.name)
+    );
+    return prioritized.length > 0 ? prioritized : allItems.slice(0, 8);
+  }, [categories]);
+
   const themeColor = isPreview && searchParams?.themeColor ? searchParams.themeColor : (restaurant.themeColor ?? '#E85D04');
   const restaurantName = isPreview && searchParams?.name !== undefined ? searchParams.name : restaurant.name;
   const restaurantDesc = isPreview && searchParams?.description !== undefined ? searchParams.description : restaurant.description;
@@ -1183,10 +1204,10 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
             <div className="p-4 sm:p-5 rounded-2xl bg-muted/40 border border-border/60 text-left space-y-3">
               <div>
                 <h3 className="text-sm font-bold text-foreground">
-                  Want to add items to the current bill?
+                  Joining friends at this table?
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                  Enter the 4-digit Table Access Code shared by the person who started the table order.
+                  Enter the 4-digit Order Verification Code shown on the phone of the person who started this table's order.
                 </p>
               </div>
 
@@ -1201,7 +1222,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                     setAccessCodeError(null);
                   }}
                   placeholder="e.g. 4821"
-                  className="w-full text-center text-lg font-mono tracking-widest py-2.5 px-3 rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary font-bold"
+                  className="w-full text-center text-xl font-mono tracking-widest py-3 px-3 rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary font-bold shadow-xs"
                 />
                 {accessCodeError && (
                   <p className="text-xs text-destructive font-medium text-center">
@@ -1214,14 +1235,14 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                 type="button"
                 onClick={handleValidateTableAccessCode}
                 disabled={isValidatingCode || tableAccessCodeInput.length !== 4}
-                className="w-full py-2.5 px-4 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 active:scale-95"
+                className="w-full py-3 px-4 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 active:scale-95"
               >
                 {isValidatingCode ? (
                   <RefreshCw className="w-4 h-4 animate-spin" />
                 ) : (
                   <CheckCircle2 className="w-4 h-4" />
                 )}
-                <span>Continue to Current Bill</span>
+                <span>Join Table &amp; Add Items</span>
               </button>
             </div>
 
@@ -2182,6 +2203,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
         tableToken={tableToken}
         isTableVerified={isTableVerified}
         themeColor={themeColor}
+        suggestedItems={suggestedAddons}
       />
 
       {/* AI Chatbot */}

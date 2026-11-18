@@ -201,9 +201,9 @@ async function resolveOrCreateTableSession(
         });
       }
 
-      // Identify active ongoing order for this dining session if one exists (must be un-settled and not delivered)
+      // Identify active ongoing order for this dining session if one exists (must be un-settled and not cancelled)
       const existingActiveOrder = session.orders.find(
-        (o) => o.status !== 'CANCELLED' && o.status !== 'DELIVERED' && o.paymentStatus !== 'PAID'
+        (o) => o.status !== 'CANCELLED' && o.paymentStatus !== 'PAID'
       );
 
       return {
@@ -215,8 +215,9 @@ async function resolveOrCreateTableSession(
     }
 
     // If no active session exists yet for this table, create one atomically
+    // Re-use the same 4-digit order verification code for sessionCode and tableAccessCode
     const sessionCode = await generateUniqueSessionCode(restaurantId);
-    const accessCode = Math.floor(1000 + crypto.randomInt(9000)).toString();
+    const accessCode = sessionCode;
     const accessCodeHash = crypto.createHash('sha256').update(accessCode).digest('hex');
 
     const newSession = await prisma.tableSession.create({
@@ -1491,9 +1492,9 @@ async function resolveOrCreateTableSession(
         throw new AppError('Order not found.', 404, 'ORDER_NOT_FOUND');
       }
 
-      if (order.paymentStatus === 'PAID' || order.status === 'DELIVERED' || order.status === 'CANCELLED') {
+      if (order.paymentStatus === 'PAID' || order.status === 'CANCELLED') {
         throw new AppError(
-          'Cannot add items to an order that is already paid, served, or cancelled. Please place a fresh order.',
+          'Cannot add items to an order that is already paid or cancelled. Please place a fresh order.',
           400,
           'ORDER_ALREADY_SETTLED'
         );
