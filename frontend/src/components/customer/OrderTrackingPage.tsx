@@ -20,7 +20,7 @@ import {
   AlertTriangle,
   Bell,
 } from 'lucide-react';
-import { CustomerNotificationModal } from './CustomerNotificationModal';
+import { CustomerAlertModal, CustomerAlertData } from './CustomerAlertModal';
 import { playNewOrderSound, processRealTimeEvent, sendDesktopNotification } from '@/utils/audio';
 import { getImageUrl } from '@/lib/image';
 import { io, Socket } from 'socket.io-client';
@@ -151,6 +151,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
   const [showPaymentNotReceivedModal, setShowPaymentNotReceivedModal] = useState(false);
   const [paymentNotReceivedAmount, setPaymentNotReceivedAmount] = useState<number | null>(null);
   const [showNotifModal, setShowNotifModal] = useState(false);
+  const [addonAlert, setAddonAlert] = useState<CustomerAlertData | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -329,16 +330,23 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
           }
 
           if (data.addOnStatus) {
-            const addonLabels: Record<string, string> = {
-              PREPARING: '👨‍🍳 Add-on items are being prepared!',
-              READY: '🍽️ Add-on items are ready to serve!',
-              DELIVERED: '✅ Add-on items served!',
-              CANCELLED: '🚫 Add-on items have been cancelled.',
+            const addonLabels: Record<string, { title: string; msg: string }> = {
+              PREPARING: { title: '👨‍🍳 Add-ons Being Prepared!', msg: 'Your additional items are now being prepared by the kitchen.' },
+              READY:     { title: '🍽️ Add-ons Ready!',           msg: 'Your additional items are ready and will be served shortly.' },
+              DELIVERED: { title: '✅ Add-ons Served!',           msg: 'Your additional items have been served. Enjoy your meal!' },
+              CANCELLED: { title: '🚫 Add-ons Cancelled',         msg: 'Your additional items were cancelled by the restaurant.' },
             };
+            const info = addonLabels[data.addOnStatus];
             if (data.addOnStatus === 'CANCELLED') {
-              toast.error(addonLabels[data.addOnStatus], { id: 'addon-cancelled-toast' });
-            } else {
-              toast.info(addonLabels[data.addOnStatus] ?? `Add-on status: ${data.addOnStatus}`, { id: 'addon-status-toast' });
+              toast.error(info?.msg ?? `Add-on status: ${data.addOnStatus}`, { id: 'addon-cancelled-toast' });
+            } else if (info) {
+              setAddonAlert({
+                isOpen: true,
+                type: 'ADDON_ORDER',
+                title: info.title,
+                message: info.msg,
+                orderId,
+              });
             }
           }
         });
@@ -397,6 +405,21 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
           setPaymentNotReceivedAmount(data.amount);
           setShowPaymentNotReceivedModal(true);
           toast.error('⚠️ Payment not received by restaurant!', { duration: 5000 });
+        });
+      }
+    });
+
+    // Listen for add-on items added from same table (friend ordering)
+    socket.on('table-session:updated', (payload: any) => {
+      const session = payload?.session;
+      if (session?.event === 'ITEMS_ADDED' && session?.orderId === orderId) {
+        qc.invalidateQueries({ queryKey: ['order', orderId] });
+        setAddonAlert({
+          isOpen: true,
+          type: 'ADDON_ORDER',
+          title: '🍽️ New Items Added to Your Order!',
+          message: 'More items have just been added to this table order and are being prepared by the kitchen.',
+          orderId,
         });
       }
     });
@@ -1079,9 +1102,9 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
           </div>
         </div>
         {/* Customer Notification Modal */}
-        <CustomerNotificationModal
-          isOpen={showNotifModal}
-          onClose={() => setShowNotifModal(false)}
+        <CustomerAlertModal
+          data={addonAlert}
+          onClose={() => setAddonAlert(null)}
         />
       </div>
       );

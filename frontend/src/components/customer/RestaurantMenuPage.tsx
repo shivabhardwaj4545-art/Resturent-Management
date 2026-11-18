@@ -1087,6 +1087,28 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
       );
     });
 
+    // Add-on order socket listeners — show popup when items are added to the table's active order
+    const handleTableSessionAddon = (payload: any) => {
+      const session = payload?.session;
+      if (session?.event === 'ITEMS_ADDED') {
+        // Invalidate table access and order queries so UI reflects new items
+        queryClient.invalidateQueries({ queryKey: ['table-access'] });
+        queryClient.invalidateQueries({ queryKey: ['active-orders'] });
+        // Show pop-up notification
+        setCustomerAlert({
+          isOpen: true,
+          type: 'ADDON_ORDER',
+          title: '🍽️ New Items Added to Your Order!',
+          message: 'More items have just been added to your table order and are being prepared by the kitchen.',
+          orderId: session?.orderId,
+          actionUrl: session?.orderId ? `/r/${slug}/order/${session.orderId}` : undefined,
+          actionLabel: 'Track Order',
+        });
+      }
+    };
+
+    socket.on('table-session:updated', handleTableSessionAddon);
+
     return () => {
       socket.disconnect();
       socketRef.current = null;
@@ -1302,23 +1324,23 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
           </span>
         </div>
       )}
-      {/* Floating Navigation Header */}
-      <div className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-3 sm:px-4 py-3 bg-gradient-to-b from-black/80 via-black/40 to-transparent gap-2 min-w-0 max-w-full">
-        <div className="flex items-center gap-1.5 text-white drop-shadow-md shrink-0 select-none">
+      {/* Sticky Navigation Header */}
+      <div className="sticky top-0 left-0 right-0 z-30 flex items-center justify-between px-3 sm:px-4 py-3 bg-background/90 backdrop-blur-md border-b border-border/40 shadow-sm gap-2 min-w-0 max-w-full">
+        <div className="flex items-center gap-1.5 text-foreground shrink-0 select-none">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center shadow-md text-white" style={{ backgroundColor: themeColor }}>
             <QrCode className="w-4 h-4 text-white" />
           </div>
-          <span className="font-display font-bold text-xs sm:text-sm tracking-tight hidden sm:block truncate max-w-[120px] md:max-w-none">{restaurantName || 'Digital Menu'}</span>
+          <span className="font-display font-bold text-xs sm:text-sm tracking-tight hidden sm:block truncate max-w-[120px] md:max-w-none text-foreground">{restaurantName || 'Digital Menu'}</span>
         </div>
-        <div className="flex items-center gap-1.5 sm:gap-2.5 overflow-x-auto no-scrollbar py-0.5 shrink min-w-0">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 overflow-x-auto no-scrollbar py-0.5 shrink min-w-0 touch-pan-x">
           {/* Loyalty Points Header Badge */}
           {loyaltyEnabled && (
             <button
               onClick={() => setShowLoyaltyModal(true)}
-              className="text-[10px] sm:text-xs bg-amber-500/25 hover:bg-amber-500/40 border border-amber-400/50 text-amber-200 px-2 sm:px-2.5 py-1.5 rounded-lg backdrop-blur-md font-bold flex items-center gap-1 shadow-sm transition-all active:scale-95 whitespace-nowrap shrink-0"
+              className="text-[10px] sm:text-xs bg-amber-500/15 hover:bg-amber-500/30 border border-amber-400/40 text-amber-600 dark:text-amber-400 px-2 sm:px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1 shadow-sm transition-all active:scale-95 whitespace-nowrap shrink-0 min-h-[36px]"
               title="Click to view Loyalty Points details"
             >
-              <Gift className="w-3.5 h-3.5 text-amber-300 animate-pulse shrink-0" />
+              <Gift className="w-3.5 h-3.5 text-amber-500 animate-pulse shrink-0" />
               {activeUser ? (
                 <span>⭐ {currentPoints} Pts</span>
               ) : (
@@ -1331,10 +1353,10 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
           {activeUser && (
             <button
               onClick={() => setShowNotifModal(true)}
-              className="relative p-1.5 sm:p-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg text-white transition-all backdrop-blur-md active:scale-95 flex items-center justify-center shrink-0"
+              className="relative p-1.5 sm:p-2 bg-muted hover:bg-muted/80 border border-border rounded-lg text-foreground transition-all active:scale-95 flex items-center justify-center shrink-0 min-h-[36px] min-w-[36px]"
               title="Notifications"
             >
-              <Bell className="w-3.5 h-3.5 text-white" />
+              <Bell className="w-3.5 h-3.5" />
               {unreadNotifCount > 0 && (
                 <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 text-white rounded-full text-[9px] font-extrabold flex items-center justify-center animate-pulse">
                   {unreadNotifCount}
@@ -1345,7 +1367,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
 
           {activeUser ? (
             <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-              <span className="text-xs text-white/90 font-semibold bg-white/10 px-2.5 py-1.5 rounded-lg backdrop-blur-md hidden sm:inline-block">
+              <span className="text-xs text-muted-foreground font-semibold bg-muted px-2.5 py-1.5 rounded-lg hidden sm:inline-block">
                 Hi, {activeUser.name.split(' ')[0]}
               </span>
               {activeUser.role !== 'CUSTOMER' ? (
@@ -1364,7 +1386,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                       document.getElementById('orders-section')?.scrollIntoView({ behavior: 'smooth' });
                     }, 100);
                   }}
-                  className="text-[10px] sm:text-xs bg-white/10 hover:bg-white/20 border border-white/20 px-2 sm:px-2.5 py-1.5 rounded-lg text-white font-semibold shadow-sm transition-all whitespace-nowrap shrink-0"
+                  className="text-[10px] sm:text-xs bg-muted hover:bg-muted/80 border border-border px-2 sm:px-2.5 py-1.5 rounded-lg text-foreground font-semibold shadow-sm transition-all whitespace-nowrap shrink-0"
                 >
                   History
                 </button>
@@ -1374,7 +1396,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                   logout();
                   toast.success('Logged out successfully');
                 }}
-                className="text-[10px] sm:text-xs bg-red-500/80 hover:bg-red-500 border border-red-500/20 px-2 sm:px-2.5 py-1.5 rounded-lg text-white font-semibold shadow-sm transition-all whitespace-nowrap shrink-0"
+                className="text-[10px] sm:text-xs bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 px-2 sm:px-2.5 py-1.5 rounded-lg text-red-600 dark:text-red-400 font-semibold shadow-sm transition-all whitespace-nowrap shrink-0"
               >
                 Logout
               </button>
@@ -1390,7 +1412,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
               </Link>
             </>
           )}
-          <ThemeToggle size="sm" className="bg-white/10 border-white/20 text-white hover:bg-white/20 shrink-0" />
+          <ThemeToggle size="sm" className="shrink-0" />
         </div>
       </div>
       {addonOrderId && (
@@ -1434,6 +1456,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
       {/* Restaurant Header Info */}
       <div className="px-4 md:px-8 -mt-16 relative z-10 mb-6 min-w-0 max-w-full">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4 min-w-0">
+          {/* Identity row: logo + name + status */}
           <div className="flex items-end gap-3.5 min-w-0 flex-1">
             {restaurantLogo ? (
               <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border-4 border-background shadow-xl shrink-0">
@@ -1545,47 +1568,43 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                 </div>
               )}
 
-              {/* Table Access Code is available on the Order Tracking page after placing an order */}
-
-              {/* Secondary Device Badge */}
+              {/* Secondary Device Badge — full width, below name row */}
               {tableAccessData?.data?.role === 'SECONDARY' && (
-                <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 rounded-full text-[11px] font-semibold">
-                  <CheckCircle2 className="w-3 h-3" />
+                <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 rounded-full text-[11px] font-semibold">
+                  <CheckCircle2 className="w-3 h-3 shrink-0" />
                   <span>Joined Table Bill • Secondary Ordering Device</span>
                 </div>
               )}
 
-              {/* Ongoing Table Order Tracking Banner */}
+              {/* Ongoing Table Order Tracking Banner — full width below identity row */}
               {tableAccessData?.data?.activeOrderId && (
-                <div className="mt-3 p-3.5 bg-gradient-to-r from-emerald-500/15 via-emerald-500/10 to-transparent border border-emerald-500/35 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
-                  <div className="flex items-center gap-3">
+                <div className="mt-3 w-full p-3.5 bg-gradient-to-r from-emerald-500/15 via-emerald-500/10 to-transparent border border-emerald-500/35 rounded-2xl flex flex-col gap-3 shadow-sm overflow-hidden">
+                  <div className="flex items-start gap-3">
                     <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-base shrink-0">
                       🍽️
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
                           Table Order in Progress #{tableAccessData.data.activeOrder?.orderNumber || tableAccessData.data.activeOrderId.slice(-6).toUpperCase()}
                         </span>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 shrink-0">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                           {tableAccessData.data.activeOrder?.status || 'In Kitchen'}
                         </span>
                       </div>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                        Any items you add will be appended to this ongoing order. Live tracking is shared across all devices at this table.
+                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                        Any items you add will be appended to this ongoing order. Live tracking shared across all table devices.
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
-                    <Link
-                      href={`/r/${slug}/order/${tableAccessData.data.activeOrderId}`}
-                      className="w-full sm:w-auto text-center px-3.5 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition active:scale-95 flex items-center justify-center gap-1.5"
-                    >
-                      <span>Track Order Live</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </Link>
-                  </div>
+                  <Link
+                    href={`/r/${slug}/order/${tableAccessData.data.activeOrderId}`}
+                    className="w-full text-center px-3.5 py-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition active:scale-95 flex items-center justify-center gap-1.5 min-h-[44px]"
+                  >
+                    <span>Track Order Live</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </Link>
                 </div>
               )}
             </div>

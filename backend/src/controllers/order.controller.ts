@@ -528,7 +528,7 @@ async function resolveOrCreateTableSession(
 
           void emitNewOrder(restaurant.id, updatedOrder, restaurant.ownerId);
 
-          if (sessionRes.tableSessionId && tableNumber) {
+          if (tableNumber) {
             emitTableSessionUpdate(restaurant.id, tableNumber, {
               sessionId: sessionRes.tableSessionId,
               orderId: targetOrderId,
@@ -950,7 +950,7 @@ async function resolveOrCreateTableSession(
 
           void emitNewOrder(restaurant.id, updatedOrder, restaurant.ownerId);
 
-          if (sessionRes.tableSessionId && tableNumber) {
+          if (tableNumber) {
             emitTableSessionUpdate(restaurant.id, tableNumber, {
               sessionId: sessionRes.tableSessionId,
               orderId: targetOrderId,

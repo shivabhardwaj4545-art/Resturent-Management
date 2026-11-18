@@ -2,17 +2,20 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChefHat, Clock, CheckCircle2, AlertCircle, ShoppingBag, X, Bell, Sparkles } from 'lucide-react';
+import { ChefHat, Clock, CheckCircle2, AlertCircle, ShoppingBag, X, Bell, Sparkles, ChevronRight } from 'lucide-react';
+import Link from 'next/link';
 
 export interface CustomerAlertData {
   isOpen: boolean;
-  type: 'WAITER_COMING' | 'WAITER_OCCUPIED' | 'ORDER_UPDATE';
+  type: 'WAITER_COMING' | 'WAITER_OCCUPIED' | 'ORDER_UPDATE' | 'ADDON_ORDER';
   title: string;
   message: string;
   tableNumber?: string;
   orderId?: string;
   orderStatus?: string;
   timerSeconds?: number;
+  actionUrl?: string;
+  actionLabel?: string;
 }
 
 interface CustomerAlertModalProps {
@@ -75,6 +78,12 @@ export function CustomerAlertModal({ data, onClose }: CustomerAlertModalProps) {
             <ShoppingBag className="w-8 h-8" />
           </div>
         );
+      case 'ADDON_ORDER':
+        return (
+          <div className="w-14 h-14 rounded-full bg-emerald-500/20 text-emerald-500 border-2 border-emerald-500/40 flex items-center justify-center shadow-lg shadow-emerald-500/20 animate-bounce">
+            <Sparkles className="w-8 h-8" />
+          </div>
+        );
       default:
         return (
           <div className="w-14 h-14 rounded-full bg-primary/20 text-primary border-2 border-primary/40 flex items-center justify-center shadow-lg">
@@ -90,6 +99,9 @@ export function CustomerAlertModal({ data, onClose }: CustomerAlertModalProps) {
     }
     if (data.type === 'WAITER_OCCUPIED') {
       return <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 uppercase tracking-wider">Staff Occupied</span>;
+    }
+    if (data.type === 'ADDON_ORDER') {
+      return <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 uppercase tracking-wider">⚡ Add-on Order</span>;
     }
     if (data.orderStatus) {
       return <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 uppercase tracking-wider">{data.orderStatus.replace(/_/g, ' ')}</span>;
@@ -151,13 +163,33 @@ export function CustomerAlertModal({ data, onClose }: CustomerAlertModalProps) {
           )}
 
           {/* Action Button */}
-          <button
-            onClick={onClose}
-            className="w-full py-3.5 rounded-2xl bg-primary hover:bg-primary/95 text-primary-foreground font-display font-bold text-sm shadow-lg shadow-primary/25 active:scale-98 transition-all flex items-center justify-center gap-2"
-          >
-            <Sparkles className="w-4 h-4" />
-            <span>Got It</span>
-          </button>
+          {data.actionUrl ? (
+            <div className="flex gap-2.5 w-full pt-1">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 py-3.5 rounded-2xl border border-border text-foreground font-display font-semibold text-xs sm:text-sm hover:bg-muted transition-all min-h-[44px]"
+              >
+                Dismiss
+              </button>
+              <Link
+                href={data.actionUrl}
+                onClick={onClose}
+                className="flex-1 py-3.5 rounded-2xl bg-primary hover:bg-primary/95 text-primary-foreground font-display font-bold text-xs sm:text-sm shadow-lg shadow-primary/25 active:scale-98 transition-all flex items-center justify-center gap-1.5 min-h-[44px]"
+              >
+                <span>{data.actionLabel || 'View Order'}</span>
+                <ChevronRight className="w-4 h-4" />
+              </Link>
+            </div>
+          ) : (
+            <button
+              onClick={onClose}
+              className="w-full py-3.5 rounded-2xl bg-primary hover:bg-primary/95 text-primary-foreground font-display font-bold text-sm shadow-lg shadow-primary/25 active:scale-98 transition-all flex items-center justify-center gap-2 min-h-[44px]"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>Got It</span>
+            </button>
+          )}
         </motion.div>
       </div>
     </AnimatePresence>

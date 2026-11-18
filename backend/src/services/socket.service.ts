@@ -370,6 +370,9 @@ export function emitTableSessionUpdate(restaurantId: string, tableNumber: string
   };
   io.to(`table:${restaurantId}:${cleanTable}`).emit('table-session:updated', payload);
   io.to(`restaurant:${restaurantId}`).emit('table-session:updated', payload);
+  if (sessionData?.orderId) {
+    io.to(`order:${sessionData.orderId}`).emit('table-session:updated', payload);
+  }
 }
 
 export function emitBatchUnlocked(restaurantId: string, tableNumber: string, nextBatchData: any): void {
