@@ -136,6 +136,31 @@ export function OwnerSettingsPage() {
     },
   });
 
+  const [isTogglingQrMaster, setIsTogglingQrMaster] = useState(false);
+  const handleToggleQrMaster = async () => {
+    try {
+      setIsTogglingQrMaster(true);
+      const nextEnabled = !qrSettings.enabled;
+      setQrSettings((prev) => ({ ...prev, enabled: nextEnabled }));
+      const res = await api.patch('/owner/restaurant/toggle-qr', { enabled: nextEnabled });
+      if (res.data?.success) {
+        if (nextEnabled) {
+          toast.success('🟢 QR Ordering Service is now ONLINE!');
+        } else {
+          toast.warning('🟠 QR Ordering Service is SHUT — Scanned QRs will display maintenance notice.');
+        }
+        qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
+        qc.invalidateQueries({ queryKey: ['owner-dashboard'] });
+        qc.invalidateQueries({ queryKey: ['menu'] });
+      }
+    } catch (err: any) {
+      setQrSettings((prev) => ({ ...prev, enabled: !prev.enabled }));
+      toast.error(err.response?.data?.message || 'Failed to toggle QR service');
+    } finally {
+      setIsTogglingQrMaster(false);
+    }
+  };
+
   const handleAddCustomLocation = () => {
     const val = newCustomLocation.trim();
     if (!val) {
@@ -2064,6 +2089,8 @@ export function OwnerSettingsPage() {
                     window.scrollTo({ top: 400, behavior: 'smooth' });
                   }}
                   onRemoveLocation={handleRemoveLocation}
+                  isQrEnabled={qrSettings.enabled}
+                  onToggleQrService={handleToggleQrMaster}
                 />
               )}
 
@@ -2089,7 +2116,8 @@ export function OwnerSettingsPage() {
                     {/* Global QR Switch */}
                     <button
                       type="button"
-                      onClick={() => setQrSettings(s => ({ ...s, enabled: !s.enabled }))}
+                      onClick={handleToggleQrMaster}
+                      disabled={isTogglingQrMaster}
                       className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs border transition-all cursor-pointer shadow-sm ${qrSettings.enabled
                           ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20'
                           : 'bg-amber-500 hover:bg-amber-600 text-slate-950 border-amber-400 shadow-md ring-2 ring-amber-400/50 animate-pulse'

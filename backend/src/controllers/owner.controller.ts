@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { uploadMenuItemImage, uploadRestaurantLogo, uploadRestaurantBanner, uploadRestaurantPaymentQr } from '../services/cloudinary.service';
-import { emitOrderStatusUpdate, emitNotification, emitUserLoyaltyUpdate, emitPaymentNotReceived, emitOrderDeleted, emitTableSessionUpdate } from '../services/socket.service';
+import { emitOrderStatusUpdate, emitNotification, emitUserLoyaltyUpdate, emitPaymentNotReceived, emitOrderDeleted, emitTableSessionUpdate, getSocketServer } from '../services/socket.service';
 import { cacheDelPattern, cacheSet } from '../services/redis.service';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { generateTableSignature } from '../utils/tableSignature';
@@ -539,6 +539,28 @@ export async function toggleQrService(req: AuthenticatedRequest, res: Response, 
     });
 
     await cacheDelPattern(`menu:${restaurant.slug}*`);
+    await cacheDelPattern(`menu:${restaurant.slug.toLowerCase()}*`);
+    await cacheDelPattern(`menu:*`);
+
+    // Emit real-time notification to all connected clients
+    try {
+      const io = getSocketServer();
+      io?.to(`restaurant:${restaurant.id}`).emit('restaurant:qr_service_toggled', {
+        enabled: nextEnabled,
+        restaurantId: restaurant.id,
+        restaurantSlug: restaurant.slug,
+        message: 'Currently maintenance is going on kindly order normally!',
+      });
+      io?.emit('restaurant:qr_service_toggled', {
+        enabled: nextEnabled,
+        restaurantId: restaurant.id,
+        restaurantSlug: restaurant.slug,
+        message: 'Currently maintenance is going on kindly order normally!',
+      });
+    } catch (e) {
+      logger.warn('Failed to emit qr_service_toggled socket:', e);
+    }
+
     res.json({
       success: true,
       data: {

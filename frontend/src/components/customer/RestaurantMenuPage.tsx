@@ -80,6 +80,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
   const queryClient = useQueryClient();
   const isPreview = searchParams?.preview === 'true';
   const [mounted, setMounted] = useState(false);
+  const [isMaintenanceFromApi, setIsMaintenanceFromApi] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -174,6 +175,14 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
               localStorage.getItem(`active_table_order_id_${slug}`) ||
               localStorage.getItem('active_table_order_id')
             : null);
+
+        if (
+          err.response?.status === 503 ||
+          err.response?.data?.code === 'QR_SERVICE_MAINTENANCE'
+        ) {
+          setIsMaintenanceFromApi(true);
+          return null;
+        }
 
         // If diner is already on this table or added items, never lock them out
         if (storedActiveOrder) {
@@ -773,9 +782,22 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
     return getDetailedStatus(data.restaurant.operatingHours as any, data.restaurant.isOpen);
   }, [data]);
 
-  const isQrDisabledGlobally = (data?.restaurant as any)?.qrSettings?.enabled === false;
-  const disabledLocations: string[] = Array.isArray((data?.restaurant as any)?.qrSettings?.disabledLocations)
-    ? (data?.restaurant as any).qrSettings.disabledLocations
+  const rawQrSettings = (data?.restaurant as any)?.qrSettings;
+  const parsedQrSettings = useMemo(() => {
+    if (!rawQrSettings) return null;
+    if (typeof rawQrSettings === 'string') {
+      try {
+        return JSON.parse(rawQrSettings);
+      } catch {
+        return null;
+      }
+    }
+    return rawQrSettings;
+  }, [rawQrSettings]);
+
+  const isQrDisabledGlobally = isMaintenanceFromApi || parsedQrSettings?.enabled === false;
+  const disabledLocations: string[] = Array.isArray(parsedQrSettings?.disabledLocations)
+    ? parsedQrSettings.disabledLocations
     : [];
 
   const activeLocation = displayTableNumber || tableNumber || savedTable;
@@ -1125,6 +1147,16 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
     };
 
     socket.on('table-session:updated', handleTableSessionAddon);
+
+    const handleQrServiceToggled = (payload: any) => {
+      queryClient.invalidateQueries({ queryKey: ['menu', slug] });
+      if (payload?.enabled === false) {
+        setIsMaintenanceFromApi(true);
+      } else if (payload?.enabled === true) {
+        setIsMaintenanceFromApi(false);
+      }
+    };
+    socket.on('restaurant:qr_service_toggled', handleQrServiceToggled);
 
     return () => {
       socket.disconnect();

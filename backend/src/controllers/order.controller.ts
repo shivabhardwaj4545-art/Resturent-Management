@@ -409,6 +409,9 @@ async function resolveOrCreateTableSession(
       if (!restaurant.isOpen || !isRestaurantOpen(restaurant.operatingHours, restaurant.isOpen)) {
         throw new AppError('Restaurant is currently closed or outside operating hours.', 400, 'RESTAURANT_CLOSED');
       }
+      if ((restaurant.qrSettings as any)?.enabled === false) {
+        throw new AppError('Currently maintenance is going on kindly order normally!', 503, 'QR_SERVICE_MAINTENANCE');
+      }
 
       // Validate table/room permissions based on platformType and featureFlags
       const flags = (restaurant.featureFlags as Record<string, boolean> | null) || {};
@@ -768,6 +771,9 @@ async function resolveOrCreateTableSession(
       if (!restaurant) throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
       if (!restaurant.isOpen || !isRestaurantOpen(restaurant.operatingHours, restaurant.isOpen)) {
         throw new AppError('Restaurant is currently closed or outside operating hours.', 400, 'RESTAURANT_CLOSED');
+      }
+      if ((restaurant.qrSettings as any)?.enabled === false) {
+        throw new AppError('Currently maintenance is going on kindly order normally!', 503, 'QR_SERVICE_MAINTENANCE');
       }
 
       // Validate table/room permissions based on platformType and featureFlags
@@ -1526,6 +1532,10 @@ async function resolveOrCreateTableSession(
 
       if (!order) {
         throw new AppError('Order not found.', 404, 'ORDER_NOT_FOUND');
+      }
+
+      if ((order.restaurant.qrSettings as any)?.enabled === false) {
+        throw new AppError('Currently maintenance is going on kindly order normally!', 503, 'QR_SERVICE_MAINTENANCE');
       }
 
       if (order.status === 'CANCELLED') {

@@ -51,8 +51,18 @@ export async function getPublicRestaurants(
 function formatRestaurantForMenu(r: any) {
   if (!r) return r;
   const upiId = r.paymentUpiId || r.upiAccount?.upiId || null;
+  const rawQr = r.qrSettings;
+  let parsedQr = rawQr;
+  if (typeof rawQr === 'string') {
+    try {
+      parsedQr = JSON.parse(rawQr);
+    } catch {
+      parsedQr = null;
+    }
+  }
   return {
     ...r,
+    qrSettings: parsedQr || null,
     paymentUpiId: upiId,
     upiEnabled: Boolean(upiId || r.upiEnabled),
     paymentEnabled: r.paymentEnabled !== false,

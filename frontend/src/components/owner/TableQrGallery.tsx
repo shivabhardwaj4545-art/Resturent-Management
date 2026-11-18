@@ -13,6 +13,7 @@ import {
   Search,
   Trash2,
   Sparkles,
+  Power,
 } from 'lucide-react';
 import { downloadPlacardImage, printPlacard } from '@/utils/qrPlacard';
 import { generateUniqueTableCode } from '@/utils/tableCode';
@@ -211,6 +212,8 @@ interface TableQrGalleryProps {
   disabledLocations?: string[];
   isTableQrAllowed: boolean;
   isRoomQrAllowed: boolean;
+  isQrEnabled?: boolean;
+  onToggleQrService?: () => void;
   onSelectLocation: (loc: string) => void;
   onToggleStatus?: (loc: string) => void;
   onRemoveLocation?: (loc: string) => void;
@@ -225,6 +228,8 @@ export function TableQrGallery({
   disabledLocations = [],
   isTableQrAllowed,
   isRoomQrAllowed,
+  isQrEnabled = true,
+  onToggleQrService,
   onSelectLocation,
   onToggleStatus,
   onRemoveLocation,
@@ -245,12 +250,29 @@ export function TableQrGallery({
     <div className="bg-card border border-border rounded-2xl p-4 sm:p-5 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3.5">
         <div>
-          <h2 className="font-display font-semibold flex items-center gap-2 text-base sm:text-lg">
-            <QrCode className="w-5 h-5 text-primary" />
-            All Generated QR Codes &amp; Placards ({allCards.length})
-          </h2>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h2 className="font-display font-semibold flex items-center gap-2 text-base sm:text-lg">
+              <QrCode className="w-5 h-5 text-primary" />
+              All Generated QR Codes &amp; Placards ({allCards.length})
+            </h2>
+            {onToggleQrService && (
+              <button
+                type="button"
+                onClick={onToggleQrService}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black border transition-all cursor-pointer shadow-xs ${
+                  isQrEnabled
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-100'
+                    : 'bg-amber-500 hover:bg-amber-600 text-slate-950 border border-amber-400 ring-2 ring-amber-400/50 animate-pulse'
+                }`}
+                title={isQrEnabled ? 'Click to shut all QRs for maintenance' : 'Click to enable all QRs'}
+              >
+                <Power className="w-3.5 h-3.5" />
+                <span>{isQrEnabled ? 'QR Service: Active' : 'QR Service: Shut'}</span>
+              </button>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Every table and room has its own tamper-proof QR code. Delete, disable, preview, or download placards anytime.
+            Every table and room has its own tamper-proof QR code. Delete, preview, or download placards anytime.
           </p>
         </div>
 

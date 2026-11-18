@@ -52,14 +52,14 @@ async function resolveRestaurant(restaurantId?: string, restaurantSlug?: string)
   if (restaurantId) {
     const rest = await prisma.restaurant.findUnique({
       where: { id: restaurantId },
-      select: { id: true, name: true, slug: true, isOpen: true },
+      select: { id: true, name: true, slug: true, isOpen: true, qrSettings: true },
     });
     if (rest) return rest;
   }
   if (restaurantSlug) {
     const rest = await prisma.restaurant.findUnique({
       where: { slug: restaurantSlug },
-      select: { id: true, name: true, slug: true, isOpen: true },
+      select: { id: true, name: true, slug: true, isOpen: true, qrSettings: true },
     });
     if (rest) return rest;
   }
@@ -91,6 +91,14 @@ export async function joinOrCreateSession(
     }
 
     const restaurant = await resolveRestaurant(restaurantId, restaurantSlug);
+    if ((restaurant.qrSettings as any)?.enabled === false) {
+      res.status(503).json({
+        success: false,
+        code: 'QR_SERVICE_MAINTENANCE',
+        message: 'Currently maintenance is going on kindly order normally!',
+      });
+      return;
+    }
     const cleanTable = normalizeTableNumber(tableNumber);
 
     // Concurrency-safe check for existing active session
@@ -234,6 +242,14 @@ export async function getActiveSession(
     }
 
     const restaurant = await resolveRestaurant(restaurantId, restaurantSlug);
+    if ((restaurant.qrSettings as any)?.enabled === false) {
+      res.status(503).json({
+        success: false,
+        code: 'QR_SERVICE_MAINTENANCE',
+        message: 'Currently maintenance is going on kindly order normally!',
+      });
+      return;
+    }
     const cleanTable = normalizeTableNumber(tableNumber);
 
     const session = await prisma.tableSession.findFirst({
