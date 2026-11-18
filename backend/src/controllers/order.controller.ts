@@ -703,6 +703,7 @@ async function resolveOrCreateTableSession(
           order: {
             id: order.id,
             status: order.status,
+            paymentStatus: order.paymentStatus,
             total: order.total,
             razorpayOrderId,
             verificationCode: order.verificationCode,
@@ -1205,6 +1206,7 @@ async function resolveOrCreateTableSession(
           order: {
             id: order.id,
             status: order.status,
+            paymentStatus: order.paymentStatus,
             total: finalTotal,
             razorpayOrderId,
             verificationCode: order.verificationCode,
