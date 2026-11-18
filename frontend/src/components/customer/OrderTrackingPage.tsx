@@ -19,6 +19,7 @@ import {
   Sparkles,
   AlertTriangle,
   Bell,
+  Plus,
 } from 'lucide-react';
 import { CustomerAlertModal, CustomerAlertData } from './CustomerAlertModal';
 import { playNewOrderSound, processRealTimeEvent, sendDesktopNotification } from '@/utils/audio';
@@ -190,6 +191,12 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
     if (!order) return;
     sessionStorage.setItem('qr_restaurant_addon_order_id', orderId);
     sessionStorage.setItem('qr_restaurant_addon_order_num', order.id.slice(-8).toUpperCase());
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('active_table_order_id', orderId);
+      if (restaurantSlug) {
+        localStorage.setItem(`active_table_order_id_${restaurantSlug}`, orderId);
+      }
+    }
     router.push(`/r/${restaurantSlug}`);
   };
 
@@ -1030,12 +1037,14 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
           {/* Actions */}
           <div className="flex flex-col gap-3">
             <div className="flex gap-3">
-              <Link
-                href={`/r/${restaurantSlug}`}
-                className="flex-1 py-3 rounded-xl border border-border text-center text-sm font-semibold hover:bg-muted transition-colors flex items-center justify-center"
+              <button
+                type="button"
+                onClick={handleAddMoreItems}
+                className="flex-1 py-3 rounded-xl border border-border text-center text-sm font-semibold hover:bg-muted transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
               >
-                Back to Menu
-              </Link>
+                <Plus className="w-4 h-4" />
+                Add More Items
+              </button>
               <button
                 onClick={handleReorder}
                 className="flex-1 py-3 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md"

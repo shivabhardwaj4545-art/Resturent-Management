@@ -71,6 +71,12 @@ export async function getKitchenOrders(
                 image: true,
               },
             },
+            variant: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
           },
         },
         user: {

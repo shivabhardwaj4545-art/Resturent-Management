@@ -36,6 +36,11 @@ interface KitchenOrderItem {
   unitPrice?: number;
   notes?: string | null;
   customizations?: any;
+  addOns?: any;
+  variant?: {
+    id?: string;
+    name: string;
+  } | null;
   isAddon?: boolean;
   isServed?: boolean;
   servedAt?: string | null;
@@ -45,6 +50,27 @@ interface KitchenOrderItem {
     name: string;
     image?: string | null;
   };
+}
+
+function parseItemAddOns(addOns: any): Array<{ id?: string; name: string; price?: number }> {
+  if (!addOns) return [];
+  if (Array.isArray(addOns)) {
+    return addOns.map((ao) => {
+      if (typeof ao === 'string') return { name: ao };
+      return { id: ao?.id, name: ao?.name || String(ao), price: ao?.price };
+    });
+  }
+  if (typeof addOns === 'string') {
+    try {
+      const parsed = JSON.parse(addOns);
+      if (Array.isArray(parsed)) {
+        return parsed.map((ao) => (typeof ao === 'string' ? { name: ao } : { id: ao?.id, name: ao?.name || String(ao), price: ao?.price }));
+      }
+    } catch {
+      return [{ name: addOns }];
+    }
+  }
+  return [];
 }
 
 interface KitchenOrder {
@@ -144,7 +170,12 @@ export default function KitchenDashboardPage() {
       processedEventsRef.current.set(eventKey, now);
 
       const orderIdShort = orderId !== 'NEW' ? String(orderId).slice(-8).toUpperCase() : 'NEW';
-      const itemsLabel = order?.items?.map((i: any) => `${i.menuItem?.name || i.name || 'Item'} × ${i.quantity}`).join(', ') || 'New items in kitchen';
+      const itemsLabel = order?.items?.map((i: any) => {
+        const addOns = parseItemAddOns(i.addOns);
+        const addOnStr = addOns.length > 0 ? ` (+ ${addOns.map((a) => a.name).join(', ')})` : '';
+        const variantStr = i.variant?.name ? ` (${i.variant.name})` : '';
+        return `${i.menuItem?.name || i.name || 'Item'}${variantStr}${addOnStr} × ${i.quantity}`;
+      }).join(', ') || 'New items in kitchen';
       const rawTable = order?.tableNumber || order?.table?.tableNumber;
       const isRoom = rawTable && (String(rawTable).toLowerCase().includes('room') || String(rawTable).toLowerCase().includes('suite'));
       const tableFormatted = rawTable
@@ -580,6 +611,7 @@ export default function KitchenDashboardPage() {
                           const isPreviousServed = !isAddon && Boolean(order.lastAddOnAt);
                           const isServed = Boolean(item.isServed) || (isPreviousServed && item.isServed !== false);
                           const isToggling = togglingItemId === item.id;
+                          const parsedAddOns = parseItemAddOns(item.addOns);
                           return (
                             <div
                               key={item.id || idx}
@@ -617,6 +649,11 @@ export default function KitchenDashboardPage() {
                                     >
                                       {item.menuItem?.name || (item as any).name || 'Menu Item'}
                                     </h4>
+                                    {item.variant?.name && (
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-300 bg-slate-800 border border-slate-700">
+                                        ({item.variant.name})
+                                      </span>
+                                    )}
                                     {isAddon && !isServed && (
                                       <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500 text-slate-950 flex items-center gap-0.5 shrink-0 shadow-xs">
                                         <Sparkles className="w-2.5 h-2.5" /> ADD-ON (IN QUEUE)
@@ -624,7 +661,21 @@ export default function KitchenDashboardPage() {
                                     )}
                                   </div>
 
-                                  {/* Item Notes / Customizations */}
+                                  {/* Dish Customizations & Add-ons (e.g. Extra Cheese, Mayo, etc.) */}
+                                  {parsedAddOns.length > 0 && (
+                                    <div className="mt-1 flex flex-wrap gap-1">
+                                      {parsedAddOns.map((ao, aIdx) => (
+                                        <span
+                                          key={ao.id || aIdx}
+                                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] sm:text-xs font-black bg-amber-400/20 text-amber-300 border border-amber-400/40 shadow-xs"
+                                        >
+                                          ✨ + {ao.name}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  {/* Item Notes */}
                                   {item.notes && (
                                     <p className="text-[10px] sm:text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 p-1.5 rounded-lg mt-1 break-words">
                                       ⚠️ Note: {item.notes}
