@@ -9,12 +9,15 @@ import { Search, Filter, ShoppingCart, Clock, MapPin, Star, Bot, X, ChevronUp, Q
 import api, { getSocketUrl } from '@/services/api';
 import { useCartStore } from '@/store/cart.store';
 import { useAuthStore } from '@/store/auth.store';
+import dynamic from 'next/dynamic';
 import { MenuItemCard } from './MenuItemCard';
 import { CartDrawer } from './CartDrawer';
-import { AIChatbot } from './AIChatbot';
 import { AIRecommendations } from './AIRecommendations';
-import { CustomerNotificationModal } from './CustomerNotificationModal';
-import { CustomerAlertModal, CustomerAlertData } from './CustomerAlertModal';
+import type { CustomerAlertData } from './CustomerAlertModal';
+
+const AIChatbot = dynamic(() => import('./AIChatbot').then((mod) => mod.AIChatbot), { ssr: false });
+const CustomerNotificationModal = dynamic(() => import('./CustomerNotificationModal').then((mod) => mod.CustomerNotificationModal), { ssr: false });
+const CustomerAlertModal = dynamic(() => import('./CustomerAlertModal').then((mod) => mod.CustomerAlertModal), { ssr: false });
 import { playWaiterCallSound, playNewOrderSound, processRealTimeEvent } from '@/utils/audio';
 import { toast } from 'sonner';
 import { Bell } from 'lucide-react';

@@ -64,8 +64,9 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response, nex
         },
         select: { id: true, total: true, createdAt: true, paymentStatus: true },
       }),
-      // Monthly non-cancelled, non-deleted orders
-      prisma.order.findMany({
+      // Monthly non-cancelled, non-deleted orders (aggregated by status for high performance)
+      prisma.order.groupBy({
+        by: ['paymentStatus'],
         where: {
           restaurantId: restaurant.id,
           createdAt: { gte: startOfMonth },
@@ -73,7 +74,8 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response, nex
           deletedAt: null,
           NOT: { paymentMethod: 'UPI_INTENT', paymentStatus: 'PENDING' },
         },
-        select: { id: true, total: true, paymentStatus: true },
+        _count: { _all: true },
+        _sum: { total: true },
       }),
       // Recent orders list
       prisma.order.findMany({
@@ -125,9 +127,14 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response, nex
     const avgOrderValue = paidTodayOrders.length > 0 ? todayRevenue / paidTodayOrders.length : (todayOrderCount > 0 ? todayRevenue / todayOrderCount : 0);
 
     // Calculate monthly revenue and count (ONLY PAID orders count toward revenue)
-    const paidMonthlyOrders = monthlyOrders.filter((o) => o.paymentStatus === 'PAID');
-    const monthlyRevenue = paidMonthlyOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
-    const monthlyOrderCount = monthlyOrders.length;
+    let monthlyRevenue = 0;
+    let monthlyOrderCount = 0;
+    for (const group of monthlyOrders) {
+      monthlyOrderCount += group._count._all;
+      if (group.paymentStatus === 'PAID') {
+        monthlyRevenue += Number(group._sum.total || 0);
+      }
+    }
 
     // Pending orders count
     const pendingOrders = orderStatusBreakdown.find((s) => s.status === 'PENDING')?._count.status ?? 0;
@@ -1518,8 +1525,9 @@ export async function getAnalytics(req: AuthenticatedRequest, res: Response, nex
         },
         select: { id: true, total: true, createdAt: true, paymentStatus: true },
       }),
-      // Monthly orders
-      prisma.order.findMany({
+      // Monthly orders (aggregated by status for high performance)
+      prisma.order.groupBy({
+        by: ['paymentStatus'],
         where: {
           restaurantId: restaurant.id,
           createdAt: { gte: startOfMonth },
@@ -1527,7 +1535,8 @@ export async function getAnalytics(req: AuthenticatedRequest, res: Response, nex
           deletedAt: null,
           NOT: { paymentMethod: 'UPI_INTENT', paymentStatus: 'PENDING' },
         },
-        select: { id: true, total: true, paymentStatus: true },
+        _count: { _all: true },
+        _sum: { total: true },
       }),
     ]);
 
@@ -1603,10 +1612,16 @@ export async function getAnalytics(req: AuthenticatedRequest, res: Response, nex
     });
 
     const paidTodayOrders = todayOrders.filter((o) => o.paymentStatus === 'PAID');
-    const paidMonthlyOrders = monthlyOrders.filter((o) => o.paymentStatus === 'PAID');
+    let monthlyRevenueVal = 0;
+    let monthlyOrderCount = 0;
+    for (const group of monthlyOrders) {
+      monthlyOrderCount += group._count._all;
+      if (group.paymentStatus === 'PAID') {
+        monthlyRevenueVal += Number(group._sum.total || 0);
+      }
+    }
 
     const todayRevenueVal = paidTodayOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
-    const monthlyRevenueVal = paidMonthlyOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
 
     const currentHour = new Date().getHours();
     const activeHours = Math.max(1, currentHour + 1);
@@ -1625,7 +1640,7 @@ export async function getAnalytics(req: AuthenticatedRequest, res: Response, nex
           todayRevenue: Math.round((todayRevenueVal + Number.EPSILON) * 100) / 100,
           todayOrders: todayOrders.length,
           monthlyRevenue: Math.round((monthlyRevenueVal + Number.EPSILON) * 100) / 100,
-          monthlyOrders: monthlyOrders.length,
+          monthlyOrders: monthlyOrderCount,
           todayHourlyAverage: Math.round((todayHourlyAverage + Number.EPSILON) * 100) / 100,
         },
         todayHourlyEarnings,

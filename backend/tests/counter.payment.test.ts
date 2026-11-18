@@ -4,6 +4,17 @@ import { UpiProviderRegistry } from '../src/services/payment/UpiProviderRegistry
 import { DirectVpaProvider } from '../src/services/payment/providers/DirectVpaProvider';
 import { SetuUpiProvider } from '../src/services/payment/providers/SetuUpiProvider';
 
+jest.mock('../src/lib/prisma', () => ({
+  prisma: {
+    restaurant: {
+      findFirst: jest.fn().mockResolvedValue({ id: 'mock-restaurant-a' }),
+    },
+    order: {
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
+  },
+}));
+
 describe('Counter Order Verification & Payment Confirmation Architecture', () => {
   let restaurantAId: string;
   let restaurantBId: string;

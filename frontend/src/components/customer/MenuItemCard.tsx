@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import { Plus, Minus, Heart, Leaf, Flame, X, Sparkles, Check } from 'lucide-react';
@@ -52,7 +52,7 @@ function getFallbackFoodImage(name: string, isVeg: boolean): string {
     : 'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?q=80&w=800&auto=format&fit=crop';
 }
 
-export function MenuItemCard({ item, themeColor, restaurantId, restaurantSlug, layoutStyle = 'modern' }: MenuItemCardProps) {
+export const MenuItemCard = memo(function MenuItemCard({ item, themeColor, restaurantId, restaurantSlug, layoutStyle = 'modern' }: MenuItemCardProps) {
   const [selectedVariant, setSelectedVariant] = useState<{ id: string; name: string; price: number } | null>(
     item.variants.length > 0 ? (item.variants[0] ?? null) : null
   );
@@ -61,17 +61,17 @@ export function MenuItemCard({ item, themeColor, restaurantId, restaurantSlug, l
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
 
-  const { addItem, items: cartItems, updateQuantity, removeItem } = useCartStore();
-  const { user: rawUser } = useAuthStore();
+  const addItem = useCartStore((s) => s.addItem);
+  const updateQuantity = useCartStore((s) => s.updateQuantity);
+  const removeItem = useCartStore((s) => s.removeItem);
+  const cartItemId = `${item.id}:${selectedVariant?.id ?? 'default'}`;
+  const quantity = useCartStore((s) => s.items.find((ci) => ci.id === cartItemId)?.quantity ?? 0);
+  const rawUser = useAuthStore((s) => s.user);
 
   const activeUser = useMemo(() => {
     if (!rawUser) return null;
     return rawUser;
   }, [rawUser]);
-
-  const cartItemId = `${item.id}:${selectedVariant?.id ?? 'default'}`;
-  const cartItem = cartItems.find((ci) => ci.id === cartItemId);
-  const quantity = cartItem?.quantity ?? 0;
 
   const currentPrice = selectedVariant?.price ?? item.price;
   const addOnsTotal = selectedAddOns.reduce((sum, ao) => sum + ao.price, 0);
@@ -425,4 +425,4 @@ export function MenuItemCard({ item, themeColor, restaurantId, restaurantSlug, l
       </AnimatePresence>
     </motion.div>
   );
-}
+});
