@@ -121,6 +121,7 @@ export async function getRestaurantMenu(
         merchantName: true,
         featureFlags: true,
         platformType: true,
+        qrSettings: true,
         upiAccount: {
           select: {
             upiId: true,
@@ -175,6 +176,7 @@ export async function getRestaurantMenu(
           merchantName: true,
           featureFlags: true,
           platformType: true,
+          qrSettings: true,
           upiAccount: {
             select: {
               upiId: true,

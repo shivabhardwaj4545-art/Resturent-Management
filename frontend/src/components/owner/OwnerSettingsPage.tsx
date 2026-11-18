@@ -2045,7 +2045,6 @@ export function OwnerSettingsPage() {
                   restaurantSlug={data.slug}
                   themeColor={form.themeColor || '#E85D04'}
                   activeLocation={activeLocationStr}
-                  disabledLocations={qrSettings.disabledLocations || []}
                   isTableQrAllowed={isTableQrAllowed}
                   isRoomQrAllowed={isRoomQrAllowed}
                   onSelectLocation={(loc) => {
@@ -2065,30 +2064,10 @@ export function OwnerSettingsPage() {
                     window.scrollTo({ top: 400, behavior: 'smooth' });
                   }}
                   onRemoveLocation={handleRemoveLocation}
-                  onToggleStatus={(loc) => {
-                    const isRoomLoc = loc.toLowerCase().includes('room') || loc.toLowerCase().includes('suite');
-                    const isAdminLocked = isRoomLoc ? !isRoomQrAllowed : !isTableQrAllowed;
-                    if (isAdminLocked) {
-                      toast.error(`${isRoomLoc ? 'Hotel Room' : 'Dine-In Table'} QR is locked/disabled by Admin.`);
-                      return;
-                    }
-                    setQrSettings((s) => {
-                      const currentDisabled = s.disabledLocations || [];
-                      const exists = currentDisabled.some(
-                        (d) => d.trim().toLowerCase() === loc.trim().toLowerCase()
-                      );
-                      return {
-                        ...s,
-                        disabledLocations: exists
-                          ? currentDisabled.filter((d) => d.trim().toLowerCase() !== loc.trim().toLowerCase())
-                          : [...currentDisabled, loc],
-                      };
-                    });
-                  }}
                 />
               )}
 
-              {/* QR Code Disable & Enable Management */}
+              {/* QR Code Service & Location Management */}
               {data && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
@@ -2100,10 +2079,10 @@ export function OwnerSettingsPage() {
                     <div>
                       <h2 className="font-display font-semibold flex items-center gap-2 text-lg">
                         <Power className="w-5 h-5 text-primary" />
-                        QR Ordering & Location Status Manager
+                        QR Service Master Control
                       </h2>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        Enable or disable QR ordering globally, or toggle active/disabled status for specific tables and hotel rooms.
+                        Enable or shut down QR ordering service across all dining tables and rooms.
                       </p>
                     </div>
 
@@ -2111,97 +2090,26 @@ export function OwnerSettingsPage() {
                     <button
                       type="button"
                       onClick={() => setQrSettings(s => ({ ...s, enabled: !s.enabled }))}
-                      className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold text-xs border transition-all ${qrSettings.enabled
-                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
-                          : 'bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400'
+                      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs border transition-all cursor-pointer shadow-sm ${qrSettings.enabled
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20'
+                          : 'bg-amber-500 hover:bg-amber-600 text-slate-950 border-amber-400 shadow-md ring-2 ring-amber-400/50 animate-pulse'
                         }`}
                     >
                       <Power className="w-4 h-4" />
-                      Global QR System: {qrSettings.enabled ? 'ENABLED' : 'DISABLED'}
+                      QR Service: {qrSettings.enabled ? 'ACTIVE / ONLINE' : 'SHUT (MAINTENANCE)'}
                     </button>
                   </div>
 
-                  {/* Individual Table / Room Status Toggles */}
-                  <div className="space-y-3">
-                    <label className="text-xs font-semibold text-muted-foreground block">
-                      Toggle Active / Disabled Locations (Click any {data.platformType === 'HOTEL' ? 'room' : data.platformType === 'RESTAURANT' ? 'table' : 'table or room'} to change status)
-                    </label>
-
-                    <div className="flex flex-wrap gap-2.5">
-                      {Array.from(
-                        new Set([
-                          ...allTableLocations,
-                          ...(qrSettings.disabledLocations || []),
-                        ])
-                      ).map((loc) => {
-                        const isRoomLoc = data.platformType === 'HOTEL' ? true : data.platformType === 'RESTAURANT' ? false : (loc.toLowerCase().includes('room') || loc.toLowerCase().includes('suite'));
-                        const isAdminLocked = isRoomLoc ? !isRoomQrAllowed : !isTableQrAllowed;
-                        const isDisabled = isAdminLocked || (qrSettings.disabledLocations || []).some(
-                          (d) => d.trim().toLowerCase() === loc.trim().toLowerCase()
-                        );
-                        const isCustom = (qrSettings.customLocations || []).some(
-                          (c) => c.trim().toLowerCase() === loc.trim().toLowerCase()
-                        );
-                        return (
-                          <div
-                            key={loc}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${isAdminLocked
-                                ? 'bg-red-500/15 border-red-500/30 text-red-500 opacity-75'
-                                : isDisabled
-                                  ? 'bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400'
-                                  : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
-                              }`}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (isAdminLocked) {
-                                  toast.error(`${isRoomLoc ? 'Hotel Room' : 'Dine-In Table'} QR is locked/disabled by Admin.`);
-                                  return;
-                                }
-                                setQrSettings((s) => {
-                                  const currentDisabled = s.disabledLocations || [];
-                                  const exists = currentDisabled.some(
-                                    (d) => d.trim().toLowerCase() === loc.trim().toLowerCase()
-                                  );
-                                  return {
-                                    ...s,
-                                    disabledLocations: exists
-                                      ? currentDisabled.filter((d) => d.trim().toLowerCase() !== loc.trim().toLowerCase())
-                                      : [...currentDisabled, loc],
-                                  };
-                                });
-                              }}
-                              className={`flex items-center gap-1.5 transition-opacity ${isAdminLocked ? 'cursor-not-allowed' : 'hover:opacity-80'}`}
-                            >
-                              {isAdminLocked ? (
-                                <Lock className="w-3.5 h-3.5 text-red-500" />
-                              ) : isDisabled ? (
-                                <Ban className="w-3.5 h-3.5" />
-                              ) : (
-                                <Check className="w-3.5 h-3.5" />
-                              )}
-                              <span>{loc}</span>
-                              <span className="text-[10px] opacity-75 uppercase">
-                                ({isAdminLocked ? 'Locked by Admin' : isDisabled ? 'Disabled' : 'Active'})
-                              </span>
-                            </button>
-
-                            {loc !== 'General Menu' && (
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveLocation(loc)}
-                                className="ml-1 p-0.5 rounded hover:bg-red-500/20 text-red-500 transition-colors"
-                                title={`Delete ${loc}`}
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
+                  {!qrSettings.enabled && (
+                    <div className="p-3.5 bg-amber-500/15 border border-amber-500/30 rounded-xl text-xs text-amber-800 dark:text-amber-300 space-y-1">
+                      <p className="font-bold flex items-center gap-1.5">
+                        ⚠️ QR Service is Currently Shut
+                      </p>
+                      <p>
+                        Customers who scan any table or room QR code will see the maintenance notice: <strong>&ldquo;Currently maintenance is going on kindly order normally!&rdquo;</strong>
+                      </p>
                     </div>
-                  </div>
+                  )}
 
                   {/* Add Custom Location Input Form */}
                   <form

@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, UtensilsCrossed, ShoppingBag, Tag, BarChart3, Settings,
   LogOut, Menu, X, TrendingUp, Users, DollarSign, Clock, Bell, ChevronRight,
-  Power, Star, Palette, BellRing, ChefHat, CreditCard, AlertTriangle, Calendar, ShieldCheck, Zap
+  Power, Star, Palette, BellRing, ChefHat, CreditCard, AlertTriangle, Calendar, ShieldCheck, Zap, QrCode
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api, { getSocketUrl } from '@/services/api';
@@ -50,7 +50,14 @@ export function OwnerDashboard() {
     queryFn: async () => {
       const response = await api.get('/owner/dashboard');
       return response.data.data as {
-        restaurant: { id: string; name: string; isOpen: boolean; isSuspended?: boolean; themeColor: string | null };
+        restaurant: {
+          id: string;
+          name: string;
+          isOpen: boolean;
+          isSuspended?: boolean;
+          themeColor: string | null;
+          qrSettings?: { enabled?: boolean } | null;
+        };
         subscription?: {
           id: string;
           planName: string;
@@ -177,6 +184,30 @@ export function OwnerDashboard() {
     }
   };
 
+  const [isTogglingQr, setIsTogglingQr] = useState(false);
+  const isQrEnabled = data?.restaurant?.qrSettings?.enabled !== false;
+
+  const toggleQrService = async () => {
+    if (!data) return;
+    try {
+      setIsTogglingQr(true);
+      const res = await api.patch('/owner/restaurant/toggle-qr', { enabled: !isQrEnabled });
+      if (res.data?.success) {
+        const nextState = res.data.data?.qrEnabled;
+        if (nextState) {
+          toast.success('🟢 QR Ordering Service is now ONLINE!');
+        } else {
+          toast.warning('🟠 QR Ordering Service is SHUT — Scanned QRs will display maintenance notice.');
+        }
+        qc.invalidateQueries({ queryKey: ['owner-dashboard'] });
+      }
+    } catch {
+      toast.error('Failed to toggle QR service status');
+    } finally {
+      setIsTogglingQr(false);
+    }
+  };
+
   const STATUS_COLORS: Record<string, string> = {
     PENDING: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
     CONFIRMED: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
@@ -205,17 +236,34 @@ export function OwnerDashboard() {
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             {data && (
-              <button
-                onClick={toggleRestaurant}
-                className={`flex items-center gap-1.5 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all shrink-0 ${
-                  data.restaurant.isOpen
-                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200'
-                    : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200'
-                }`}
-              >
-                <Power className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                <span>{data.restaurant.isOpen ? 'Open' : 'Closed'}</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={toggleQrService}
+                  disabled={isTogglingQr}
+                  title={isQrEnabled ? 'Click to shut QR ordering service (Customers will see maintenance message)' : 'Click to enable QR ordering service'}
+                  className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-black transition-all shrink-0 cursor-pointer shadow-xs active:scale-95 ${
+                    isQrEnabled
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-100'
+                      : 'bg-amber-500 hover:bg-amber-600 text-slate-950 border border-amber-400 shadow-md ring-2 ring-amber-400/50 animate-pulse'
+                  }`}
+                >
+                  <QrCode className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                  <span>{isQrEnabled ? 'QR Service: Active' : 'QR Service: Shut (Maintenance)'}</span>
+                </button>
+
+                <button
+                  onClick={toggleRestaurant}
+                  className={`flex items-center gap-1.5 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all shrink-0 ${
+                    data.restaurant.isOpen
+                      ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200'
+                      : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200'
+                  }`}
+                >
+                  <Power className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                  <span>{data.restaurant.isOpen ? 'Open' : 'Closed'}</span>
+                </button>
+              </>
             )}
             {/* Waiter Calls Bell */}
             <WaiterBell />

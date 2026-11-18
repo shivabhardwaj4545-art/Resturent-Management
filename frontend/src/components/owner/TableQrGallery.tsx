@@ -24,10 +24,10 @@ interface TableQrCardProps {
   restaurantSlug: string;
   themeColor: string;
   isCurrent: boolean;
-  isDisabled: boolean;
-  isAdminLocked: boolean;
+  isDisabled?: boolean;
+  isAdminLocked?: boolean;
   onSelect: () => void;
-  onToggleStatus: () => void;
+  onToggleStatus?: () => void;
   onRemove?: () => void;
 }
 
@@ -38,8 +38,8 @@ export function TableQrCard({
   restaurantSlug,
   themeColor,
   isCurrent,
-  isDisabled,
-  isAdminLocked,
+  isDisabled = false,
+  isAdminLocked = false,
   onSelect,
   onToggleStatus,
   onRemove,
@@ -122,23 +122,6 @@ export function TableQrCard({
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
-            {/* Status Toggle (ACTIVE / DISABLED) for ANY QR */}
-            <button
-              type="button"
-              onClick={onToggleStatus}
-              disabled={isAdminLocked}
-              className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition-colors ${
-                isAdminLocked
-                  ? 'bg-red-500/10 border-red-500/20 text-red-400 opacity-60 cursor-not-allowed'
-                  : isDisabled
-                  ? 'bg-red-500/15 border-red-500/30 text-red-500 hover:bg-red-500/25'
-                  : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25'
-              }`}
-              title="Click to toggle Active / Disabled status"
-            >
-              {isAdminLocked ? 'LOCKED' : isDisabled ? 'DISABLED' : 'ACTIVE'}
-            </button>
-
             {/* Delete button for ANY table/room QR */}
             {!isGeneralMenu && onRemove && (
               <button
@@ -225,11 +208,11 @@ interface TableQrGalleryProps {
   restaurantSlug: string;
   themeColor: string;
   activeLocation: string;
-  disabledLocations: string[];
+  disabledLocations?: string[];
   isTableQrAllowed: boolean;
   isRoomQrAllowed: boolean;
   onSelectLocation: (loc: string) => void;
-  onToggleStatus: (loc: string) => void;
+  onToggleStatus?: (loc: string) => void;
   onRemoveLocation?: (loc: string) => void;
 }
 
@@ -239,7 +222,7 @@ export function TableQrGallery({
   restaurantSlug,
   themeColor,
   activeLocation,
-  disabledLocations,
+  disabledLocations = [],
   isTableQrAllowed,
   isRoomQrAllowed,
   onSelectLocation,
@@ -321,7 +304,7 @@ export function TableQrGallery({
                 isDisabled={isDisabled}
                 isAdminLocked={isAdminLocked}
                 onSelect={() => onSelectLocation(loc)}
-                onToggleStatus={() => onToggleStatus(loc)}
+                onToggleStatus={onToggleStatus ? () => onToggleStatus(loc) : undefined}
                 onRemove={onRemoveLocation ? () => onRemoveLocation(loc) : undefined}
               />
             );

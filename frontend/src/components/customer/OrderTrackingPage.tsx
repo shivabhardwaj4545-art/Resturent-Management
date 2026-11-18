@@ -411,13 +411,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
       const session = payload?.session;
       if (session?.event === 'ITEMS_ADDED' && session?.orderId === orderId) {
         qc.invalidateQueries({ queryKey: ['order', orderId] });
-        setAddonAlert({
-          isOpen: true,
-          type: 'ADDON_ORDER',
-          title: '🍽️ New Items Added to Your Order!',
-          message: 'More items have just been added to this table order and are being prepared by the kitchen.',
-          orderId,
-        });
+        toast.info('🍽️ New items added to table order!');
       }
     });
 

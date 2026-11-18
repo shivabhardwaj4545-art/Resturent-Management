@@ -222,6 +222,7 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response, nex
           themeColor: restaurant.themeColor,
           platformType: (restaurant as any).platformType || 'RESTAURANT',
           maxLogins: (restaurant as any).maxLogins || 1,
+          qrSettings: (restaurant as any).qrSettings || null,
         },
         subscription: activeSubscription
           ? {
@@ -516,6 +517,35 @@ export async function toggleRestaurant(req: AuthenticatedRequest, res: Response,
       success: true,
       data: { isOpen: updated.isOpen },
       message: `Restaurant is now ${updated.isOpen ? 'OPEN' : 'CLOSED'}`,
+    });
+  } catch (error) { next(error); }
+}
+
+export async function toggleQrService(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const { enabled } = req.body as { enabled?: boolean };
+    const currentSettings = ((restaurant as any).qrSettings as Record<string, any>) || {};
+    const nextEnabled = typeof enabled === 'boolean' ? enabled : currentSettings.enabled === false ? true : false;
+
+    const updatedSettings = {
+      ...currentSettings,
+      enabled: nextEnabled,
+    };
+
+    const updated = await prisma.restaurant.update({
+      where: { id: restaurant.id },
+      data: { qrSettings: updatedSettings },
+    });
+
+    await cacheDelPattern(`menu:${restaurant.slug}*`);
+    res.json({
+      success: true,
+      data: {
+        qrEnabled: nextEnabled,
+        qrSettings: updated.qrSettings,
+      },
+      message: `QR Ordering service is now ${nextEnabled ? 'ONLINE / ACTIVE' : 'SHUT / IN MAINTENANCE'}`,
     });
   } catch (error) { next(error); }
 }

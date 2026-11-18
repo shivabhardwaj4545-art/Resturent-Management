@@ -1040,14 +1040,16 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
       processRealTimeEvent(
         eventType,
         () => {
-          setCustomerAlert({
-            isOpen: true,
-            type: 'ORDER_UPDATE',
-            title: `${info.icon} ${info.label}`,
-            message: info.text,
-            orderId: payload?.orderId,
-            orderStatus: payload?.status,
-          });
+          if (isCancelled) {
+            setCustomerAlert({
+              isOpen: true,
+              type: 'ORDER_UPDATE',
+              title: `${info.icon} ${info.label}`,
+              message: info.text,
+              orderId: payload?.orderId,
+              orderStatus: payload?.status,
+            });
+          }
         },
         {
           title: `${info.icon} ${info.label}`,
@@ -1111,23 +1113,14 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
       );
     });
 
-    // Add-on order socket listeners — show popup when items are added to the table's active order
+    // Add-on order socket listeners — update queries silently without blocking popup
     const handleTableSessionAddon = (payload: any) => {
       const session = payload?.session;
       if (session?.event === 'ITEMS_ADDED') {
         // Invalidate table access and order queries so UI reflects new items
         queryClient.invalidateQueries({ queryKey: ['table-access'] });
         queryClient.invalidateQueries({ queryKey: ['active-orders'] });
-        // Show pop-up notification
-        setCustomerAlert({
-          isOpen: true,
-          type: 'ADDON_ORDER',
-          title: '🍽️ New Items Added to Your Order!',
-          message: 'More items have just been added to your table order and are being prepared by the kitchen.',
-          orderId: session?.orderId,
-          actionUrl: session?.orderId ? `/r/${slug}/order/${session.orderId}` : undefined,
-          actionLabel: 'Track Order',
-        });
+        queryClient.invalidateQueries({ queryKey: ['table-session-status'] });
       }
     };
 
@@ -1203,6 +1196,43 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
         <div className="text-6xl mb-4">🔍</div>
         <h2 className="text-2xl font-display font-bold mb-2">Restaurant Not Found</h2>
         <p className="text-muted-foreground">This restaurant may have moved or is temporarily unavailable.</p>
+      </div>
+    );
+  }
+
+  if (isQrDisabledGlobally && !isPreview) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background p-6 text-center">
+        <motion.div
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="max-w-md w-full bg-card border border-amber-500/20 rounded-3xl p-8 shadow-2xl space-y-5 text-center my-auto"
+        >
+          <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto text-amber-500">
+            <Wrench className="w-8 h-8 animate-pulse" />
+          </div>
+          <div className="space-y-2">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider px-3 py-1 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25 inline-block">
+              QR Service Temporarily Paused
+            </span>
+            <h2 className="text-xl sm:text-2xl font-display font-black text-foreground">
+              Currently maintenance is going on kindly order normally!
+            </h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Digital QR ordering is temporarily paused for maintenance at {data.restaurant.name}. Please place your order directly with the waiter or staff at the counter.
+            </p>
+          </div>
+          {(data.restaurant as any)?.phone && (
+            <div className="pt-2">
+              <a
+                href={`tel:${(data.restaurant as any).phone}`}
+                className="inline-flex items-center gap-2 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 px-4 py-2.5 rounded-xl transition-colors"
+              >
+                <span>Call Restaurant: {(data.restaurant as any).phone}</span>
+              </a>
+            </div>
+          )}
+        </motion.div>
       </div>
     );
   }

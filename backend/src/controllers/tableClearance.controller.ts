@@ -503,17 +503,33 @@ export async function checkTableStatusAndAccess(
     if (restaurantId) {
       restaurant = await prisma.restaurant.findUnique({
         where: { id: restaurantId },
-        select: { id: true, name: true, slug: true, sessionManagementMode: true },
+        select: { id: true, name: true, slug: true, sessionManagementMode: true, qrSettings: true },
       });
     } else if (restaurantSlug) {
       restaurant = await prisma.restaurant.findUnique({
         where: { slug: restaurantSlug },
-        select: { id: true, name: true, slug: true, sessionManagementMode: true },
+        select: { id: true, name: true, slug: true, sessionManagementMode: true, qrSettings: true },
       });
     }
 
     if (!restaurant) {
       throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
+    }
+
+    // Check if QR service is shut down / in maintenance
+    if ((restaurant.qrSettings as any)?.enabled === false) {
+      res.status(503).json({
+        success: false,
+        code: 'QR_SERVICE_MAINTENANCE',
+        message: 'Currently maintenance is going on kindly order normally!',
+        data: {
+          isAvailable: false,
+          isMaintenance: true,
+          tableNumber: cleanTable,
+          restaurantName: restaurant.name,
+        },
+      });
+      return;
     }
 
     const currentMode = restaurant.sessionManagementMode || 'MANUAL';

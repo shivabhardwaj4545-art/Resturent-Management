@@ -17,6 +17,7 @@ import {
   getRestaurant,
   updateRestaurant,
   toggleRestaurant,
+  toggleQrService,
   uploadLogo,
   uploadBanner,
   uploadPaymentQr,
@@ -99,6 +100,7 @@ router.delete('/kitchen-staff/:id', deleteKitchenStaff);
 router.get('/restaurant', getRestaurant);
 router.put('/restaurant', validate(restaurantProfileSchema.partial()), updateRestaurant);
 router.patch('/restaurant/toggle', validate(restaurantToggleSchema), toggleRestaurant);
+router.patch('/restaurant/toggle-qr', toggleQrService);
 router.post('/restaurant/logo', upload.single('logo'), uploadLogo);
 router.post('/restaurant/banner', upload.single('banner'), uploadBanner);
 router.post('/restaurant/payment-qr', upload.single('paymentQr'), uploadPaymentQr);
