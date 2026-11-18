@@ -14,6 +14,7 @@ import { io, Socket } from 'socket.io-client';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
+import { playNewOrderSound } from '@/utils/audio';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -113,9 +114,42 @@ export function OwnerDashboard() {
       qc.invalidateQueries({ queryKey: ['owner-analytics'] });
     };
 
-    socket.on('order:new', handleRefresh);
-    socket.on('new_order', handleRefresh);
-    socket.on('order:status_updated', handleRefresh);
+    const handleNewOrderNotification = (order?: any) => {
+      handleRefresh();
+      const orderId = order?.id || order?.orderId;
+      const orderIdShort = orderId ? String(orderId).slice(-8).toUpperCase() : '';
+      const rawTable = order?.tableNumber;
+      const tableLabel = rawTable ? `Table ${rawTable}` : '';
+      const totalLabel = order?.total ? `₹${Number(order.total).toFixed(2)}` : '';
+      toast.success(`🛎️ New Order!${orderIdShort ? ` #${orderIdShort}` : ''}`, {
+        id: `new-order-toast-${orderId || Date.now()}`,
+        description: [tableLabel, totalLabel].filter(Boolean).join(' • ') || 'New order received',
+        duration: 8000,
+        icon: '🛎️',
+      });
+      try { playNewOrderSound(); } catch { /* ignore */ }
+    };
+
+    const handleAddonNotification = (data?: any) => {
+      handleRefresh();
+      // Show popup when addon items are added to an ongoing order
+      if (data?.addOnStatus === 'PREPARING' && data?.orderId) {
+        const orderIdShort = String(data.orderId).slice(-8).toUpperCase();
+        toast.info(`⚡ Add-on Items Added! #${orderIdShort}`, {
+          id: `addon-order-toast-${data.orderId}`,
+          description: 'New items added to an ongoing table order and are being prepared.',
+          duration: 8000,
+          icon: '⚡',
+        });
+        try { playNewOrderSound(); } catch { /* ignore */ }
+      } else {
+        // fall back to plain refresh for other status updates
+      }
+    };
+
+    socket.on('order:new', handleNewOrderNotification);
+    socket.on('new_order', handleNewOrderNotification);
+    socket.on('order:status_updated', handleAddonNotification);
     socket.on('order_status_changed', handleRefresh);
     socket.on('order_cancelled', handleRefresh);
     socket.on('order_deleted', handleRefresh);

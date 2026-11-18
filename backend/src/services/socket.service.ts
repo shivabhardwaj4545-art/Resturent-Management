@@ -147,6 +147,7 @@ export function emitOrderStatusUpdate(orderId: string, restaurantId: string, dat
   addOnStatus?: string | null;
   lastAddOnAt?: Date | string | null;
   paymentStatus?: string;
+  isPaymentEvent?: boolean;
   updatedAt: string;
   estimatedTime?: number;
   driverId?: string;

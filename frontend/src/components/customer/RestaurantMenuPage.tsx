@@ -443,12 +443,9 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
   useEffect(() => {
     if (isAnyModalOpen) {
       const originalOverflow = document.body.style.overflow;
-      const originalTouchAction = document.body.style.touchAction;
       document.body.style.overflow = 'hidden';
-      document.body.style.touchAction = 'none';
       return () => {
         document.body.style.overflow = originalOverflow;
-        document.body.style.touchAction = originalTouchAction;
       };
     }
   }, [isAnyModalOpen]);
@@ -1576,8 +1573,8 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                 </div>
               )}
 
-              {/* Ongoing Table Order Tracking Banner — full width below identity row */}
-              {tableAccessData?.data?.activeOrderId && (
+              {/* Ongoing Table Order Tracking Banner — full width below identity row (only for primary device, not secondary joiners) */}
+              {tableAccessData?.data?.activeOrderId && tableAccessData?.data?.role !== 'SECONDARY' && (
                 <div className="mt-3 w-full p-3.5 bg-gradient-to-r from-emerald-500/15 via-emerald-500/10 to-transparent border border-emerald-500/35 rounded-2xl flex flex-col gap-3 shadow-sm overflow-hidden">
                   <div className="flex items-start gap-3">
                     <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-base shrink-0">
@@ -2369,7 +2366,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-card border border-border rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5 relative overflow-hidden text-foreground"
+              className="bg-card border border-border rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5 relative overflow-y-auto max-h-[85vh] text-foreground"
             >
               <button
                 onClick={() => setShowLoyaltyModal(false)}

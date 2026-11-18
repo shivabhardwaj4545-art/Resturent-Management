@@ -1380,6 +1380,7 @@ export async function confirmPayment(req: AuthenticatedRequest, res: Response, n
     emitOrderStatusUpdate(id, restaurant.id, {
       orderId: id,
       paymentStatus: 'PAID',
+      isPaymentEvent: true,
       updatedAt: new Date().toISOString(),
     });
 
