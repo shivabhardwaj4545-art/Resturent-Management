@@ -24,6 +24,7 @@ import {
   User,
   Phone,
   Sparkles,
+  Printer,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { playKitchenOrderSound, processRealTimeEvent, requestDesktopNotificationPermission, sendDesktopNotification } from '@/utils/audio';
@@ -129,7 +130,13 @@ export default function KitchenDashboardPage() {
     queryKey: ['kitchen-orders'],
     queryFn: async () => {
       const res = await api.get('/kitchen/orders');
-      return res.data.data as { orders: KitchenOrder[]; restaurantId: string };
+      return res.data.data as {
+        orders: KitchenOrder[];
+        restaurantId: string;
+        isKdsDisabled?: boolean;
+        kotMode?: 'DIGITAL_KDS' | 'PRINT_KOT';
+        restaurantName?: string;
+      };
     },
     enabled: !!user && (user.role === 'KITCHEN' || user.role === 'RESTAURANT_OWNER' || user.role === 'SUPER_ADMIN'),
     refetchInterval: 30000, // 30s background fallback polling without page flicker
@@ -301,6 +308,47 @@ export default function KitchenDashboardPage() {
         <div className="text-center space-y-4">
           <RefreshCw className="w-12 h-12 animate-spin text-orange-500 mx-auto" />
           <p className="text-base sm:text-lg font-semibold text-slate-300">Loading Kitchen Display System (KDS)...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (ordersData?.isKdsDisabled || ordersData?.kotMode === 'PRINT_KOT') {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center shadow-2xl space-y-6">
+          <div className="w-16 h-16 rounded-3xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center mx-auto shadow-inner">
+            <Printer className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-xl font-black tracking-tight text-white">Digital KDS Disabled</h1>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              This restaurant is set to <span className="text-amber-400 font-semibold">Simple Physical Print KOT Mode</span>. Digital kitchen display screens and live preparation tracking stages are deactivated in favor of physical printed tickets.
+            </p>
+          </div>
+          <div className="p-3.5 bg-slate-800/60 rounded-2xl border border-slate-700/60 text-[11px] text-slate-300">
+            Orders placed by guests are printed at the counter and physically handed to kitchen cooks.
+          </div>
+          <div className="flex flex-col gap-2.5 pt-2">
+            {user?.role === 'RESTAURANT_OWNER' || user?.role === 'SUPER_ADMIN' ? (
+              <button
+                onClick={() => router.push('/owner/orders')}
+                className="w-full py-3 bg-primary text-primary-foreground font-bold text-xs rounded-xl shadow-lg hover:opacity-95 transition cursor-pointer"
+              >
+                Go to Owner Orders
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  logout();
+                  router.push('/login');
+                }}
+                className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                Logout Kitchen Staff
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );

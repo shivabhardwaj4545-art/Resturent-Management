@@ -1896,6 +1896,12 @@ export async function getRestaurantReviews(
 export async function createKitchenStaff(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const restaurant = await getOwnerRestaurant(req.user!.id);
+    const flags = (restaurant.featureFlags as Record<string, any>) || {};
+    const disabledTabs = Array.isArray(restaurant.disabledTabs) ? (restaurant.disabledTabs as string[]) : [];
+    if (flags.kotMode === 'PRINT_KOT' || flags.kitchenDisplayEnabled === false || disabledTabs.includes('kitchen-staff')) {
+      throw new AppError('Kitchen staff accounts and digital KDS are disabled while Simple Physical Print KOT mode is active.', 403, 'KDS_DISABLED');
+    }
+
     const { name, email, password } = req.body as { name?: string; email?: string; password?: string };
 
     if (!name || !email || !password) {
@@ -1947,6 +1953,10 @@ export async function createKitchenStaff(req: AuthenticatedRequest, res: Respons
 export async function getKitchenStaff(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const restaurant = await getOwnerRestaurant(req.user!.id);
+    const flags = (restaurant.featureFlags as Record<string, any>) || {};
+    const disabledTabs = Array.isArray(restaurant.disabledTabs) ? (restaurant.disabledTabs as string[]) : [];
+    const isPrintKot = flags.kotMode === 'PRINT_KOT' || flags.kitchenDisplayEnabled === false || disabledTabs.includes('kitchen-staff');
+
     const staff = await prisma.user.findMany({
       where: {
         kitchenRestaurantId: restaurant.id,
@@ -1965,7 +1975,12 @@ export async function getKitchenStaff(req: AuthenticatedRequest, res: Response, 
 
     res.json({
       success: true,
-      data: { staff },
+      data: {
+        staff,
+        kotMode: flags.kotMode || 'DIGITAL_KDS',
+        isPrintKot,
+        kitchenDisplayEnabled: flags.kitchenDisplayEnabled !== false,
+      },
     });
   } catch (error) {
     next(error);

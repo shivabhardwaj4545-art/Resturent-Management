@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { cacheGet, cacheSet, cacheDelPattern } from '../services/redis.service';
-import { emitNotification, getSocketServer } from '../services/socket.service';
+import { emitNotification, getSocketServer, emitRestaurantFeaturesUpdated } from '../services/socket.service';
 import {
   sendBroadcastEmail,
   sendRestaurantWelcomeEmail,
@@ -968,33 +968,61 @@ export async function updateRestaurantFeatures(req: AuthenticatedRequest, res: R
 
     const currentFlags = (restaurant.featureFlags as Record<string, any>) || {};
     const kotMode = featureFlags.kotMode !== undefined ? featureFlags.kotMode : (currentFlags.kotMode || 'DIGITAL_KDS');
+    const isPrintKot = kotMode === 'PRINT_KOT';
+
     const updatedFlags = {
       ...currentFlags,
       ...featureFlags,
       kotMode,
+      kitchenDisplayEnabled: isPrintKot ? false : (featureFlags.kitchenDisplayEnabled !== undefined ? featureFlags.kitchenDisplayEnabled : (currentFlags.kitchenDisplayEnabled ?? true)),
       tableQrEnabled: featureFlags.callWaiterEnabled !== undefined ? featureFlags.callWaiterEnabled : (featureFlags.tableQrEnabled !== undefined ? featureFlags.tableQrEnabled : (currentFlags.tableQrEnabled ?? true)),
       roomQrEnabled: featureFlags.roomServiceEnabled !== undefined ? featureFlags.roomServiceEnabled : (featureFlags.roomQrEnabled !== undefined ? featureFlags.roomQrEnabled : (currentFlags.roomQrEnabled ?? true)),
     };
 
+    // Synchronize disabledTabs with KOT mode:
+    // If PRINT_KOT is active, digital kitchen staff accounts & KDS must be in disabledTabs.
+    // If DIGITAL_KDS is active, ensure kitchen-staff is restored unless explicitly disabled.
+    const currentTabs: string[] = Array.isArray(restaurant.disabledTabs) ? [...(restaurant.disabledTabs as string[])] : [];
+    let nextTabs: string[] = [...currentTabs];
+
+    if (isPrintKot) {
+      if (!nextTabs.includes('kitchen-staff')) {
+        nextTabs.push('kitchen-staff');
+      }
+    } else if (featureFlags.kitchenDisplayEnabled !== false) {
+      nextTabs = nextTabs.filter((t) => t !== 'kitchen-staff');
+    }
+
     const updated = await prisma.restaurant.update({
       where: { id },
-      data: { featureFlags: updatedFlags },
+      data: {
+        featureFlags: updatedFlags,
+        disabledTabs: nextTabs,
+      },
     });
 
     await cacheDelPattern(`menu:${restaurant.slug}*`);
+
+    emitRestaurantFeaturesUpdated(id, {
+      featureFlags: updated.featureFlags,
+      disabledTabs: updated.disabledTabs,
+    });
 
     await prisma.notification.create({
       data: {
         restaurantId: id,
         type: 'FEATURE_SETTINGS_UPDATED',
         title: 'Platform Features Updated',
-        message: 'Administration has updated feature toggles for your restaurant (e.g., room service, waiter call, ordering).',
+        message: 'Administration has updated feature toggles for your restaurant (e.g., room service, waiter call, ordering, KOT mode).',
       },
     }).catch(() => {});
 
     res.json({
       success: true,
-      data: { featureFlags: updated.featureFlags },
+      data: {
+        featureFlags: updated.featureFlags,
+        disabledTabs: updated.disabledTabs,
+      },
       message: 'Restaurant features updated successfully',
     });
   } catch (error) { next(error); }
@@ -1015,6 +1043,11 @@ export async function updateRestaurantTabs(req: AuthenticatedRequest, res: Respo
     const updated = await prisma.restaurant.update({
       where: { id },
       data: { disabledTabs },
+    });
+
+    emitRestaurantFeaturesUpdated(id, {
+      disabledTabs: updated.disabledTabs,
+      featureFlags: restaurant.featureFlags,
     });
 
     await prisma.notification.create({

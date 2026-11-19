@@ -296,7 +296,20 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       queryClient.refetchQueries({ queryKey: ['owner-notifications'] });
     });
 
+    const handleFeaturesUpdated = () => {
+      queryClient.invalidateQueries({ queryKey: ['owner-restaurant-layout'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-restaurant-sidebar'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-restaurant'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-kitchen-staff'] });
+    };
+
+    socket.on('restaurant:features_updated', handleFeaturesUpdated);
+    socket.on('restaurant:updated', handleFeaturesUpdated);
+
     return () => {
+      socket.off('restaurant:features_updated', handleFeaturesUpdated);
+      socket.off('restaurant:updated', handleFeaturesUpdated);
       socket.disconnect();
       useWaiterStore.getState().setSocket(null);
     };

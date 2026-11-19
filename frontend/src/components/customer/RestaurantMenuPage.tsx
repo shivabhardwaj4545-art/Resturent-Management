@@ -1691,40 +1691,63 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                 </div>
               )}
 
-              {/* Ongoing Table Order Tracking Banner — full width below identity row (only for primary device, not secondary joiners) */}
-              {tableAccessData?.data?.activeOrderId && tableAccessData?.data?.role !== 'SECONDARY' && (
-                <div className="mt-3 w-full p-3.5 bg-gradient-to-r from-emerald-500/15 via-emerald-500/10 to-transparent border border-emerald-500/35 rounded-2xl flex flex-col gap-3 shadow-sm overflow-hidden">
-                  <div className="flex items-start gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-base shrink-0">
-                      🍽️
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
-                          Table Order in Progress #{tableAccessData.data.activeOrder?.orderNumber || tableAccessData.data.activeOrderId.slice(-6).toUpperCase()}
-                        </span>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 shrink-0">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                          {(data?.restaurant as any)?.featureFlags?.kotMode === 'PRINT_KOT'
-                            ? (tableAccessData.data.activeOrder?.status === 'CONFIRMED' ? 'In Kitchen' : tableAccessData.data.activeOrder?.status === 'DELIVERED' ? 'Served' : (tableAccessData.data.activeOrder?.status || 'In Kitchen'))
-                            : (tableAccessData.data.activeOrder?.status || 'In Kitchen')}
-                        </span>
+              {/* Ongoing Table Order Tracking Banner */}
+              {tableAccessData?.data?.activeOrderId && tableAccessData?.data?.role !== 'SECONDARY' && !addonOrderNum && (
+                tableAccessData.data.activeOrder?.status === 'DELIVERED' ? (
+                  <div className="mt-2.5 w-full p-2.5 bg-emerald-500/10 border border-emerald-500/25 rounded-xl flex items-center justify-between gap-2 shadow-xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm">✅</span>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-foreground truncate">
+                          Order #{tableAccessData.data.activeOrder?.orderNumber || tableAccessData.data.activeOrderId.slice(-6).toUpperCase()} Served
+                        </p>
+                        <p className="text-[10px] text-muted-foreground truncate">
+                          Need more? Add items from the menu anytime
+                        </p>
                       </div>
-                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
-                        {(data?.restaurant as any)?.featureFlags?.kotMode === 'PRINT_KOT'
-                          ? 'Any items you add will be printed and sent to the kitchen.'
-                          : 'Any items you add will be appended to this ongoing order. Live tracking shared across all table devices.'}
-                      </p>
                     </div>
+                    <Link
+                      href={`/r/${slug}/order/${tableAccessData.data.activeOrderId}`}
+                      className="px-3 py-1.5 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition shrink-0 flex items-center gap-1"
+                    >
+                      <span>{(data?.restaurant as any)?.featureFlags?.kotMode === 'PRINT_KOT' ? 'View Bill' : 'View Order'}</span>
+                      <ChevronRight className="w-3 h-3" />
+                    </Link>
                   </div>
-                  <Link
-                    href={`/r/${slug}/order/${tableAccessData.data.activeOrderId}`}
-                    className="w-full text-center px-3.5 py-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition active:scale-95 flex items-center justify-center gap-1.5 min-h-[44px]"
-                  >
-                    <span>{(data?.restaurant as any)?.featureFlags?.kotMode === 'PRINT_KOT' ? 'View Order & Bill' : 'Track Order Live'}</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
+                ) : (
+                  <div className="mt-3 w-full p-3.5 bg-gradient-to-r from-emerald-500/15 via-emerald-500/10 to-transparent border border-emerald-500/35 rounded-2xl flex flex-col gap-2.5 shadow-sm overflow-hidden">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-sm shrink-0">
+                        🍽️
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                            Table Order in Progress #{tableAccessData.data.activeOrder?.orderNumber || tableAccessData.data.activeOrderId.slice(-6).toUpperCase()}
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 shrink-0">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            {(data?.restaurant as any)?.featureFlags?.kotMode === 'PRINT_KOT'
+                              ? (tableAccessData.data.activeOrder?.status === 'CONFIRMED' ? 'In Kitchen' : (tableAccessData.data.activeOrder?.status || 'In Kitchen'))
+                              : (tableAccessData.data.activeOrder?.status || 'In Kitchen')}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                          {(data?.restaurant as any)?.featureFlags?.kotMode === 'PRINT_KOT'
+                            ? 'Any items you add will be printed and sent to the kitchen.'
+                            : 'Any items you add will be appended to this ongoing order. Live tracking shared across table.'}
+                        </p>
+                      </div>
+                    </div>
+                    <Link
+                      href={`/r/${slug}/order/${tableAccessData.data.activeOrderId}`}
+                      className="w-full text-center px-3.5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition active:scale-95 flex items-center justify-center gap-1.5"
+                    >
+                      <span>{(data?.restaurant as any)?.featureFlags?.kotMode === 'PRINT_KOT' ? 'View Order & Bill' : 'Track Order Live'}</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </Link>
+                  </div>
+                )
               )}
             </div>
           </div>

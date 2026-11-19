@@ -70,7 +70,7 @@ export function OwnerSidebar({ mobileOpen = false, onMobileClose }: OwnerSidebar
         };
       };
     },
-    staleTime: 30 * 1000,
+    staleTime: 5 * 1000,
   });
 
   const disabledTabs: string[] = Array.isArray(restaurantData?.disabledTabs) ? restaurantData.disabledTabs : [];
@@ -144,8 +144,12 @@ export function OwnerSidebar({ mobileOpen = false, onMobileClose }: OwnerSidebar
               return null;
             }
 
-            // If restaurant uses simple physical print KOT, digital kitchen staff KDS accounts are not used
-            if (item.key === 'kitchen-staff' && restaurantData?.featureFlags?.kotMode === 'PRINT_KOT') {
+            // If restaurant uses simple physical print KOT or KDS is disabled, digital kitchen staff KDS accounts are hidden
+            if (
+              item.key === 'kitchen-staff' &&
+              (restaurantData?.featureFlags?.kotMode === 'PRINT_KOT' ||
+                restaurantData?.featureFlags?.kitchenDisplayEnabled === false)
+            ) {
               return null;
             }
 

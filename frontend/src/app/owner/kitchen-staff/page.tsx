@@ -17,6 +17,7 @@ import {
   X,
   ShieldCheck,
   Menu,
+  Printer,
 } from 'lucide-react';
 import Link from 'next/link';
 import { OwnerSidebar } from '@/components/owner/OwnerSidebar';
@@ -38,6 +39,30 @@ export default function OwnerKitchenStaffPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  // Fetch restaurant details for feature flags
+  const { data: restaurantData } = useQuery({
+    queryKey: ['owner-restaurant-kitchen-staff'],
+    queryFn: async () => {
+      const res = await api.get('/owner/restaurant');
+      return res.data.data.restaurant as {
+        id: string;
+        name?: string;
+        disabledTabs?: string[] | null;
+        featureFlags?: {
+          kotMode?: 'DIGITAL_KDS' | 'PRINT_KOT';
+          kitchenDisplayEnabled?: boolean;
+          [key: string]: any;
+        };
+      };
+    },
+    staleTime: 5 * 1000,
+  });
+
+  const isPrintKotMode =
+    restaurantData?.featureFlags?.kotMode === 'PRINT_KOT' ||
+    restaurantData?.featureFlags?.kitchenDisplayEnabled === false ||
+    (Array.isArray(restaurantData?.disabledTabs) && restaurantData.disabledTabs.includes('kitchen-staff'));
 
   // Fetch kitchen staff
   const { data: staffList = [], isLoading } = useQuery({
@@ -97,27 +122,62 @@ export default function OwnerKitchenStaffPage() {
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <WaiterBell />
-            <Link
-              href="/kitchen/dashboard"
-              target="_blank"
-              className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Open KDS</span>
-            </Link>
-            <button
-              onClick={() => setIsCreateModalOpen(true)}
-              className="px-3.5 py-2 bg-primary text-primary-foreground hover:bg-primary/90 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Add Kitchen Staff</span>
-              <span className="sm:hidden">Add Staff</span>
-            </button>
+            {isPrintKotMode ? (
+              <span className="px-3 py-1.5 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold text-xs border border-amber-500/25 flex items-center gap-1.5">
+                <Printer className="w-3.5 h-3.5" />
+                <span>Physical Print KOT</span>
+              </span>
+            ) : (
+              <>
+                <Link
+                  href="/kitchen/dashboard"
+                  target="_blank"
+                  className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Open KDS</span>
+                </Link>
+                <button
+                  onClick={() => setIsCreateModalOpen(true)}
+                  className="px-3.5 py-2 bg-primary text-primary-foreground hover:bg-primary/90 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Add Kitchen Staff</span>
+                  <span className="sm:hidden">Add Staff</span>
+                </button>
+              </>
+            )}
           </div>
         </header>
 
         {/* Scrollable Page Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {isPrintKotMode && (
+            <div className="p-5 sm:p-6 bg-amber-500/10 border border-amber-500/30 rounded-3xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
+              <div className="flex items-start gap-3.5">
+                <div className="p-3 bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-2xl shrink-0">
+                  <Printer className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm sm:text-base text-foreground flex items-center gap-2">
+                    <span>Simple Physical Print KOT Mode Active</span>
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                      KDS Disabled
+                    </span>
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-2xl leading-relaxed">
+                    This restaurant is set to physical ticket mode. Digital Kitchen Display Screens (KDS) and staff terminals are deactivated. Incoming orders are printed directly onto physical thermal tickets from the Live Orders panel or order popups and handed to the kitchen.
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/owner/orders"
+                className="px-4 py-2.5 bg-primary text-primary-foreground font-bold text-xs rounded-xl shadow-md hover:bg-primary/95 transition shrink-0"
+              >
+                Go to Orders
+              </Link>
+            </div>
+          )}
           {/* Header Card */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-card p-6 rounded-3xl border border-border shadow-sm">
             <div className="flex items-center gap-4">

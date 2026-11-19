@@ -218,16 +218,20 @@ export function AdminRestaurantDetailModal({
   const featuresMutation = useMutation({
     mutationFn: async () => {
       if (!restaurantId) return;
-      await api.patch(`/admin/restaurants/${restaurantId}/features`, {
+      const res = await api.patch(`/admin/restaurants/${restaurantId}/features`, {
         featureFlags: {
           ...featureFlags,
           tableQrEnabled: featureFlags.callWaiterEnabled,
           roomQrEnabled: featureFlags.roomServiceEnabled,
         },
       });
+      return res.data;
     },
-    onSuccess: () => {
+    onSuccess: (res: any) => {
       toast.success('Restaurant feature flags updated successfully!');
+      if (res?.data?.disabledTabs) {
+        setDisabledTabs(res.data.disabledTabs);
+      }
       qc.invalidateQueries({ queryKey: ['admin-restaurants'] });
       refetch();
       onUpdated?.();
@@ -798,7 +802,10 @@ export function AdminRestaurantDetailModal({
                       {/* Option 1: DIGITAL_KDS */}
                       <button
                         type="button"
-                        onClick={() => setFeatureFlags({ ...featureFlags, kotMode: 'DIGITAL_KDS' })}
+                        onClick={() => {
+                          setFeatureFlags((prev) => ({ ...prev, kotMode: 'DIGITAL_KDS', kitchenDisplayEnabled: true }));
+                          setDisabledTabs((prev) => prev.filter((t) => t !== 'kitchen-staff'));
+                        }}
                         className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer relative ${
                           featureFlags.kotMode === 'DIGITAL_KDS'
                             ? 'bg-card border-orange-500 shadow-md ring-2 ring-orange-500/30'
@@ -829,7 +836,10 @@ export function AdminRestaurantDetailModal({
                       {/* Option 2: PRINT_KOT */}
                       <button
                         type="button"
-                        onClick={() => setFeatureFlags({ ...featureFlags, kotMode: 'PRINT_KOT' })}
+                        onClick={() => {
+                          setFeatureFlags((prev) => ({ ...prev, kotMode: 'PRINT_KOT', kitchenDisplayEnabled: false }));
+                          setDisabledTabs((prev) => (prev.includes('kitchen-staff') ? prev : [...prev, 'kitchen-staff']));
+                        }}
                         className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer relative ${
                           featureFlags.kotMode === 'PRINT_KOT'
                             ? 'bg-card border-emerald-500 shadow-md ring-2 ring-emerald-500/30'

@@ -394,6 +394,12 @@ export function emitBatchUnlocked(restaurantId: string, tableNumber: string, nex
   io.to(`restaurant:${restaurantId}`).emit('table-session:updated', payload);
 }
 
+export function emitRestaurantFeaturesUpdated(restaurantId: string, data: any): void {
+  if (!io) return;
+  io.to(`restaurant:${restaurantId}`).emit('restaurant:features_updated', data);
+  io.to(`restaurant:${restaurantId}`).emit('restaurant:updated', data);
+}
+
 export function getSocketIO(): SocketIOServer {
   if (!io) throw new Error('Socket.IO not initialized');
   return io;

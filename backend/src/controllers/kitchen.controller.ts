@@ -40,6 +40,34 @@ export async function getKitchenOrders(
   try {
     const restaurantId = await getTargetRestaurantId(req);
 
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: {
+        id: true,
+        name: true,
+        featureFlags: true,
+        disabledTabs: true,
+      },
+    });
+
+    const flags = (restaurant?.featureFlags as Record<string, any>) || {};
+    const disabledTabs = Array.isArray(restaurant?.disabledTabs) ? (restaurant?.disabledTabs as string[]) : [];
+    const isPrintKot = flags.kotMode === 'PRINT_KOT' || flags.kitchenDisplayEnabled === false || disabledTabs.includes('kitchen-staff');
+
+    if (isPrintKot) {
+      res.json({
+        success: true,
+        data: {
+          orders: [],
+          restaurantId,
+          restaurantName: restaurant?.name,
+          kotMode: 'PRINT_KOT',
+          isKdsDisabled: true,
+        },
+      });
+      return;
+    }
+
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
@@ -122,6 +150,17 @@ export async function updateKitchenOrderStatus(
 ): Promise<void> {
   try {
     const restaurantId = await getTargetRestaurantId(req);
+
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: { featureFlags: true, disabledTabs: true },
+    });
+    const flags = (restaurant?.featureFlags as Record<string, any>) || {};
+    const disabledTabs = Array.isArray(restaurant?.disabledTabs) ? (restaurant?.disabledTabs as string[]) : [];
+    if (flags.kotMode === 'PRINT_KOT' || flags.kitchenDisplayEnabled === false || disabledTabs.includes('kitchen-staff')) {
+      throw new AppError('Digital KDS is disabled for this restaurant. Orders are managed via physical KOT.', 403, 'KDS_DISABLED');
+    }
+
     const id = req.params.id as string;
     const { status, addOnStatus } = req.body as { status?: string; addOnStatus?: string };
 
