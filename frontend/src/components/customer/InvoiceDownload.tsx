@@ -264,7 +264,7 @@ export function InvoiceDownload({ order, themeColor = '#E85D04' }: InvoiceDownlo
         <td class="totals-value">₹${order.subtotal.toFixed(2)}</td>
       </tr>
       <tr>
-        <td class="totals-label">GST (18%)</td>
+        <td class="totals-label">GST (5%)</td>
         <td class="totals-value">₹${order.gstAmount.toFixed(2)}</td>
       </tr>
       ${

@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
 
-const GST_RATE = parseFloat(process.env.GST_RATE ?? '18') / 100;
+const GST_RATE = parseFloat(process.env.GST_RATE ?? '5') / 100;
 const DELIVERY_FEE = 40;
 const PACKAGING_FEE = 15;
 

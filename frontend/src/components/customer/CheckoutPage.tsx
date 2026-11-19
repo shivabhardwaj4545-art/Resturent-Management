@@ -50,7 +50,7 @@ const guestSchema = z.object({
 
 type GuestForm = z.infer<typeof guestSchema>;
 
-const GST_RATE = 0.18;
+const GST_RATE = 0.05;
 // Dine-in only (no delivery fees)
 
 
@@ -718,7 +718,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
               <span>Subtotal</span><span suppressHydrationWarning>₹{subtotalAmount.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-muted-foreground">
-              <span>GST (18%)</span><span suppressHydrationWarning>₹{gst.toFixed(2)}</span>
+              <span>GST (5%)</span><span suppressHydrationWarning>₹{gst.toFixed(2)}</span>
             </div>
 
             {mounted && !addonOrderId && couponDiscount > 0 && (

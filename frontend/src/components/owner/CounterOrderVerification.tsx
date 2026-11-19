@@ -437,7 +437,7 @@ export function CounterOrderVerification() {
                   </div>
                   {selectedOrder.gstAmount > 0 && (
                     <div className="flex justify-between text-muted-foreground">
-                      <span>GST (18%):</span>
+                      <span>GST (5%):</span>
                       <span>₹{formatAmount(selectedOrder.gstAmount)}</span>
                     </div>
                   )}

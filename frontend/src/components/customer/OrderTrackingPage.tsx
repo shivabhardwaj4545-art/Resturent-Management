@@ -888,7 +888,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
                   <span>₹{order.subtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
-                  <span>GST (18%)</span>
+                  <span>GST (5%)</span>
                   <span>₹{order.gstAmount.toFixed(2)}</span>
                 </div>
                 {order.deliveryFee > 0 && (

@@ -561,7 +561,7 @@ export async function getConfig(_req: AuthenticatedRequest, res: Response, next:
   try {
     const config = {
       defaultCommissionRate: parseFloat(process.env.DEFAULT_COMMISSION_RATE ?? '5'),
-      gstRate: parseFloat(process.env.GST_RATE ?? '18'),
+      gstRate: parseFloat(process.env.GST_RATE ?? '5'),
       deliveryFee: 40,
       packagingFee: 15,
       loyaltyPointsPerRupee: 1,

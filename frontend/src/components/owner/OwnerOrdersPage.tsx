@@ -632,7 +632,7 @@ export function OwnerOrdersPage() {
                                       <span className="text-foreground font-medium">₹{formatAmount(order.subtotal)}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                      <span>GST ({process.env.NEXT_PUBLIC_GST_RATE ?? '18'}%)</span>
+                                      <span>GST ({process.env.NEXT_PUBLIC_GST_RATE ?? '5'}%)</span>
                                       <span className="text-foreground font-medium">₹{formatAmount(order.gstAmount)}</span>
                                     </div>
                                     {order.deliveryFee > 0 && (

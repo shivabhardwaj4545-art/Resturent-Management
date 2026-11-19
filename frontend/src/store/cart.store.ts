@@ -42,7 +42,7 @@ interface CartState {
   total: (isDineIn?: boolean) => number;
 }
 
-const GST_RATE = 0.18;
+const GST_RATE = 0.05;
 const DELIVERY_FEE = 40;
 const PACKAGING_FEE = 15;
 

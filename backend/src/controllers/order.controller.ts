@@ -12,7 +12,7 @@ import { verifyTableSignature } from '../utils/tableSignature';
 import { generateOrderVerificationCode } from '../services/verificationCode.service';
 import { normalizeTableNumber, generateUniqueSessionCode } from './tableSession.controller';
 
-const GST_RATE = parseFloat(process.env.GST_RATE ?? '18') / 100;
+const GST_RATE = parseFloat(process.env.GST_RATE ?? '5') / 100;
 const DELIVERY_FEE = 40;
 const PACKAGING_FEE = 15;
 const LOYALTY_POINTS_PER_RUPEE = 1; // 1 point per ₹10 spent
@@ -1618,7 +1618,7 @@ async function resolveOrCreateTableSession(
         throw new AppError('No valid items to add.', 400, 'INVALID_ITEMS');
       }
 
-      const addedGst = addedSubtotal * 0.18; // 18% GST consistent with standard rate
+      const addedGst = addedSubtotal * GST_RATE; // 5% GST consistent with standard rate
       const addedTotal = addedSubtotal + addedGst;
 
       let nextStatus = order.status;

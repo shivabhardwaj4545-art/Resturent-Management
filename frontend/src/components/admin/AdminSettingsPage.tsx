@@ -59,7 +59,7 @@ export function AdminSettingsPage() {
   const qc = useQueryClient();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [config, setConfig] = useState<PlatformConfig>({
-    commissionRate: 5, gstRate: 18, maxOrdersPerHour: 100, maintenanceMode: false
+    commissionRate: 5, gstRate: 5, maxOrdersPerHour: 100, maintenanceMode: false
   });
 
   const [loyalty, setLoyalty] = useState<LoyaltySettings>({
@@ -79,7 +79,7 @@ export function AdminSettingsPage() {
       const backendConfig = res.data.data?.config || {};
       const c: PlatformConfig = {
         commissionRate: typeof backendConfig.defaultCommissionRate === 'number' ? backendConfig.defaultCommissionRate : 5,
-        gstRate: typeof backendConfig.gstRate === 'number' ? backendConfig.gstRate : 18,
+        gstRate: typeof backendConfig.gstRate === 'number' ? backendConfig.gstRate : 5,
         maxOrdersPerHour: typeof backendConfig.maxOrdersPerHour === 'number' ? backendConfig.maxOrdersPerHour : 100,
         maintenanceMode: !!backendConfig.maintenanceMode,
       };

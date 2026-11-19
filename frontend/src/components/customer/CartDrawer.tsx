@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
 import { UpsellModal, UpsellItem } from './UpsellModal';
 
-const GST_RATE = 0.18;
+const GST_RATE = 0.05;
 
 interface CartDrawerProps {
   open: boolean;
@@ -422,7 +422,7 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, tableTo
                     <span>₹{subtotalAmount.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">GST (18%)</span>
+                    <span className="text-muted-foreground">GST (5%)</span>
                     <span>₹{gst.toFixed(2)}</span>
                   </div>
 
