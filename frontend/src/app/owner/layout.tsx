@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useAuthStore } from '@/store/auth.store';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, DollarSign, BellRing, Banknote, ShoppingBag, Check, X, Bed, Lock, Sparkles } from 'lucide-react';
+import { Loader2, DollarSign, BellRing, Banknote, ShoppingBag, Check, X, Bed, Lock, Sparkles, Printer } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getSocketUrl } from '@/services/api';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -14,6 +14,8 @@ import { useWaiterStore, WaiterCall } from '@/store/waiter.store';
 import { playNewOrderSound, playWaiterCallSound, playOrderStatusSound, processRealTimeEvent, requestDesktopNotificationPermission, sendDesktopNotification } from '@/utils/audio';
 import { OwnerSidebar, OWNER_NAV_ITEMS } from '@/components/owner/OwnerSidebar';
 import { isItemAddon } from '@/utils/orderAddon';
+import { printKitchenOrderTicket } from '@/utils/kotPrint';
+import { toast } from 'sonner';
 
 import { applyThemeColor, hexToHsl } from '@/utils/theme';
 
@@ -50,7 +52,16 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     queryKey: ['owner-restaurant-layout'],
     queryFn: async () => {
       const res = await api.get('/owner/restaurant');
-      return res.data.data.restaurant as { id: string; themeColor: string | null; disabledTabs?: string[] | null };
+      return res.data.data.restaurant as {
+        id: string;
+        name?: string;
+        themeColor: string | null;
+        disabledTabs?: string[] | null;
+        featureFlags?: {
+          kotMode?: 'DIGITAL_KDS' | 'PRINT_KOT';
+          [key: string]: any;
+        };
+      };
     },
     enabled: !!user && user.role === 'RESTAURANT_OWNER',
   });
@@ -672,24 +683,71 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
 
                   {/* Action Buttons */}
                   <div className="p-4 border-t border-border bg-muted/30 flex gap-2 flex-wrap">
-                    <button
-                      onClick={async () => {
-                        const orderId = activeNewOrderAlert.id;
-                        try {
-                          await api.patch(`/owner/orders/${orderId}/status`, { status: 'CONFIRMED' });
-                          useWaiterStore.getState().removeNewOrder(orderId);
-                          queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
-                          queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
-                        } catch {
-                          // Silent fail or handled in order store
-                        } finally {
-                          setActiveNewOrderAlert(null);
-                        }
-                      }}
-                      className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <Check className="w-4 h-4" /> {activeNewOrderAlert.isNewAddon || activeNewOrderAlert.isAddon ? 'Accept Add-on' : 'Confirm Order'}
-                    </button>
+                    {restaurantData?.featureFlags?.kotMode === 'PRINT_KOT' ? (
+                      <>
+                        <button
+                          onClick={async () => {
+                            const orderId = activeNewOrderAlert.id;
+                            try {
+                              await api.patch(`/owner/orders/${orderId}/status`, { status: 'CONFIRMED' });
+                              useWaiterStore.getState().removeNewOrder(orderId);
+                              queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
+                              queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
+                              // Print physical KOT ticket
+                              printKitchenOrderTicket({
+                                order: activeNewOrderAlert,
+                                restaurantName: restaurantData?.name || 'Restaurant',
+                                isAddonOnly: Boolean(activeNewOrderAlert.isNewAddon),
+                              });
+                              toast.success('Order accepted & KOT sent to printer!');
+                            } catch {
+                              // Silent fail or handled in order store
+                            } finally {
+                              setActiveNewOrderAlert(null);
+                            }
+                          }}
+                          className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer min-w-[140px]"
+                        >
+                          <Check className="w-4 h-4" />
+                          <Printer className="w-4 h-4" />
+                          <span>{activeNewOrderAlert.isNewAddon || activeNewOrderAlert.isAddon ? 'Accept & Print Add-on KOT' : 'Accept & Print KOT'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            printKitchenOrderTicket({
+                              order: activeNewOrderAlert,
+                              restaurantName: restaurantData?.name || 'Restaurant',
+                              isAddonOnly: Boolean(activeNewOrderAlert.isNewAddon),
+                            });
+                          }}
+                          className="py-3 px-3.5 rounded-xl bg-orange-500/15 hover:bg-orange-500/25 text-orange-600 dark:text-orange-400 font-bold text-xs border border-orange-500/30 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                          title="Print KOT Ticket without accepting"
+                        >
+                          <Printer className="w-4 h-4" />
+                          <span>Print KOT</span>
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={async () => {
+                          const orderId = activeNewOrderAlert.id;
+                          try {
+                            await api.patch(`/owner/orders/${orderId}/status`, { status: 'CONFIRMED' });
+                            useWaiterStore.getState().removeNewOrder(orderId);
+                            queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
+                            queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
+                          } catch {
+                            // Silent fail or handled in order store
+                          } finally {
+                            setActiveNewOrderAlert(null);
+                          }
+                        }}
+                        className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Check className="w-4 h-4" /> {activeNewOrderAlert.isNewAddon || activeNewOrderAlert.isAddon ? 'Accept Add-on' : 'Confirm Order'}
+                      </button>
+                    )}
                     <button
                       onClick={() => {
                         setActiveNewOrderAlert(null);

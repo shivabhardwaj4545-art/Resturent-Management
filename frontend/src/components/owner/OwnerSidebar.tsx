@@ -64,6 +64,10 @@ export function OwnerSidebar({ mobileOpen = false, onMobileClose }: OwnerSidebar
         maxLogins?: number;
         disabledTabs?: string[] | null;
         logo?: string | null;
+        featureFlags?: {
+          kotMode?: 'DIGITAL_KDS' | 'PRINT_KOT';
+          [key: string]: any;
+        };
       };
     },
     staleTime: 30 * 1000,
@@ -137,6 +141,11 @@ export function OwnerSidebar({ mobileOpen = false, onMobileClose }: OwnerSidebar
 
             // If disabled by administration, hide completely from the sidebar
             if (isTabDisabled) {
+              return null;
+            }
+
+            // If restaurant uses simple physical print KOT, digital kitchen staff KDS accounts are not used
+            if (item.key === 'kitchen-staff' && restaurantData?.featureFlags?.kotMode === 'PRINT_KOT') {
               return null;
             }
 

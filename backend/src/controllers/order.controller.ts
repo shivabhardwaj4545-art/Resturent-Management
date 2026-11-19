@@ -1287,6 +1287,7 @@ async function resolveOrCreateTableSession(
               logo: true,
               phone: true,
               themeColor: true,
+              featureFlags: true,
               paymentQrCode: true,
               paymentUpiId: true,
               paymentPhone: true,

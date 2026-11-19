@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import {
   ShoppingBag, UtensilsCrossed, LayoutDashboard, Tag, BarChart3, Settings, LogOut,
   Menu, Search, Clock, ChevronDown, RefreshCw, User, MapPin, Palette,
-  Mail, Phone, CreditCard, Receipt, Check, Wallet, Banknote, Sparkles, Star, AlertTriangle, ChefHat, Trash2, Utensils
+  Mail, Phone, CreditCard, Receipt, Check, Wallet, Banknote, Sparkles, Star, AlertTriangle, ChefHat, Trash2, Utensils, Printer
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api, { getSocketUrl } from '@/services/api';
@@ -18,6 +18,7 @@ import { WaiterBell } from '@/components/owner/WaiterBell';
 import { OwnerSidebar } from '@/components/owner/OwnerSidebar';
 import { isItemAddon } from '@/utils/orderAddon';
 import { CounterOrderVerification } from '@/components/owner/CounterOrderVerification';
+import { printKitchenOrderTicket } from '@/utils/kotPrint';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
@@ -140,6 +141,24 @@ export function OwnerOrdersPage() {
     },
     refetchInterval: 15000,
   });
+
+  const { data: restaurantData } = useQuery({
+    queryKey: ['owner-restaurant-layout'],
+    queryFn: async () => {
+      const res = await api.get('/owner/restaurant');
+      return res.data.data.restaurant as {
+        id: string;
+        name?: string;
+        featureFlags?: {
+          kotMode?: 'DIGITAL_KDS' | 'PRINT_KOT';
+          [key: string]: any;
+        };
+      };
+    },
+  });
+
+  const isPrintKotMode = (restaurantData?.featureFlags?.kotMode === 'PRINT_KOT') || ((data as any)?.data?.restaurant?.featureFlags?.kotMode === 'PRINT_KOT');
+  const restaurantName = restaurantData?.name || (data as any)?.data?.restaurant?.name || 'Restaurant';
 
   const restId = (user as any)?.restaurantId;
 
@@ -330,10 +349,19 @@ export function OwnerOrdersPage() {
                     placeholder="Search order ID or customer..." className="w-full pl-9 pr-4 py-2.5 bg-card border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                 </div>
                 <div className="flex gap-2 items-center overflow-x-auto no-scrollbar pb-1 min-w-0 max-w-full">
-                  {ORDER_STATUSES.map((s) => (
-                    <button key={s} onClick={() => { setStatusFilter(s); setPage(1); }}
-                      className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${statusFilter === s ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-card border border-border text-muted-foreground hover:bg-muted'}`}>
-                      {s}
+                  {(isPrintKotMode
+                    ? [
+                        { key: 'ALL', label: 'All Orders' },
+                        { key: 'PENDING', label: 'Pending (New)' },
+                        { key: 'CONFIRMED', label: 'Sent to Kitchen' },
+                        { key: 'DELIVERED', label: 'Served' },
+                        { key: 'CANCELLED', label: 'Cancelled' },
+                      ]
+                    : ORDER_STATUSES.map((s) => ({ key: s, label: s }))
+                  ).map(({ key, label }) => (
+                    <button key={key} onClick={() => { setStatusFilter(key); setPage(1); }}
+                      className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${statusFilter === key ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-card border border-border text-muted-foreground hover:bg-muted'}`}>
+                      {label}
                     </button>
                   ))}
                   <button
@@ -370,7 +398,11 @@ export function OwnerOrdersPage() {
                                 CODE #{order.verificationCode}
                               </span>
                             )}
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[order.status] ?? ''}`}>{order.status}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[order.status] ?? ''}`}>
+                              {isPrintKotMode
+                                ? (order.status === 'CONFIRMED' ? 'SENT TO KITCHEN' : order.status === 'DELIVERED' ? 'SERVED' : order.status)
+                                : order.status}
+                            </span>
                             {order.tableNumber && (
                               <span className="text-xs text-muted-foreground flex items-center gap-1">
                                 <MapPin className="w-3 h-3" />
@@ -407,6 +439,20 @@ export function OwnerOrdersPage() {
                             {formatTime(order.createdAt)}
                           </p>
                         </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            printKitchenOrderTicket({
+                              order,
+                              restaurantName,
+                            });
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 shadow-2xs"
+                          title="Print Kitchen Order Ticket (KOT)"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Print KOT</span>
+                        </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -739,20 +785,83 @@ export function OwnerOrdersPage() {
                                 </div>
 
                                 {/* Action Buttons */}
-                                {NEXT_STATUS[order.status]?.length > 0 && (
+                                {isPrintKotMode ? (
                                   <div className="flex gap-2 flex-wrap pt-2 border-t border-border">
-                                    {NEXT_STATUS[order.status].map((next) => (
-                                      <button key={next} onClick={() => updateStatusMutation.mutate({ id: order.id, status: next })}
-                                        disabled={updateStatusMutation.isPending}
-                                        className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all disabled:opacity-50 flex items-center gap-1 shadow-sm ${next === 'CANCELLED'
-                                          ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200'
-                                          : 'bg-primary text-primary-foreground hover:bg-primary/95 hover:shadow-md'
-                                          }`}>
-                                        {next !== 'CANCELLED' && <Check className="w-3 h-3" />}
-                                        Mark as {next === 'DELIVERED' ? 'SERVED' : next}
+                                    {order.status === 'PENDING' && (
+                                      <>
+                                        <button
+                                          onClick={() => {
+                                            updateStatusMutation.mutate({ id: order.id, status: 'CONFIRMED' });
+                                            printKitchenOrderTicket({ order, restaurantName });
+                                          }}
+                                          disabled={updateStatusMutation.isPending}
+                                          className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-sm cursor-pointer"
+                                        >
+                                          <Check className="w-3.5 h-3.5" />
+                                          <Printer className="w-3.5 h-3.5" />
+                                          Accept & Print KOT
+                                        </button>
+                                        <button
+                                          onClick={() => updateStatusMutation.mutate({ id: order.id, status: 'CANCELLED' })}
+                                          disabled={updateStatusMutation.isPending}
+                                          className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 transition-all cursor-pointer"
+                                        >
+                                          Reject Order
+                                        </button>
+                                      </>
+                                    )}
+                                    {order.status === 'CONFIRMED' && (
+                                      <>
+                                        <button
+                                          onClick={() => updateStatusMutation.mutate({ id: order.id, status: 'DELIVERED' })}
+                                          disabled={updateStatusMutation.isPending}
+                                          className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-primary text-primary-foreground hover:bg-primary/95 transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-sm cursor-pointer"
+                                        >
+                                          <Check className="w-3.5 h-3.5" />
+                                          Mark as Served
+                                        </button>
+                                        <button
+                                          onClick={() => printKitchenOrderTicket({ order, restaurantName })}
+                                          className="px-3 py-1.5 text-xs font-bold rounded-lg bg-orange-500/15 hover:bg-orange-500/25 text-orange-600 dark:text-orange-400 border border-orange-500/30 transition-all flex items-center gap-1.5 cursor-pointer"
+                                        >
+                                          <Printer className="w-3.5 h-3.5" />
+                                          Re-Print KOT
+                                        </button>
+                                      </>
+                                    )}
+                                    {order.status === 'DELIVERED' && (
+                                      <button
+                                        onClick={() => printKitchenOrderTicket({ order, restaurantName })}
+                                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-muted hover:bg-muted/80 text-foreground border border-border transition-all flex items-center gap-1.5 cursor-pointer"
+                                      >
+                                        <Printer className="w-3.5 h-3.5" />
+                                        Print Duplicate KOT
                                       </button>
-                                    ))}
+                                    )}
                                   </div>
+                                ) : (
+                                  NEXT_STATUS[order.status]?.length > 0 && (
+                                    <div className="flex gap-2 flex-wrap pt-2 border-t border-border">
+                                      {NEXT_STATUS[order.status].map((next) => (
+                                        <button key={next} onClick={() => updateStatusMutation.mutate({ id: order.id, status: next })}
+                                          disabled={updateStatusMutation.isPending}
+                                          className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all disabled:opacity-50 flex items-center gap-1 shadow-sm ${next === 'CANCELLED'
+                                            ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200'
+                                            : 'bg-primary text-primary-foreground hover:bg-primary/95 hover:shadow-md'
+                                            }`}>
+                                          {next !== 'CANCELLED' && <Check className="w-3 h-3" />}
+                                          Mark as {next === 'DELIVERED' ? 'SERVED' : next}
+                                        </button>
+                                      ))}
+                                      <button
+                                        onClick={() => printKitchenOrderTicket({ order, restaurantName })}
+                                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-muted hover:bg-muted/80 text-foreground border border-border transition-all flex items-center gap-1.5 cursor-pointer"
+                                      >
+                                        <Printer className="w-3.5 h-3.5" />
+                                        Print KOT
+                                      </button>
+                                    </div>
+                                  )
                                 )}
                               </div>
 
@@ -762,70 +871,113 @@ export function OwnerOrdersPage() {
                                   <Clock className="w-3.5 h-3.5" /> Lifecycle Timeline
                                 </p>
 
-                                <div className="relative pl-3 space-y-4 before:absolute before:left-[5px] before:top-2 before:bottom-2 before:w-[2px] before:bg-border">
-
-                                  {/* Placed Step */}
-                                  <div className="relative pl-5">
-                                    <span className="absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full bg-primary ring-4 ring-primary/20" />
-                                    <div className="text-xs">
-                                      <p className="font-semibold text-foreground">Placed</p>
-                                      <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.createdAt)}</p>
-                                    </div>
-                                  </div>
-
-                                  {/* Confirmed Step */}
-                                  <div className="relative pl-5">
-                                    <span className={`absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full transition-all ${order.confirmedAt ? 'bg-primary ring-4 ring-primary/20' : 'bg-card border-2 border-muted-foreground/35'
-                                      }`} />
-                                    <div className="text-xs">
-                                      <p className={`font-semibold ${order.confirmedAt ? 'text-foreground' : 'text-muted-foreground'}`}>Confirmed</p>
-                                      <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.confirmedAt)}</p>
-                                    </div>
-                                  </div>
-
-                                  {/* Kitchen (Preparing / Baking) Step */}
-                                  <div className="relative pl-5">
-                                    <span className={`absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full transition-all ${(order.preparingAt || order.bakingAt) ? 'bg-primary ring-4 ring-primary/20' : 'bg-card border-2 border-muted-foreground/35'
-                                      }`} />
-                                    <div className="text-xs">
-                                      <p className={`font-semibold ${(order.preparingAt || order.bakingAt) ? 'text-foreground' : 'text-muted-foreground'}`}>Preparing</p>
-                                      <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.preparingAt || order.bakingAt)}</p>
-                                    </div>
-                                  </div>
-
-                                  {/* Ready Step */}
-                                  <div className="relative pl-5">
-                                    <span className={`absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full transition-all ${order.readyAt ? 'bg-primary ring-4 ring-primary/20' : 'bg-card border-2 border-muted-foreground/35'
-                                      }`} />
-                                    <div className="text-xs">
-                                      <p className={`font-semibold ${order.readyAt ? 'text-foreground' : 'text-muted-foreground'}`}>Ready</p>
-                                      <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.readyAt)}</p>
-                                    </div>
-                                  </div>
-
-                                  {/* Delivered / Served Step */}
-                                  {order.status !== 'CANCELLED' ? (
+                                {isPrintKotMode ? (
+                                  <div className="relative pl-3 space-y-4 before:absolute before:left-[5px] before:top-2 before:bottom-2 before:w-[2px] before:bg-border">
+                                    {/* Placed Step */}
                                     <div className="relative pl-5">
-                                      <span className={`absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full transition-all ${order.deliveredAt ? 'bg-green-500 ring-4 ring-green-500/20' : 'bg-card border-2 border-muted-foreground/35'
+                                      <span className="absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full bg-primary ring-4 ring-primary/20" />
+                                      <div className="text-xs">
+                                        <p className="font-semibold text-foreground">Placed</p>
+                                        <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.createdAt)}</p>
+                                      </div>
+                                    </div>
+
+                                    {/* Sent to Kitchen (Physical KOT Printed) */}
+                                    <div className="relative pl-5">
+                                      <span className={`absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full transition-all ${order.confirmedAt ? 'bg-primary ring-4 ring-primary/20' : 'bg-card border-2 border-muted-foreground/35'}`} />
+                                      <div className="text-xs">
+                                        <p className={`font-semibold ${order.confirmedAt ? 'text-foreground' : 'text-muted-foreground'}`}>Sent to Kitchen (KOT Printed)</p>
+                                        <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.confirmedAt)}</p>
+                                      </div>
+                                    </div>
+
+                                    {/* Served to Table */}
+                                    {order.status !== 'CANCELLED' ? (
+                                      <div className="relative pl-5">
+                                        <span className={`absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full transition-all ${order.deliveredAt ? 'bg-green-500 ring-4 ring-green-500/20' : 'bg-card border-2 border-muted-foreground/35'}`} />
+                                        <div className="text-xs">
+                                          <p className={`font-semibold ${order.deliveredAt ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                            {order.addressId || order.address ? 'Delivered' : 'Served to Table'}
+                                          </p>
+                                          <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.deliveredAt)}</p>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="relative pl-5">
+                                        <span className="absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full bg-red-500 ring-4 ring-red-500/20" />
+                                        <div className="text-xs">
+                                          <p className="font-semibold text-red-500">Cancelled</p>
+                                          <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.cancelledAt)}</p>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="relative pl-3 space-y-4 before:absolute before:left-[5px] before:top-2 before:bottom-2 before:w-[2px] before:bg-border">
+
+                                    {/* Placed Step */}
+                                    <div className="relative pl-5">
+                                      <span className="absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full bg-primary ring-4 ring-primary/20" />
+                                      <div className="text-xs">
+                                        <p className="font-semibold text-foreground">Placed</p>
+                                        <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.createdAt)}</p>
+                                      </div>
+                                    </div>
+
+                                    {/* Confirmed Step */}
+                                    <div className="relative pl-5">
+                                      <span className={`absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full transition-all ${order.confirmedAt ? 'bg-primary ring-4 ring-primary/20' : 'bg-card border-2 border-muted-foreground/35'
                                         }`} />
                                       <div className="text-xs">
-                                        <p className={`font-semibold ${order.deliveredAt ? 'text-foreground' : 'text-muted-foreground'}`}>
-                                          {order.addressId || order.address ? 'Delivered' : 'Served'}
-                                        </p>
-                                        <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.deliveredAt)}</p>
+                                        <p className={`font-semibold ${order.confirmedAt ? 'text-foreground' : 'text-muted-foreground'}`}>Confirmed</p>
+                                        <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.confirmedAt)}</p>
                                       </div>
                                     </div>
-                                  ) : (
-                                    <div className="relative pl-5">
-                                      <span className="absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full bg-red-500 ring-4 ring-red-500/20" />
-                                      <div className="text-xs">
-                                        <p className="font-semibold text-red-500">Cancelled</p>
-                                        <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.cancelledAt)}</p>
-                                      </div>
-                                    </div>
-                                  )}
 
-                                </div>
+                                    {/* Kitchen (Preparing / Baking) Step */}
+                                    <div className="relative pl-5">
+                                      <span className={`absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full transition-all ${(order.preparingAt || order.bakingAt) ? 'bg-primary ring-4 ring-primary/20' : 'bg-card border-2 border-muted-foreground/35'
+                                        }`} />
+                                      <div className="text-xs">
+                                        <p className={`font-semibold ${(order.preparingAt || order.bakingAt) ? 'text-foreground' : 'text-muted-foreground'}`}>Preparing</p>
+                                        <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.preparingAt || order.bakingAt)}</p>
+                                      </div>
+                                    </div>
+
+                                    {/* Ready Step */}
+                                    <div className="relative pl-5">
+                                      <span className={`absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full transition-all ${order.readyAt ? 'bg-primary ring-4 ring-primary/20' : 'bg-card border-2 border-muted-foreground/35'
+                                        }`} />
+                                      <div className="text-xs">
+                                        <p className={`font-semibold ${order.readyAt ? 'text-foreground' : 'text-muted-foreground'}`}>Ready</p>
+                                        <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.readyAt)}</p>
+                                      </div>
+                                    </div>
+
+                                    {/* Delivered / Served Step */}
+                                    {order.status !== 'CANCELLED' ? (
+                                      <div className="relative pl-5">
+                                        <span className={`absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full transition-all ${order.deliveredAt ? 'bg-green-500 ring-4 ring-green-500/20' : 'bg-card border-2 border-muted-foreground/35'
+                                          }`} />
+                                        <div className="text-xs">
+                                          <p className={`font-semibold ${order.deliveredAt ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                            {order.addressId || order.address ? 'Delivered' : 'Served'}
+                                          </p>
+                                          <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.deliveredAt)}</p>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="relative pl-5">
+                                        <span className="absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full bg-red-500 ring-4 ring-red-500/20" />
+                                        <div className="text-xs">
+                                          <p className="font-semibold text-red-500">Cancelled</p>
+                                          <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.cancelledAt)}</p>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                  </div>
+                                )}
                               </div>
 
                             </div>

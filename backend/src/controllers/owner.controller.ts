@@ -223,6 +223,7 @@ export async function getDashboard(req: AuthenticatedRequest, res: Response, nex
           platformType: (restaurant as any).platformType || 'RESTAURANT',
           maxLogins: (restaurant as any).maxLogins || 1,
           qrSettings: (restaurant as any).qrSettings || null,
+          featureFlags: restaurant.featureFlags || null,
         },
         subscription: activeSubscription
           ? {
@@ -1073,7 +1074,14 @@ export async function getOrders(req: AuthenticatedRequest, res: Response, next: 
 
     res.json({
       success: true,
-      data: { orders },
+      data: {
+        orders,
+        restaurant: {
+          id: restaurant.id,
+          name: restaurant.name,
+          featureFlags: restaurant.featureFlags,
+        },
+      },
       pagination: {
         total,
         page: parseInt(page, 10),

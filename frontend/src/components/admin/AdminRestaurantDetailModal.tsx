@@ -9,7 +9,7 @@ import {
   ExternalLink, Calendar, Key, Mail, Phone, MapPin, Sparkles,
   Gift, ChefHat, Bed, BellRing, QrCode, Tag, Star, BarChart3,
   Palette, Settings, Lock, Check, Clock, TrendingUp, IndianRupee,
-  ShoppingBag, Loader2, ArrowUpRight, HelpCircle
+  ShoppingBag, Loader2, ArrowUpRight, HelpCircle, Printer
 } from 'lucide-react';
 import api from '@/services/api';
 import { toast } from 'sonner';
@@ -78,6 +78,7 @@ export function AdminRestaurantDetailModal({
 
   // Local feature flags state
   const [featureFlags, setFeatureFlags] = useState({
+    kotMode: 'DIGITAL_KDS' as 'DIGITAL_KDS' | 'PRINT_KOT',
     roomServiceEnabled: true,
     callWaiterEnabled: true,
     qrOrderingEnabled: true,
@@ -118,6 +119,7 @@ export function AdminRestaurantDetailModal({
     if (restaurant) {
       const flags = restaurant.featureFlags || {};
       setFeatureFlags({
+        kotMode: flags.kotMode === 'PRINT_KOT' ? 'PRINT_KOT' : 'DIGITAL_KDS',
         roomServiceEnabled: flags.roomServiceEnabled !== false,
         callWaiterEnabled: flags.callWaiterEnabled !== false,
         qrOrderingEnabled: flags.qrOrderingEnabled !== false,
@@ -771,6 +773,92 @@ export function AdminRestaurantDetailModal({
                     </div>
                   </div>
 
+                  {/* KOT System Mode Selection (Digital KDS vs Physical Print KOT) */}
+                  <div className="p-4 rounded-2xl border-2 border-orange-500/30 bg-gradient-to-br from-orange-500/10 via-amber-500/5 to-transparent shadow-sm space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-10 h-10 rounded-xl bg-orange-500 text-white flex items-center justify-center shrink-0 shadow-md">
+                          <ChefHat className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-bold text-sm text-foreground">Kitchen Order Ticket (KOT) System Mode</h3>
+                            <span className="text-[10px] bg-orange-500/15 text-orange-600 dark:text-orange-400 border border-orange-500/30 px-2 py-0.5 rounded-full font-extrabold uppercase">
+                              Per-Restaurant Setting
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Control whether this restaurant uses a live kitchen display screen (KDS) or simple physical printed tickets.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-3 pt-1">
+                      {/* Option 1: DIGITAL_KDS */}
+                      <button
+                        type="button"
+                        onClick={() => setFeatureFlags({ ...featureFlags, kotMode: 'DIGITAL_KDS' })}
+                        className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer relative ${
+                          featureFlags.kotMode === 'DIGITAL_KDS'
+                            ? 'bg-card border-orange-500 shadow-md ring-2 ring-orange-500/30'
+                            : 'bg-muted/20 border-border hover:bg-muted/50 opacity-80'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <ChefHat className="w-4 h-4 text-orange-500" />
+                            <span className="font-bold text-xs text-foreground">1. Digital KDS & Live Prep Tracking</span>
+                          </div>
+                          <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                            featureFlags.kotMode === 'DIGITAL_KDS' ? 'border-orange-500 bg-orange-500 text-white' : 'border-muted-foreground/40'
+                          }`}>
+                            {featureFlags.kotMode === 'DIGITAL_KDS' && <Check className="w-2.5 h-2.5 text-white" />}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                          Keeps current KDS screen for kitchen tablets. Orders transition through Preparing, Ready, Delivered with interactive live tracking for customers.
+                        </p>
+                        <div className="mt-2 flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-orange-500/15 text-orange-600 dark:text-orange-400">
+                            Screen-Based Kitchen
+                          </span>
+                        </div>
+                      </button>
+
+                      {/* Option 2: PRINT_KOT */}
+                      <button
+                        type="button"
+                        onClick={() => setFeatureFlags({ ...featureFlags, kotMode: 'PRINT_KOT' })}
+                        className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer relative ${
+                          featureFlags.kotMode === 'PRINT_KOT'
+                            ? 'bg-card border-emerald-500 shadow-md ring-2 ring-emerald-500/30'
+                            : 'bg-muted/20 border-border hover:bg-muted/50 opacity-80'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <Printer className="w-4 h-4 text-emerald-500" />
+                            <span className="font-bold text-xs text-foreground">2. Simple Physical Print KOT Mode</span>
+                          </div>
+                          <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                            featureFlags.kotMode === 'PRINT_KOT' ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-muted-foreground/40'
+                          }`}>
+                            {featureFlags.kotMode === 'PRINT_KOT' && <Check className="w-2.5 h-2.5 text-white" />}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                          No kitchen screen, no live tracking stages. Customers get flash order placed; owner accepts order and prints physical KOT ticket for kitchen cooks.
+                        </p>
+                        <div className="mt-2 flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                            Direct 80mm/58mm Print
+                          </span>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="grid sm:grid-cols-2 gap-4">
                     {/* Hotel Room Service (Requested specifically by User) */}
                     <div className={`p-4 rounded-2xl border transition-all ${
@@ -1038,6 +1126,11 @@ export function AdminRestaurantDetailModal({
                       </div>
                       <p className="text-xs text-muted-foreground mt-3 leading-relaxed">
                         Enable kitchen display screens and staff logins for real-time prep status changes.
+                        {featureFlags.kotMode === 'PRINT_KOT' && (
+                          <span className="text-[11px] text-amber-600 dark:text-amber-400 block mt-1 font-semibold">
+                            ℹ️ Simple Physical KOT Mode is selected above. Digital KDS is bypassed in favor of thermal physical tickets.
+                          </span>
+                        )}
                       </p>
                     </div>
 

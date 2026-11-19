@@ -105,6 +105,10 @@ interface Order {
     logo: string | null;
     themeColor: string | null;
     phone: string | null;
+    featureFlags?: {
+      kotMode?: 'DIGITAL_KDS' | 'PRINT_KOT';
+      [key: string]: any;
+    } | null;
     paymentQrCode?: string | null;
     paymentUpiId?: string | null;
     paymentPhone?: string | null;
@@ -440,6 +444,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
   const stepIndex = getStepIndex(currentStatus, steps);
 
   const themeColor = order.restaurant.themeColor ?? '#E85D04';
+  const isPrintKotMode = order.restaurant?.featureFlags?.kotMode === 'PRINT_KOT';
   const isCancelled = currentStatus === 'CANCELLED';
   const isCompleted = currentStatus === 'DELIVERED';
 
@@ -650,59 +655,113 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
 
           {/* Status tracker */}
           <div className="bg-card border border-border rounded-2xl p-5">
-            <h2 className="font-display font-semibold mb-5">
-              {isCancelled ? '❌ Order Cancelled' : isCompleted ? completedLabel : trackingLabel}
-            </h2>
-
-            {!isCancelled && (
-              <div className="space-y-4">
-                {steps.map((step, idx) => {
-                  const isStepCompleted = idx <= stepIndex;
-                  const isActive = idx === stepIndex;
-
-                  return (
-                    <div key={step.key} className="flex items-center gap-3">
-                      <div
-                        className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${isStepCompleted
-                          ? 'text-white shadow-lg'
-                          : 'bg-muted text-muted-foreground'
-                          }`}
-                        style={isStepCompleted ? { backgroundColor: themeColor } : {}}
-                      >
-                        {step.icon}
-                      </div>
-
-                      <div className="flex-1">
-                        <p
-                          className={`font-medium text-sm ${isActive || isStepCompleted
-                            ? 'text-foreground'
-                            : 'text-muted-foreground'
-                            }`}
-                        >
-                          {step.label}
-                        </p>
-                        {isActive && !isCompleted && (
-                          <motion.p
-                            animate={{ opacity: [1, 0.5, 1] }}
-                            transition={{ repeat: Infinity, duration: 1.5 }}
-                            className="text-xs"
-                            style={{ color: themeColor }}
-                          >
-                            In progress...
-                          </motion.p>
-                        )}
-                      </div>
-
-                      {isStepCompleted && (
-                        <CheckCircle2
-                          className="w-4 h-4 flex-shrink-0"
-                          style={{ color: themeColor }}
-                        />
-                      )}
+            {isPrintKotMode ? (
+              <div className="text-center py-2 space-y-3">
+                {isCancelled ? (
+                  <>
+                    <div className="w-14 h-14 rounded-2xl bg-red-500/10 text-red-600 dark:text-red-400 mx-auto flex items-center justify-center">
+                      <AlertTriangle className="w-7 h-7" />
                     </div>
-                  );
-                })}
+                    <div>
+                      <h2 className="font-display font-extrabold text-xl text-foreground">Order Cancelled</h2>
+                      <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
+                        This order was cancelled by the restaurant.
+                      </p>
+                    </div>
+                  </>
+                ) : isCompleted ? (
+                  <>
+                    <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 mx-auto flex items-center justify-center">
+                      <CheckCircle2 className="w-7 h-7" />
+                    </div>
+                    <div>
+                      <h2 className="font-display font-extrabold text-xl text-foreground">Order Served & Completed!</h2>
+                      <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
+                        Your food has been served. We hope you enjoy your meal!
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-14 h-14 rounded-2xl bg-orange-500/10 text-orange-600 dark:text-orange-400 mx-auto flex items-center justify-center">
+                      <ChefHat className="w-7 h-7" />
+                    </div>
+                    <div>
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 mb-2">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Sent to Kitchen
+                      </div>
+                      <h2 className="font-display font-extrabold text-xl text-foreground">
+                        Order Confirmed & In Kitchen!
+                      </h2>
+                      <p className="text-xs text-muted-foreground mt-1.5 max-w-sm mx-auto leading-relaxed">
+                        Your order ticket has been printed and received in the kitchen. Our chefs are preparing your food fresh!
+                      </p>
+                    </div>
+                    <div className="pt-2 flex items-center justify-center gap-2">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-primary/10 text-primary">
+                        <Clock className="w-3.5 h-3.5" /> Cooking in Progress
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
+            ) : (
+              <>
+                <h2 className="font-display font-semibold mb-5">
+                  {isCancelled ? '❌ Order Cancelled' : isCompleted ? completedLabel : trackingLabel}
+                </h2>
+
+                {!isCancelled && (
+                  <div className="space-y-4">
+                    {steps.map((step, idx) => {
+                      const isStepCompleted = idx <= stepIndex;
+                      const isActive = idx === stepIndex;
+
+                      return (
+                        <div key={step.key} className="flex items-center gap-3">
+                          <div
+                            className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${isStepCompleted
+                              ? 'text-white shadow-lg'
+                              : 'bg-muted text-muted-foreground'
+                              }`}
+                            style={isStepCompleted ? { backgroundColor: themeColor } : {}}
+                          >
+                            {step.icon}
+                          </div>
+
+                          <div className="flex-1">
+                            <p
+                              className={`font-medium text-sm ${isActive || isStepCompleted
+                                ? 'text-foreground'
+                                : 'text-muted-foreground'
+                                }`}
+                            >
+                              {step.label}
+                            </p>
+                            {isActive && !isCompleted && (
+                              <motion.p
+                                animate={{ opacity: [1, 0.5, 1] }}
+                                transition={{ repeat: Infinity, duration: 1.5 }}
+                                className="text-xs"
+                                style={{ color: themeColor }}
+                              >
+                                In progress...
+                              </motion.p>
+                            )}
+                          </div>
+
+                          {isStepCompleted && (
+                            <CheckCircle2
+                              className="w-4 h-4 flex-shrink-0"
+                              style={{ color: themeColor }}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
           </div>
 

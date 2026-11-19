@@ -966,10 +966,12 @@ export async function updateRestaurantFeatures(req: AuthenticatedRequest, res: R
     const restaurant = await prisma.restaurant.findFirst({ where: { id, deletedAt: null } });
     if (!restaurant) throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
 
-    const currentFlags = (restaurant.featureFlags as Record<string, boolean>) || {};
+    const currentFlags = (restaurant.featureFlags as Record<string, any>) || {};
+    const kotMode = featureFlags.kotMode !== undefined ? featureFlags.kotMode : (currentFlags.kotMode || 'DIGITAL_KDS');
     const updatedFlags = {
       ...currentFlags,
       ...featureFlags,
+      kotMode,
       tableQrEnabled: featureFlags.callWaiterEnabled !== undefined ? featureFlags.callWaiterEnabled : (featureFlags.tableQrEnabled !== undefined ? featureFlags.tableQrEnabled : (currentFlags.tableQrEnabled ?? true)),
       roomQrEnabled: featureFlags.roomServiceEnabled !== undefined ? featureFlags.roomServiceEnabled : (featureFlags.roomQrEnabled !== undefined ? featureFlags.roomQrEnabled : (currentFlags.roomQrEnabled ?? true)),
     };
@@ -1563,6 +1565,7 @@ export async function createRestaurant(req: AuthenticatedRequest, res: Response,
     const isDual = platformType === 'DUAL';
     const isHotel = platformType === 'HOTEL';
     const initialFeatureFlags = {
+      kotMode: 'DIGITAL_KDS',
       roomServiceEnabled: isDual || isHotel,
       callWaiterEnabled: isDual || !isHotel,
       qrOrderingEnabled: true,

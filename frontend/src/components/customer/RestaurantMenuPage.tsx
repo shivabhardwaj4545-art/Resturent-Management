@@ -150,8 +150,8 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
           addonOrderId ||
           (typeof window !== 'undefined'
             ? sessionStorage.getItem('qr_restaurant_addon_order_id') ||
-              localStorage.getItem(`active_table_order_id_${slug}`) ||
-              localStorage.getItem('active_table_order_id')
+            localStorage.getItem(`active_table_order_id_${slug}`) ||
+            localStorage.getItem('active_table_order_id')
             : null);
 
         const res = await api.post('/table-sessions/check-access', {
@@ -172,8 +172,8 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
           addonOrderId ||
           (typeof window !== 'undefined'
             ? sessionStorage.getItem('qr_restaurant_addon_order_id') ||
-              localStorage.getItem(`active_table_order_id_${slug}`) ||
-              localStorage.getItem('active_table_order_id')
+            localStorage.getItem(`active_table_order_id_${slug}`) ||
+            localStorage.getItem('active_table_order_id')
             : null);
 
         if (
@@ -563,7 +563,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
 
 
 
-  
+
   useEffect(() => {
     const orders = localStorage.getItem('qr_restaurant_recent_orders');
     if (orders) {
@@ -577,7 +577,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
               o.orderId &&
               now - o.createdAt < 24 * 60 * 60 * 1000 // 24 hours
           );
-          
+
           // Deduplicate by orderId
           const uniqueMap = new Map<string, any>();
           filtered.forEach((o: any) => {
@@ -627,7 +627,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
       });
       const results = await Promise.all(promises);
       const validOrders = results.filter(Boolean);
-      
+
       // Deduplicate valid orders just in case
       const uniqueMap = new Map<string, any>();
       validOrders.forEach((order: any) => {
@@ -750,12 +750,12 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
   const isExplicitRoom = Boolean(
     (displayTableNumber &&
       (displayTableNumber.toLowerCase().includes('room') ||
-       displayTableNumber.toLowerCase().includes('suite') ||
-       displayTableNumber.toLowerCase().startsWith('rm') ||
-       displayTableNumber.toLowerCase().includes('hotel'))) ||
+        displayTableNumber.toLowerCase().includes('suite') ||
+        displayTableNumber.toLowerCase().startsWith('rm') ||
+        displayTableNumber.toLowerCase().includes('hotel'))) ||
     (manualTableNumber &&
       (manualTableNumber.toLowerCase().includes('room') ||
-       manualTableNumber.toLowerCase().includes('suite'))) ||
+        manualTableNumber.toLowerCase().includes('suite'))) ||
     searchParams?.table?.toLowerCase().includes('room')
   );
 
@@ -1225,7 +1225,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
   const isSuspended =
     ((error as any)?.response?.status === 403 &&
       ((error as any)?.response?.data?.code === 'RESTAURANT_SUSPENDED' ||
-       (error as any)?.response?.data?.error === 'RESTAURANT_SUSPENDED')) ||
+        (error as any)?.response?.data?.error === 'RESTAURANT_SUSPENDED')) ||
     Boolean((data?.restaurant as any)?.isSuspended);
 
   if (isSuspended) {
@@ -1303,7 +1303,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
   }
 
   const { restaurant, categories = [] } = data;
-  
+
   const themeColor = isPreview && searchParams?.themeColor ? searchParams.themeColor : (restaurant.themeColor ?? '#E85D04');
   const restaurantName = isPreview && searchParams?.name !== undefined ? searchParams.name : restaurant.name;
   const restaurantDesc = isPreview && searchParams?.description !== undefined ? searchParams.description : restaurant.description;
@@ -1402,11 +1402,10 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                 type="button"
                 onClick={handleCallWaiterFromOccupied}
                 disabled={isCallingWaiterFromOccupied || waiterCalledSuccess}
-                className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border shadow-sm ${
-                  waiterCalledSuccess
-                    ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
-                    : 'border-border text-foreground hover:bg-muted active:scale-95'
-                }`}
+                className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border shadow-sm ${waiterCalledSuccess
+                  ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                  : 'border-border text-foreground hover:bg-muted active:scale-95'
+                  }`}
               >
                 {isCallingWaiterFromOccupied ? (
                   <RefreshCw className="w-4 h-4 animate-spin" />
@@ -1592,26 +1591,24 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                 <h1 className="font-display text-lg sm:text-2xl md:text-3xl font-bold text-foreground truncate max-w-[170px] min-[400px]:max-w-[240px] sm:max-w-none">
                   {restaurantName}
                 </h1>
-                
+
                 {/* Interactive Status Badge & Weekly Hours Dropdown */}
                 <div className="relative shrink-0">
                   <button
                     onClick={() => setShowHours(!showHours)}
-                    className={`inline-flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold shadow-sm transition-all whitespace-nowrap hover:scale-105 active:scale-95 ${
-                      statusInfo.status === 'OPEN'
-                        ? 'bg-green-500/10 text-green-600 border border-green-500/20 dark:bg-green-500/20 dark:text-green-400'
-                        : statusInfo.status === 'TEMPORARILY_CLOSED'
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold shadow-sm transition-all whitespace-nowrap hover:scale-105 active:scale-95 ${statusInfo.status === 'OPEN'
+                      ? 'bg-green-500/10 text-green-600 border border-green-500/20 dark:bg-green-500/20 dark:text-green-400'
+                      : statusInfo.status === 'TEMPORARILY_CLOSED'
                         ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20 dark:bg-amber-500/20 dark:text-amber-400'
                         : 'bg-red-500/10 text-red-600 border border-red-500/20 dark:bg-red-500/20 dark:text-red-400'
-                    }`}
+                      }`}
                   >
-                    <span className={`w-2 h-2 rounded-full animate-pulse shrink-0 ${
-                      statusInfo.status === 'OPEN'
-                        ? 'bg-green-500'
-                        : statusInfo.status === 'TEMPORARILY_CLOSED'
+                    <span className={`w-2 h-2 rounded-full animate-pulse shrink-0 ${statusInfo.status === 'OPEN'
+                      ? 'bg-green-500'
+                      : statusInfo.status === 'TEMPORARILY_CLOSED'
                         ? 'bg-amber-500'
                         : 'bg-red-500'
-                    }`} />
+                      }`} />
                     <span className="whitespace-nowrap">{statusInfo.badgeText}</span>
                     <span className="text-[10px] opacity-75 font-normal whitespace-nowrap">({statusInfo.detailText})</span>
                     <Clock className="w-3 h-3 ml-0.5 opacity-60 shrink-0" />
@@ -1644,11 +1641,10 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                               return (
                                 <div
                                   key={day}
-                                  className={`flex items-center justify-between text-xs px-2.5 py-1.5 rounded-lg transition-colors ${
-                                    isToday
-                                      ? 'bg-primary/10 text-primary border border-primary/20 font-semibold shadow-sm'
-                                      : 'text-muted-foreground'
-                                  }`}
+                                  className={`flex items-center justify-between text-xs px-2.5 py-1.5 rounded-lg transition-colors ${isToday
+                                    ? 'bg-primary/10 text-primary border border-primary/20 font-semibold shadow-sm'
+                                    : 'text-muted-foreground'
+                                    }`}
                                 >
                                   <span className="capitalize">{day}</span>
                                   <span>
@@ -1709,11 +1705,15 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                         </span>
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 shrink-0">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                          {tableAccessData.data.activeOrder?.status || 'In Kitchen'}
+                          {(data?.restaurant as any)?.featureFlags?.kotMode === 'PRINT_KOT'
+                            ? (tableAccessData.data.activeOrder?.status === 'CONFIRMED' ? 'In Kitchen' : tableAccessData.data.activeOrder?.status === 'DELIVERED' ? 'Served' : (tableAccessData.data.activeOrder?.status || 'In Kitchen'))
+                            : (tableAccessData.data.activeOrder?.status || 'In Kitchen')}
                         </span>
                       </div>
                       <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
-                        Any items you add will be appended to this ongoing order. Live tracking shared across all table devices.
+                        {(data?.restaurant as any)?.featureFlags?.kotMode === 'PRINT_KOT'
+                          ? 'Any items you add will be printed and sent to the kitchen.'
+                          : 'Any items you add will be appended to this ongoing order. Live tracking shared across all table devices.'}
                       </p>
                     </div>
                   </div>
@@ -1721,7 +1721,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                     href={`/r/${slug}/order/${tableAccessData.data.activeOrderId}`}
                     className="w-full text-center px-3.5 py-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition active:scale-95 flex items-center justify-center gap-1.5 min-h-[44px]"
                   >
-                    <span>Track Order Live</span>
+                    <span>{(data?.restaurant as any)?.featureFlags?.kotMode === 'PRINT_KOT' ? 'View Order & Bill' : 'Track Order Live'}</span>
                     <ChevronRight className="w-3.5 h-3.5" />
                   </Link>
                 </div>
@@ -1764,22 +1764,22 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                       isServiceDisabled
                         ? '#64748b'
                         : waiterStatus === 'COMING'
-                        ? '#059669'
-                        : waiterStatus === 'OCCUPIED'
-                        ? '#475569'
-                        : waiterStatus === 'PENDING'
-                        ? '#f59e0b'
-                        : themeColor,
+                          ? '#059669'
+                          : waiterStatus === 'OCCUPIED'
+                            ? '#475569'
+                            : waiterStatus === 'PENDING'
+                              ? '#f59e0b'
+                              : themeColor,
                     borderColor:
                       isServiceDisabled
                         ? '#475569'
                         : waiterStatus === 'COMING'
-                        ? '#047857'
-                        : waiterStatus === 'OCCUPIED'
-                        ? '#334155'
-                        : waiterStatus === 'PENDING'
-                        ? '#d97706'
-                        : 'transparent',
+                          ? '#047857'
+                          : waiterStatus === 'OCCUPIED'
+                            ? '#334155'
+                            : waiterStatus === 'PENDING'
+                              ? '#d97706'
+                              : 'transparent',
                     opacity: isServiceDisabled ? 0.65 : 1,
                   }}
                   className={`w-full sm:w-auto px-5 py-3 rounded-2xl sm:rounded-full text-white font-extrabold text-sm sm:text-base shadow-xl flex items-center justify-center gap-2 transition-all border whitespace-nowrap ${isButtonDisabled ? 'cursor-not-allowed opacity-90 select-none' : 'cursor-pointer hover:opacity-95'}`}
@@ -1789,16 +1789,16 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                     {waiterLoading
                       ? 'Sending Request...'
                       : isServiceDisabled
-                      ? (isHotelRoom ? 'Room Service Disabled' : 'Waiter Call Disabled')
-                      : waiterStatus === 'PENDING'
-                      ? `${isHotelRoom ? 'Request Sent' : 'Waiter Call Sent'} (${waiterPendingTimer}s)`
-                      : waiterStatus === 'COMING'
-                      ? `${isHotelRoom ? 'Staff Coming' : 'Waiter Coming'} (${waiterComingTimer}s)`
-                      : waiterStatus === 'OCCUPIED'
-                      ? `Staff Busy (retry in ${waiterCooldown}s)`
-                      : isHotelRoom
-                      ? 'Call Room Service'
-                      : 'Call Waiter'}
+                        ? (isHotelRoom ? 'Room Service Disabled' : 'Waiter Call Disabled')
+                        : waiterStatus === 'PENDING'
+                          ? `${isHotelRoom ? 'Request Sent' : 'Waiter Call Sent'} (${waiterPendingTimer}s)`
+                          : waiterStatus === 'COMING'
+                            ? `${isHotelRoom ? 'Staff Coming' : 'Waiter Coming'} (${waiterComingTimer}s)`
+                            : waiterStatus === 'OCCUPIED'
+                              ? `Staff Busy (retry in ${waiterCooldown}s)`
+                              : isHotelRoom
+                                ? 'Call Room Service'
+                                : 'Call Waiter'}
                   </span>
                 </motion.button>
 
@@ -1858,22 +1858,20 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                 <button
                   onClick={() => setActiveTab('active')}
                   style={activeTab === 'active' ? { borderColor: themeColor, color: themeColor } : {}}
-                  className={`pb-2 font-display font-bold text-sm tracking-tight transition-all border-b-2 ${
-                    activeTab === 'active'
-                      ? 'font-bold'
-                      : 'border-transparent text-muted-foreground hover:text-foreground'
-                  }`}
+                  className={`pb-2 font-display font-bold text-sm tracking-tight transition-all border-b-2 ${activeTab === 'active'
+                    ? 'font-bold'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
                 >
                   Active Orders ({activeOrdersDetails?.length ?? 0})
                 </button>
                 <button
                   onClick={() => setActiveTab('history')}
                   style={activeTab === 'history' ? { borderColor: themeColor, color: themeColor } : {}}
-                  className={`pb-2 font-display font-bold text-sm tracking-tight transition-all border-b-2 ${
-                    activeTab === 'history'
-                      ? 'font-bold'
-                      : 'border-transparent text-muted-foreground hover:text-foreground'
-                  }`}
+                  className={`pb-2 font-display font-bold text-sm tracking-tight transition-all border-b-2 ${activeTab === 'history'
+                    ? 'font-bold'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
                 >
                   Past Orders ({previousOrders?.length ?? 0})
                 </button>
@@ -2094,11 +2092,10 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
           {/* Interactive Filter Button */}
           <button
             onClick={() => setShowFilterDrawer((prev) => !prev)}
-            className={`relative p-2.5 rounded-xl border transition-all active:scale-95 flex items-center justify-center shrink-0 ${
-              hasActiveFilters
-                ? 'text-white shadow-md'
-                : 'bg-muted text-muted-foreground hover:text-foreground border-transparent'
-            }`}
+            className={`relative p-2.5 rounded-xl border transition-all active:scale-95 flex items-center justify-center shrink-0 ${hasActiveFilters
+              ? 'text-white shadow-md'
+              : 'bg-muted text-muted-foreground hover:text-foreground border-transparent'
+              }`}
             style={hasActiveFilters ? { backgroundColor: themeColor } : {}}
             title="Filter & Sort Menu"
           >
@@ -2151,11 +2148,10 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                     <button
                       key={f.key}
                       onClick={() => setActiveFilter(f.key as any)}
-                      className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                        activeFilter === f.key
-                          ? 'text-white border-transparent shadow-sm'
-                          : 'bg-muted border-border text-muted-foreground hover:text-foreground'
-                      }`}
+                      className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all ${activeFilter === f.key
+                        ? 'text-white border-transparent shadow-sm'
+                        : 'bg-muted border-border text-muted-foreground hover:text-foreground'
+                        }`}
                       style={activeFilter === f.key ? { backgroundColor: themeColor } : {}}
                     >
                       {f.label}
@@ -2177,11 +2173,10 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                     <button
                       key={p.label}
                       onClick={() => setMaxPrice(p.val)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-                        maxPrice === p.val
-                          ? 'text-white border-transparent shadow-sm'
-                          : 'bg-muted border-border text-muted-foreground hover:text-foreground'
-                      }`}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${maxPrice === p.val
+                        ? 'text-white border-transparent shadow-sm'
+                        : 'bg-muted border-border text-muted-foreground hover:text-foreground'
+                        }`}
                       style={maxPrice === p.val ? { backgroundColor: themeColor } : {}}
                     >
                       {p.label}
@@ -2202,11 +2197,10 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                     <button
                       key={s.key}
                       onClick={() => setPriceSort(s.key as any)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-                        priceSort === s.key
-                          ? 'text-white border-transparent shadow-sm'
-                          : 'bg-muted border-border text-muted-foreground hover:text-foreground'
-                      }`}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${priceSort === s.key
+                        ? 'text-white border-transparent shadow-sm'
+                        : 'bg-muted border-border text-muted-foreground hover:text-foreground'
+                        }`}
                       style={priceSort === s.key ? { backgroundColor: themeColor } : {}}
                     >
                       {s.label}
@@ -2234,11 +2228,10 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
             <button
               key={filter}
               onClick={() => setActiveFilter(filter)}
-              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                activeFilter === filter
-                  ? 'text-white shadow-sm'
-                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
-              }`}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${activeFilter === filter
+                ? 'text-white shadow-sm'
+                : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                }`}
               style={activeFilter === filter ? { backgroundColor: themeColor } : {}}
             >
               {filter === 'ALL' ? 'All Items' : filter === 'VEG' ? '🟢 Veg' : filter === 'NON_VEG' ? '🔴 Non-Veg' : '🌿 Vegan'}
@@ -2255,11 +2248,10 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                 setActiveCategory(cat.id);
                 document.getElementById(`cat-${cat.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
               }}
-              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                activeCategory === cat.id
-                  ? 'text-white'
-                  : 'bg-muted text-muted-foreground'
-              }`}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${activeCategory === cat.id
+                ? 'text-white'
+                : 'bg-muted text-muted-foreground'
+                }`}
               style={activeCategory === cat.id ? { backgroundColor: themeColor } : {}}
             >
               {cat.name}
@@ -2528,7 +2520,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
               {/* Instructions */}
               <div className="space-y-3 text-xs">
                 <h4 className="font-bold text-foreground uppercase tracking-wider text-[11px]">How Loyalty Points Work:</h4>
-                
+
                 <div className="p-3 bg-muted/40 rounded-xl space-y-1 border border-border/40">
                   <p className="font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
                     💳 Conversion Ratio
