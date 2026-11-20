@@ -190,11 +190,11 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, tableTo
   };
 
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          {/* Backdrop */}
+    <>
+      <AnimatePresence>
+        {open && (
           <motion.div
+            key="cart-backdrop"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -202,9 +202,10 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, tableTo
             onClick={onClose}
             onTouchMove={(e) => e.preventDefault()}
           />
-
-          {/* Drawer */}
+        )}
+        {open && (
           <motion.div
+            key="cart-drawer-panel"
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
@@ -456,8 +457,8 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, tableTo
               </div>
             )}
           </motion.div>
-        </>
-      )}
+        )}
+      </AnimatePresence>
 
       {/* Complete Your Meal Upsell Modal */}
       <UpsellModal
@@ -467,6 +468,6 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, tableTo
         suggestedItems={suggestedItems}
         themeColor={themeColor}
       />
-    </AnimatePresence>
+    </>
   );
 }

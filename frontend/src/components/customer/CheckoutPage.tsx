@@ -690,6 +690,37 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
     );
   }
 
+  if (menuData?.restaurant && menuData.restaurant.isOpen === false) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
+        <div className="max-w-md w-full bg-card border border-rose-500/20 rounded-3xl p-8 shadow-2xl space-y-5">
+          <div className="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mx-auto text-rose-500">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider px-3 py-1 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25 inline-block">
+              Restaurant Closed
+            </span>
+            <h2 className="text-xl sm:text-2xl font-display font-black text-foreground">
+              {menuData.restaurant.name || 'Restaurant'} is currently closed
+            </h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              We are not accepting new orders right now. Please check back during operating hours.
+            </p>
+          </div>
+          <div className="pt-2">
+            <Link
+              href={`/r/${restaurantSlug}`}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-all shadow-md"
+            >
+              Back to Menu
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3">

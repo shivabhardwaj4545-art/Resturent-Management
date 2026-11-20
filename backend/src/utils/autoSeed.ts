@@ -153,6 +153,12 @@ export async function ensureDatabaseSeeded(): Promise<void> {
     });
 
     if (adminExists && upstatesRestaurant) {
+      if (!upstatesRestaurant.isOpen) {
+        await prisma.restaurant.update({
+          where: { id: upstatesRestaurant.id },
+          data: { isOpen: true, isApproved: true, isSuspended: false },
+        });
+      }
       logger.info('🌱 Database seed check: Super admin & demo restaurant upstates already exist.');
       return;
     }
