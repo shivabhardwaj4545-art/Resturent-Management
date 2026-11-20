@@ -1637,10 +1637,10 @@ async function resolveOrCreateTableSession(
         });
 
         // Update Order totals & Add-on journey status
-        // Set addOnStatus to PENDING so counter can review and accept before adding to running bill
         const orderUpdate = await tx.order.update({
           where: { id: orderId },
           data: {
+            status: nextStatus,
             subtotal: { increment: addedSubtotal },
             gstAmount: { increment: addedGst },
             total: { increment: addedTotal },
