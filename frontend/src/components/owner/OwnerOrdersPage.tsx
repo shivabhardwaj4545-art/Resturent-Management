@@ -19,12 +19,12 @@ import { OwnerSidebar } from '@/components/owner/OwnerSidebar';
 import { isItemAddon } from '@/utils/orderAddon';
 import { CounterOrderVerification } from '@/components/owner/CounterOrderVerification';
 import { printKitchenOrderTicket } from '@/utils/kotPrint';
+import { ManualKotModal } from '@/components/owner/ManualKotModal';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
   { label: 'Menu', icon: UtensilsCrossed, href: '/owner/menu' },
   { label: 'Orders', icon: ShoppingBag, href: '/owner/orders' },
-  { label: 'Kitchen Staff', icon: ChefHat, href: '/owner/kitchen-staff' },
   { label: 'Coupons', icon: Tag, href: '/owner/coupons' },
   { label: 'Reviews', icon: Star, href: '/owner/reviews' },
   { label: 'Analytics', icon: BarChart3, href: '/owner/analytics' },
@@ -131,6 +131,7 @@ export function OwnerOrdersPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
+  const [showManualKotModal, setShowManualKotModal] = useState(false);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['owner-orders', statusFilter, search, page],
@@ -302,6 +303,13 @@ export function OwnerOrdersPage() {
             )}
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <button
+              onClick={() => setShowManualKotModal(true)}
+              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer shrink-0"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>+ New Manual KOT</span>
+            </button>
             <WaiterBell />
             <button onClick={() => refetch()} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground shrink-0">
               <RefreshCw className="w-4 h-4" />
@@ -1007,6 +1015,13 @@ export function OwnerOrdersPage() {
           )}
         </div>
       </main>
+
+      {/* Cashier + New Manual KOT Fast Entry Drawer */}
+      <ManualKotModal
+        isOpen={showManualKotModal}
+        onClose={() => setShowManualKotModal(false)}
+        restaurantName={restaurantName}
+      />
     </div>
   );
 }

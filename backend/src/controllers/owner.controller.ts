@@ -1286,6 +1286,25 @@ export async function updateOrderStatus(req: AuthenticatedRequest, res: Response
         });
       }
 
+      // If counter accepts a pending order, include it in the active TableSession running total
+      if (status === 'CONFIRMED' && order.status === 'PENDING') {
+        await prisma.tableSession.update({
+          where: { id: updatedOrder.tableSessionId },
+          data: {
+            totalAmount: { increment: updatedOrder.total },
+            paymentStatus: 'PENDING',
+          },
+        });
+      } else if (status === 'CANCELLED' && order.status !== 'CANCELLED' && (order.status === 'CONFIRMED' || order.status === 'DELIVERED')) {
+        // If counter rejects/cancels an order that was previously counted in bill, decrement it
+        await prisma.tableSession.update({
+          where: { id: updatedOrder.tableSessionId },
+          data: {
+            totalAmount: { decrement: updatedOrder.total },
+          },
+        });
+      }
+
       if (updatedOrder.tableNumber) {
         emitTableSessionUpdate(restaurant.id, updatedOrder.tableNumber, {
           sessionId: updatedOrder.tableSessionId,
@@ -1301,13 +1320,13 @@ export async function updateOrderStatus(req: AuthenticatedRequest, res: Response
     // Notify customer on status update
     if (status && order.userId) {
       const statusMessages: Record<string, string> = {
-        CONFIRMED: 'Your order has been confirmed! 🎉',
-        PREPARING: 'Your order is being prepared! 👨‍🍳',
-        BAKING: 'Your order is in the kitchen! 🔥',
-        READY: 'Your order is ready! 🍽️',
+        CONFIRMED: 'Order Accepted! Your order has been accepted and sent to the kitchen.',
+        PREPARING: 'Order Accepted! Your order is being prepared in the kitchen.',
+        BAKING: 'Order Accepted! Your food is cooking in the kitchen.',
+        READY: 'Your food is ready to serve! 🍽️',
         ON_THE_WAY: 'Your order is on the way! 🚴',
-        DELIVERED: 'Your order has been delivered! ✅',
-        CANCELLED: `Your order has been cancelled. ${reason ?? ''}`,
+        DELIVERED: 'Your order has been served. Enjoy your meal! 🎉',
+        CANCELLED: `Order Not Accepted. ${reason ?? 'The restaurant could not accept your order. Please place a new order or contact staff.'}`,
       };
 
       await prisma.notification.create({
@@ -1331,10 +1350,11 @@ export async function updateOrderStatus(req: AuthenticatedRequest, res: Response
     // Notify customer on add-on status update
     if (addOnStatus && order.userId) {
       const addOnMessages: Record<string, string> = {
-        PREPARING: 'Your add-on items are being prepared! 👨‍🍳',
+        CONFIRMED: 'Add-on Accepted! Your additional items have been accepted and sent to the kitchen.',
+        PREPARING: 'Your add-on items are being prepared in the kitchen.',
         READY: 'Your add-on items are ready to serve! 🍽️',
         DELIVERED: 'Your add-on items have been served! ✅',
-        CANCELLED: 'Your add-on items have been cancelled. 🚫',
+        CANCELLED: 'Add-on Not Accepted. The restaurant could not accept your additional items.',
       };
 
       const msg = addOnMessages[addOnStatus] ?? `Add-on status updated to ${addOnStatus}`;
@@ -3043,6 +3063,224 @@ export async function refreshMerchantStatus(
     next(error);
   }
 }
+
+// ── Manual Counter KOT Generation ──────────────────────────────────────────
+
+export async function createManualOrder(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const { tableNumber, items, notes, guestName } = req.body as {
+      tableNumber?: string;
+      items: Array<{
+        menuItemId: string;
+        variantId?: string | null;
+        quantity: number;
+        addOns?: any;
+        notes?: string;
+      }>;
+      notes?: string;
+      guestName?: string;
+    };
+
+    if (!tableNumber || !tableNumber.trim()) {
+      throw new AppError('Table or room number is required for manual KOT.', 400, 'TABLE_REQUIRED');
+    }
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      throw new AppError('At least one item is required to generate a manual KOT.', 400, 'EMPTY_ITEMS');
+    }
+
+    const cleanTable = tableNumber.trim();
+
+    // 1. Resolve or create active TableSession
+    let session = await prisma.tableSession.findFirst({
+      where: {
+        restaurantId: restaurant.id,
+        tableNumber: cleanTable,
+        status: 'ACTIVE',
+      },
+      include: {
+        batches: { orderBy: { batchNumber: 'desc' }, take: 1 },
+        orders: { where: { deletedAt: null } },
+      },
+    });
+
+    let targetBatchNumber = 1;
+    let isAddon = false;
+
+    if (session) {
+      targetBatchNumber = Math.max(session.currentBatchNumber || 1, session.batches[0]?.batchNumber || 1) + 1;
+      isAddon = session.orders.some((o) => o.status !== 'CANCELLED');
+      await prisma.tableSession.update({
+        where: { id: session.id },
+        data: { currentBatchNumber: targetBatchNumber },
+      });
+    } else {
+      const sessionCode = String(Math.floor(1000 + Math.random() * 9000));
+      session = await prisma.tableSession.create({
+        data: {
+          restaurantId: restaurant.id,
+          tableNumber: cleanTable,
+          sessionCode,
+          tableAccessCode: sessionCode,
+          accessCodeHash: crypto.createHash('sha256').update(sessionCode).digest('hex'),
+          status: 'ACTIVE',
+          currentBatchNumber: 1,
+        },
+        include: {
+          batches: true,
+          orders: true,
+        },
+      });
+      targetBatchNumber = 1;
+      isAddon = false;
+    }
+
+    // 2. Fetch menu items & calculate price
+    const menuItemIds = items.map((i) => i.menuItemId);
+    const dbMenuItems = await prisma.menuItem.findMany({
+      where: { id: { in: menuItemIds }, restaurantId: restaurant.id, deletedAt: null },
+      include: { variants: true },
+    });
+
+    let subtotal = 0;
+    const itemsToCreate: any[] = [];
+
+    for (const item of items) {
+      const dbItem = dbMenuItems.find((m) => m.id === item.menuItemId);
+      if (!dbItem) continue;
+
+      let unitPrice = dbItem.price;
+      if (item.variantId) {
+        const variant = dbItem.variants.find((v) => v.id === item.variantId);
+        if (variant) unitPrice = variant.price;
+      }
+
+      let addOnsTotal = 0;
+      if (item.addOns && Array.isArray(item.addOns)) {
+        item.addOns.forEach((ao: any) => {
+          addOnsTotal += Number(ao.price) || 0;
+        });
+      }
+
+      const itemSubtotal = (unitPrice + addOnsTotal) * (Number(item.quantity) || 1);
+      subtotal += itemSubtotal;
+
+      itemsToCreate.push({
+        menuItemId: item.menuItemId,
+        variantId: item.variantId || null,
+        quantity: Number(item.quantity) || 1,
+        unitPrice: unitPrice + addOnsTotal,
+        subtotal: itemSubtotal,
+        addOns: item.addOns ? item.addOns : [],
+        isAddon,
+      });
+    }
+
+    if (itemsToCreate.length === 0) {
+      throw new AppError('No valid menu items found for this restaurant.', 400, 'INVALID_ITEMS');
+    }
+
+    const gstRate = parseFloat(process.env.GST_RATE ?? '5') / 100;
+    const gstAmount = subtotal * gstRate;
+    const total = subtotal + gstAmount;
+
+    // 3. Atomically create Order & OrderBatch, increment TableSession running bill
+    const now = new Date();
+    const createdOrder = await prisma.$transaction(async (tx) => {
+      const order = await tx.order.create({
+        data: {
+          restaurantId: restaurant.id,
+          tableNumber: cleanTable,
+          tableSessionId: session!.id,
+          batchNumber: targetBatchNumber,
+          status: 'CONFIRMED', // Directly accepted since authorized cashier entered it
+          confirmedAt: now,
+          paymentMethod: 'PAY_AT_COUNTER',
+          paymentStatus: 'PENDING',
+          subtotal,
+          gstAmount,
+          total,
+          verificationCode: session!.sessionCode,
+          guestName: guestName?.trim() || 'Manual Counter Order',
+          items: {
+            create: itemsToCreate,
+          },
+        },
+        include: {
+          items: {
+            include: {
+              menuItem: { select: { name: true, image: true } },
+              variant: { select: { name: true } },
+            },
+          },
+          restaurant: {
+            select: { name: true, phone: true, themeColor: true },
+          },
+        },
+      });
+
+      // Create OrderBatch marked ACCEPTED
+      await tx.orderBatch.create({
+        data: {
+          sessionId: session!.id,
+          restaurantId: restaurant.id,
+          batchNumber: targetBatchNumber,
+          status: 'ACCEPTED',
+          subtotal,
+          tax: gstAmount,
+          total,
+          notes: notes?.trim() || null,
+          submittedAt: now,
+          acceptedAt: now,
+          orderId: order.id,
+        },
+      });
+
+      // Atomically increment running total of active TableSession
+      await tx.tableSession.update({
+        where: { id: session!.id },
+        data: {
+          totalAmount: { increment: total },
+          paymentStatus: 'PENDING',
+        },
+      });
+
+      return order;
+    });
+
+    // 4. Emit real-time updates via Socket.IO
+    emitOrderStatusUpdate(createdOrder.id, restaurant.id, {
+      orderId: createdOrder.id,
+      status: 'CONFIRMED',
+      updatedAt: now.toISOString(),
+      items: createdOrder.items,
+    });
+
+    emitTableSessionUpdate(restaurant.id, cleanTable, {
+      sessionId: session.id,
+      orderId: createdOrder.id,
+      orderStatus: 'CONFIRMED',
+      batchNumber: targetBatchNumber,
+      totalAmount: (session.totalAmount || 0) + total,
+      event: 'ORDER_STATUS_SYNCED',
+      orderSource: 'MANUAL',
+    });
+
+    res.status(201).json({
+      success: true,
+      data: { order: createdOrder },
+      message: `Manual KOT generated for ${cleanTable} (Batch #${targetBatchNumber}).`,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 
 
 

@@ -20,6 +20,8 @@ import {
   PhoneCall,
   ChevronRight,
   Filter,
+  Droplets,
+  Bell,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { useRouter } from 'next/navigation';
@@ -53,6 +55,19 @@ interface WaiterRequestItem {
     totalAmount: number;
     createdAt: string;
   } | null;
+}
+
+function getServiceTypeInfo(type: string) {
+  switch (type) {
+    case 'WATER':
+      return { label: 'Water Requested', icon: Droplets, color: 'text-blue-600 bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800' };
+    case 'BILL':
+      return { label: 'Bill Requested', icon: Receipt, color: 'text-purple-600 bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800' };
+    case 'CLEANING':
+      return { label: 'Table Cleaning', icon: Sparkles, color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800' };
+    default:
+      return { label: 'Call Waiter', icon: BellRing, color: 'text-amber-600 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800' };
+  }
 }
 
 export default function WaiterRequestsPage() {
@@ -362,6 +377,8 @@ export default function WaiterRequestsPage() {
                   const isPending = req.status === 'PENDING';
                   const isAcknowledged = req.status === 'ACKNOWLEDGED';
                   const isResolved = req.status === 'RESOLVED';
+                  const typeInfo = getServiceTypeInfo(req.requestType);
+                  const TypeIcon = typeInfo.icon;
 
                   return (
                     <motion.div
@@ -385,6 +402,12 @@ export default function WaiterRequestsPage() {
                               {req.tableNumber}
                             </span>
 
+                            {/* Service Type Badge */}
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border ${typeInfo.color}`}>
+                              <TypeIcon className="w-3.5 h-3.5" />
+                              <span>{typeInfo.label}</span>
+                            </span>
+
                             {/* Status Badge */}
                             {isPending && (
                               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
@@ -395,7 +418,7 @@ export default function WaiterRequestsPage() {
                             {isAcknowledged && (
                               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
                                 <Clock className="w-3 h-3" />
-                                In Progress
+                                Acknowledged
                               </span>
                             )}
                             {isResolved && (
@@ -411,9 +434,9 @@ export default function WaiterRequestsPage() {
                             </span>
                           </div>
 
-                          {/* Reason */}
+                          {/* Reason / Notes */}
                           <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                            {req.reason || 'Assistance requested at table'}
+                            {req.reason ? `Note: "${req.reason}"` : 'Assistance requested at table'}
                           </p>
 
                           {/* Session context */}
@@ -434,7 +457,7 @@ export default function WaiterRequestsPage() {
                             <button
                               onClick={() => acknowledgeMutation.mutate(req.id)}
                               disabled={acknowledgeMutation.isPending}
-                              className="px-3.5 py-2 text-xs font-medium rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition flex items-center gap-1.5 shadow-sm"
+                              className="px-3.5 py-2 text-xs font-medium rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition flex items-center gap-1.5 shadow-sm cursor-pointer"
                             >
                               <Clock className="w-3.5 h-3.5" />
                               <span>Acknowledge</span>
@@ -445,18 +468,18 @@ export default function WaiterRequestsPage() {
                             <button
                               onClick={() => resolveMutation.mutate(req.id)}
                               disabled={resolveMutation.isPending}
-                              className="px-3.5 py-2 text-xs font-medium rounded-xl border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300 transition flex items-center gap-1.5"
+                              className="px-3.5 py-2 text-xs font-medium rounded-xl border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300 transition flex items-center gap-1.5 cursor-pointer"
                             >
                               <Check className="w-3.5 h-3.5" />
-                              <span>Still Occupied (Resolve)</span>
+                              <span>Resolve Request</span>
                             </button>
                           )}
 
                           {/* If guest reports physically empty table, provide direct 1-click clearance */}
-                          {req.sessionId && (
+                          {req.sessionId && req.requestType === 'TABLE_OCCUPIED_ASSISTANCE' && (
                             <button
                               onClick={() => setSelectedRequestToClear(req)}
-                              className="px-3.5 py-2 text-xs font-medium rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition flex items-center gap-1.5 shadow-sm"
+                              className="px-3.5 py-2 text-xs font-medium rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition flex items-center gap-1.5 shadow-sm cursor-pointer"
                               title="Clear previous session if table is physically empty"
                             >
                               <Sparkles className="w-3.5 h-3.5" />

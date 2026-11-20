@@ -507,7 +507,7 @@ async function resolveOrCreateTableSession(
                 subtotal: { increment: subtotal },
                 gstAmount: { increment: gstAmount },
                 total: { increment: total },
-                addOnStatus: 'PREPARING',
+                addOnStatus: 'PENDING',
                 lastAddOnAt: new Date(),
                 paymentStatus: existingOrder.paymentMethod === 'RAZORPAY' ? existingOrder.paymentStatus : 'PENDING',
               },
@@ -952,7 +952,7 @@ async function resolveOrCreateTableSession(
                 subtotal: { increment: subtotal },
                 gstAmount: { increment: gstAmount },
                 total: { increment: total },
-                addOnStatus: 'PREPARING',
+                addOnStatus: 'PENDING',
                 lastAddOnAt: new Date(),
                 paymentStatus: existingOrder.paymentMethod === 'RAZORPAY' ? existingOrder.paymentStatus : 'PENDING',
               },
@@ -1637,15 +1637,15 @@ async function resolveOrCreateTableSession(
         });
 
         // Update Order totals & Add-on journey status
+        // Set addOnStatus to PENDING so counter can review and accept before adding to running bill
         const orderUpdate = await tx.order.update({
           where: { id: orderId },
           data: {
-            status: nextStatus,
             subtotal: { increment: addedSubtotal },
             gstAmount: { increment: addedGst },
             total: { increment: addedTotal },
             paymentStatus: order.paymentMethod === 'RAZORPAY' ? order.paymentStatus : 'PENDING',
-            addOnStatus: 'PREPARING',
+            addOnStatus: 'PENDING',
             lastAddOnAt: new Date(),
           },
           include: {

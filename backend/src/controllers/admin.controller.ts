@@ -967,23 +967,25 @@ export async function updateRestaurantFeatures(req: AuthenticatedRequest, res: R
     if (!restaurant) throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
 
     const currentFlags = (restaurant.featureFlags as Record<string, any>) || {};
-    const kotMode = featureFlags.kotMode !== undefined ? featureFlags.kotMode : (currentFlags.kotMode || 'DIGITAL_KDS');
-    const isPrintKot = kotMode === 'PRINT_KOT';
+    const kotMode = featureFlags.kotMode !== undefined ? featureFlags.kotMode : (currentFlags.kotMode || 'PRINT_KOT');
+    const isPrintKot = kotMode === 'PRINT_KOT' || featureFlags.kitchenDisplayEnabled === false;
 
     const updatedFlags = {
       ...currentFlags,
       ...featureFlags,
-      kotMode,
-      kitchenDisplayEnabled: isPrintKot ? false : (featureFlags.kitchenDisplayEnabled !== undefined ? featureFlags.kitchenDisplayEnabled : (currentFlags.kitchenDisplayEnabled ?? true)),
+      kotMode: 'PRINT_KOT', // Physical KOT is the standard system default
+      kitchenDisplayEnabled: false,
       tableQrEnabled: featureFlags.callWaiterEnabled !== undefined ? featureFlags.callWaiterEnabled : (featureFlags.tableQrEnabled !== undefined ? featureFlags.tableQrEnabled : (currentFlags.tableQrEnabled ?? true)),
       roomQrEnabled: featureFlags.roomServiceEnabled !== undefined ? featureFlags.roomServiceEnabled : (featureFlags.roomQrEnabled !== undefined ? featureFlags.roomQrEnabled : (currentFlags.roomQrEnabled ?? true)),
     };
 
     // Synchronize disabledTabs with KOT mode:
-    // If PRINT_KOT is active, digital kitchen staff accounts & KDS must be in disabledTabs.
-    // If DIGITAL_KDS is active, ensure kitchen-staff is restored unless explicitly disabled.
+    // Ensure kitchen-staff tab is consistently disabled
     const currentTabs: string[] = Array.isArray(restaurant.disabledTabs) ? [...(restaurant.disabledTabs as string[])] : [];
     let nextTabs: string[] = [...currentTabs];
+    if (!nextTabs.includes('kitchen-staff')) {
+      nextTabs.push('kitchen-staff');
+    }
 
     if (isPrintKot) {
       if (!nextTabs.includes('kitchen-staff')) {
@@ -1598,14 +1600,14 @@ export async function createRestaurant(req: AuthenticatedRequest, res: Response,
     const isDual = platformType === 'DUAL';
     const isHotel = platformType === 'HOTEL';
     const initialFeatureFlags = {
-      kotMode: 'DIGITAL_KDS',
+      kotMode: 'PRINT_KOT',
       roomServiceEnabled: isDual || isHotel,
       callWaiterEnabled: isDual || !isHotel,
       qrOrderingEnabled: true,
       onlinePaymentEnabled: true,
       aiAssistantEnabled: true,
       loyaltyProgramEnabled: true,
-      kitchenDisplayEnabled: true,
+      kitchenDisplayEnabled: false,
       tableReservationEnabled: true,
     };
 

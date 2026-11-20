@@ -31,10 +31,17 @@ export interface KotPrintOptions {
     isAddon?: boolean;
     isNewAddon?: boolean;
     addOnStatus?: string | null;
+    batchNumber?: number | null;
+    orderSource?: 'QR' | 'MANUAL';
+    kotNumber?: string | number | null;
+    isReprint?: boolean;
     items?: KotItem[];
   };
   restaurantName?: string;
   isAddonOnly?: boolean;
+  isReprint?: boolean;
+  orderSource?: 'QR' | 'MANUAL';
+  paperWidth?: '80mm' | '58mm';
 }
 
 export function parseKotAddOns(addOns: any): Array<{ name: string; price?: number }> {
@@ -58,10 +65,13 @@ export function parseKotAddOns(addOns: any): Array<{ name: string; price?: numbe
 }
 
 export function generateKotHtml(options: KotPrintOptions): string {
-  const { order, restaurantName = 'RESTAURANT', isAddonOnly = false } = options;
+  const { order, restaurantName = 'RESTAURANT', isAddonOnly = false, paperWidth = '80mm' } = options;
 
-  const isAddonOrder = Boolean(order.isNewAddon || order.isAddon || isAddonOnly);
+  const isAddonOrder = Boolean(order.isNewAddon || order.isAddon || isAddonOnly || (order.batchNumber && order.batchNumber > 1));
+  const isReprint = Boolean(options.isReprint || order.isReprint);
+  const orderSource = options.orderSource || order.orderSource || (order.guestName?.toLowerCase().includes('manual') ? 'MANUAL' : 'QR');
   const orderShortId = order.id ? order.id.slice(-8).toUpperCase() : 'NEW';
+  const kotNumber = order.kotNumber ? String(order.kotNumber) : (order.batchNumber ? `KOT-${order.batchNumber}` : `KOT-${orderShortId}`);
 
   const orderDate = order.createdAt ? new Date(order.createdAt) : new Date();
   const formattedDate = orderDate.toLocaleString('en-IN', {
@@ -105,7 +115,12 @@ export function generateKotHtml(options: KotPrintOptions): string {
     }
   }
 
-  const itemsHtml = itemsToPrint.map((item, idx) => {
+  const is58mm = paperWidth === '58mm';
+  const pageWidth = is58mm ? '54mm' : '76mm';
+  const pageSize = is58mm ? '58mm auto' : '80mm auto';
+  const baseFontSize = is58mm ? '11px' : '13px';
+
+  const itemsHtml = itemsToPrint.map((item) => {
     const itemName = item.menuItem?.name || item.name || 'Item';
     const variantName = item.variant?.name ? ` (${item.variant.name})` : '';
     const addOns = parseKotAddOns(item.addOns);
@@ -128,15 +143,15 @@ export function generateKotHtml(options: KotPrintOptions): string {
     <html>
     <head>
       <meta charset="utf-8" />
-      <title>KOT #${orderShortId} - ${destinationText}</title>
+      <title>${kotNumber} - ${destinationText}</title>
       <style>
         @page {
-          size: 80mm auto;
+          size: ${pageSize};
           margin: 2mm;
         }
         @media print {
           html, body {
-            width: 76mm;
+            width: ${pageWidth};
             margin: 0;
             padding: 0;
             background: #fff;
@@ -148,18 +163,28 @@ export function generateKotHtml(options: KotPrintOptions): string {
         }
         body {
           font-family: 'Courier New', Courier, monospace, -apple-system, sans-serif;
-          width: 76mm;
+          width: ${pageWidth};
           margin: 0 auto;
-          padding: 6px;
+          padding: 4px;
           background: #fff;
           color: #000;
-          font-size: 13px;
+          font-size: ${baseFontSize};
           line-height: 1.25;
           box-sizing: border-box;
         }
         .text-center { text-align: center; }
         .text-right { text-align: right; }
         .font-bold { font-weight: bold; }
+        .reprint-banner {
+          background: #000;
+          color: #fff;
+          font-size: 15px;
+          font-weight: 900;
+          padding: 3px 6px;
+          text-align: center;
+          letter-spacing: 2px;
+          margin-bottom: 4px;
+        }
         .rest-title {
           font-size: 16px;
           font-weight: 900;
@@ -168,13 +193,13 @@ export function generateKotHtml(options: KotPrintOptions): string {
           margin-bottom: 2px;
         }
         .kot-heading {
-          font-size: 14px;
+          font-size: 13px;
           font-weight: 900;
           margin: 3px 0;
           letter-spacing: 1px;
         }
         .addon-heading {
-          font-size: 13px;
+          font-size: 12px;
           font-weight: 900;
           background: #000;
           color: #fff;
@@ -184,35 +209,35 @@ export function generateKotHtml(options: KotPrintOptions): string {
         }
         .dashed-line {
           border-top: 1px dashed #000;
-          margin: 5px 0;
+          margin: 4px 0;
         }
         .solid-line {
           border-top: 2px solid #000;
-          margin: 6px 0;
+          margin: 5px 0;
         }
         .meta-table {
           width: 100%;
           border-collapse: collapse;
-          font-size: 12px;
-          margin: 4px 0;
+          font-size: 11px;
+          margin: 3px 0;
         }
         .meta-table td {
-          padding: 1.5px 0;
+          padding: 1px 0;
           vertical-align: top;
         }
         .meta-label {
           font-weight: bold;
-          width: 25%;
+          width: 30%;
         }
         .meta-value {
-          width: 75%;
+          width: 70%;
         }
         .destination-box {
           border: 2px solid #000;
-          padding: 5px;
-          margin: 6px 0;
+          padding: 4px;
+          margin: 4px 0;
           text-align: center;
-          font-size: 20px;
+          font-size: 18px;
           font-weight: 900;
           letter-spacing: 1px;
         }
@@ -223,31 +248,31 @@ export function generateKotHtml(options: KotPrintOptions): string {
         }
         .items-table th {
           border-bottom: 1.5px solid #000;
-          padding: 4px 0;
+          padding: 3px 0;
           text-align: left;
-          font-size: 12px;
+          font-size: 11px;
           font-weight: 900;
         }
         .items-table td {
-          padding: 4px 0;
+          padding: 3px 0;
           vertical-align: top;
         }
         .col-qty {
-          width: 50px;
-          font-size: 15px;
+          width: 44px;
+          font-size: 14px;
           font-weight: 900;
           white-space: nowrap;
         }
         .col-item {
-          font-size: 13px;
+          font-size: 12px;
         }
         .item-name {
           font-weight: 900;
-          font-size: 14px;
+          font-size: 13px;
           line-height: 1.2;
         }
         .addon-tag {
-          font-size: 10px;
+          font-size: 9px;
           font-weight: 900;
           background: #000;
           color: #fff;
@@ -256,19 +281,19 @@ export function generateKotHtml(options: KotPrintOptions): string {
           vertical-align: middle;
         }
         .item-addons {
-          font-size: 11px;
+          font-size: 10px;
           color: #222;
           margin-top: 2px;
         }
         .item-notes {
-          font-size: 11px;
+          font-size: 10px;
           font-weight: bold;
           font-style: italic;
           margin-top: 2px;
         }
         .summary-box {
-          margin-top: 6px;
-          font-size: 12px;
+          margin-top: 4px;
+          font-size: 11px;
           font-weight: bold;
           display: flex;
           justify-content: space-between;
@@ -276,21 +301,23 @@ export function generateKotHtml(options: KotPrintOptions): string {
         .instruction-box {
           border: 1px dashed #000;
           padding: 4px;
-          margin: 6px 0;
-          font-size: 11px;
+          margin: 4px 0;
+          font-size: 10px;
         }
         .footer-note {
           text-align: center;
-          font-size: 10px;
-          margin-top: 6px;
+          font-size: 9px;
+          margin-top: 4px;
           color: #444;
         }
       </style>
     </head>
     <body>
+      ${isReprint ? '<div class="reprint-banner">** REPRINT **</div>' : ''}
+
       <div class="text-center">
         <div class="rest-title">${restaurantName}</div>
-        ${isAddonOrder ? '<div class="addon-heading">*** ⚡ RUNNING TABLE ADD-ON ⚡ ***</div>' : '<div class="kot-heading">*** KITCHEN ORDER TICKET (KOT) ***</div>'}
+        ${isAddonOrder ? '<div class="addon-heading">*** ⚡ ADD-ON KOT ⚡ ***</div>' : '<div class="kot-heading">*** PHYSICAL KOT ***</div>'}
       </div>
 
       <div class="destination-box">
@@ -299,16 +326,24 @@ export function generateKotHtml(options: KotPrintOptions): string {
 
       <table class="meta-table">
         <tr>
-          <td class="meta-label">ORDER:</td>
-          <td class="meta-value font-bold">#${orderShortId}</td>
+          <td class="meta-label">KOT NO:</td>
+          <td class="meta-value font-bold">#${kotNumber}</td>
         </tr>
         <tr>
-          <td class="meta-label">TIME:</td>
+          <td class="meta-label">SOURCE:</td>
+          <td class="meta-value font-bold">${orderSource === 'MANUAL' ? 'MANUAL COUNTER' : 'CUSTOMER QR'}</td>
+        </tr>
+        <tr>
+          <td class="meta-label">ORDER REF:</td>
+          <td class="meta-value font-bold">#${orderShortId} ${order.batchNumber ? `(Batch #${order.batchNumber})` : ''}</td>
+        </tr>
+        <tr>
+          <td class="meta-label">DATE/TIME:</td>
           <td class="meta-value">${formattedDate}</td>
         </tr>
         ${order.verificationCode ? `
         <tr>
-          <td class="meta-label">CODE:</td>
+          <td class="meta-label">VERIF CODE:</td>
           <td class="meta-value font-bold">#${order.verificationCode}</td>
         </tr>` : ''}
         ${order.guestName ? `
@@ -341,13 +376,14 @@ export function generateKotHtml(options: KotPrintOptions): string {
 
       ${(order.specialInstructions || order.notes) ? `
       <div class="instruction-box">
-        <span class="font-bold">INSTRUCTIONS:</span> ${(order.specialInstructions || order.notes)}
+        <span class="font-bold">KITCHEN NOTE:</span> ${(order.specialInstructions || order.notes)}
       </div>` : ''}
 
       <div class="solid-line"></div>
 
       <div class="footer-note">
-        Printed: ${printTimestamp} • Physical KOT
+        ${isReprint ? '<div style="font-weight:900; margin-bottom:2px;">*** REPRINT COPY — DO NOT DUPLICATE PREPARATION ***</div>' : ''}
+        Printed: ${printTimestamp} • Direct Kitchen Ticket
       </div>
 
       <script>

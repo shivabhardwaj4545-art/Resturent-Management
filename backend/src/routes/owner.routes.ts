@@ -62,6 +62,7 @@ import {
   registerPaymentAccount,
   submitMerchantOnboarding,
   refreshMerchantStatus,
+  createManualOrder,
 } from '../controllers/owner.controller';
 import { upload, uploadDocument } from '../services/cloudinary.service';
 import {
@@ -152,6 +153,7 @@ router.patch('/coupons/:id/toggle', toggleCoupon);
 
 // Orders
 router.get('/orders', getOrders);
+router.post('/orders/manual', createManualOrder);
 router.get('/orders/:id', getOrderDetail);
 router.patch('/orders/:id/status', validate(updateOrderStatusSchema), updateOrderStatus);
 router.patch('/orders/:id/payment', confirmPayment);

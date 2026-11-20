@@ -34,7 +34,6 @@ export const OWNER_NAV_ITEMS = [
   { key: 'waiter-requests', label: 'Waiter Requests', icon: BellRing, href: '/owner/waiter-requests' },
   { key: 'menu', label: 'Menu', icon: UtensilsCrossed, href: '/owner/menu' },
   { key: 'orders', label: 'Orders', icon: ShoppingBag, href: '/owner/orders' },
-  { key: 'kitchen-staff', label: 'Kitchen Staff', icon: ChefHat, href: '/owner/kitchen-staff' },
   { key: 'coupons', label: 'Coupons', icon: Tag, href: '/owner/coupons' },
   { key: 'reviews', label: 'Reviews', icon: Star, href: '/owner/reviews' },
   { key: 'analytics', label: 'Analytics', icon: BarChart3, href: '/owner/analytics' },

@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, UtensilsCrossed, ShoppingBag, Tag, BarChart3, Settings,
   LogOut, Menu, X, TrendingUp, Users, DollarSign, Clock, Bell, ChevronRight,
-  Star, Palette, BellRing, ChefHat, CreditCard, AlertTriangle, Calendar, ShieldCheck, Zap, QrCode
+  Star, Palette, BellRing, ChefHat, CreditCard, AlertTriangle, Calendar, ShieldCheck, Zap, QrCode, Printer
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api, { getSocketUrl } from '@/services/api';
@@ -24,12 +24,12 @@ import { useWaiterStore } from '@/store/waiter.store';
 import { MessageSquare } from 'lucide-react';
 import { AdminOwnerChatModal } from '@/components/admin/AdminOwnerChatModal';
 import { OwnerSidebar } from '@/components/owner/OwnerSidebar';
+import { ManualKotModal } from '@/components/owner/ManualKotModal';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
   { label: 'Menu', icon: UtensilsCrossed, href: '/owner/menu' },
   { label: 'Orders', icon: ShoppingBag, href: '/owner/orders' },
-  { label: 'Kitchen Staff', icon: ChefHat, href: '/owner/kitchen-staff' },
   { label: 'Coupons', icon: Tag, href: '/owner/coupons' },
   { label: 'Reviews', icon: Star, href: '/owner/reviews' },
   { label: 'Analytics', icon: BarChart3, href: '/owner/analytics' },
@@ -44,6 +44,7 @@ export function OwnerDashboard() {
   const qc = useQueryClient();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showChatModal, setShowChatModal] = useState(false);
+  const [showManualKotModal, setShowManualKotModal] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['owner-dashboard'],
@@ -240,6 +241,16 @@ export function OwnerDashboard() {
                 <span>{isQrEnabled ? 'QR Service: Active' : 'QR Service: Shut (Maintenance)'}</span>
               </button>
             )}
+            {/* + New Manual KOT Fast Entry */}
+            <button
+              onClick={() => setShowManualKotModal(true)}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs sm:text-sm font-black transition-all shadow-sm shrink-0 cursor-pointer active:scale-95"
+              title="Create Manual Order & Print KOT"
+            >
+              <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span>+ New Manual KOT</span>
+            </button>
+
             {/* Waiter Calls Bell */}
             <WaiterBell />
 
@@ -588,6 +599,13 @@ export function OwnerDashboard() {
 
       {/* 1-to-1 Live Support Chat Modal */}
       <AdminOwnerChatModal isOpen={showChatModal} onClose={() => setShowChatModal(false)} />
+
+      {/* Cashier + New Manual KOT Fast Entry Drawer */}
+      <ManualKotModal
+        isOpen={showManualKotModal}
+        onClose={() => setShowManualKotModal(false)}
+        restaurantName={data?.restaurant.name}
+      />
     </div>
   );
 }
