@@ -50,6 +50,7 @@ export function initializeSocketService(socketServer: SocketIOServer): void {
       try {
         const ownerRest = await prisma.restaurant.findFirst({
           where: { ownerId: targetUserId, deletedAt: null },
+          orderBy: { createdAt: 'asc' },
           select: { id: true },
         });
         if (ownerRest) {

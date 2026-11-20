@@ -15,6 +15,7 @@ async function getAuthenticatedUserRestaurant(user: NonNullable<AuthenticatedReq
   if (!restaurantId && user.role === 'RESTAURANT_OWNER') {
     const rest = await prisma.restaurant.findFirst({
       where: { ownerId: user.id, deletedAt: null },
+      orderBy: { createdAt: 'asc' },
       select: { id: true, name: true, slug: true, ownerId: true },
     });
     if (rest) return rest;

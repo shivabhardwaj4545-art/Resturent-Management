@@ -1600,11 +1600,21 @@ export async function getSessionBill(
   ): Promise<void> {
     try {
       const user = req.user!;
-      let restaurantId = (user as any).restaurantId || (user as any).kitchenRestaurantId;
+      const reqRestId = (req.headers['x-restaurant-id'] as string) || (req.query.restaurantId as string);
+      let restaurantId = reqRestId || (user as any).restaurantId || (user as any).kitchenRestaurantId;
+
+      if (restaurantId && user.role === 'RESTAURANT_OWNER') {
+        const owned = await prisma.restaurant.findFirst({
+          where: { id: restaurantId, ownerId: user.id, deletedAt: null },
+          select: { id: true },
+        });
+        if (!owned) restaurantId = undefined;
+      }
 
       if (!restaurantId && user.role === 'RESTAURANT_OWNER') {
         const rest = await prisma.restaurant.findFirst({
           where: { ownerId: user.id, deletedAt: null },
+          orderBy: { createdAt: 'asc' },
           select: { id: true },
         });
         restaurantId = rest?.id;
@@ -1613,6 +1623,7 @@ export async function getSessionBill(
       if (!restaurantId && user.role === 'SUPER_ADMIN') {
         const rest = await prisma.restaurant.findFirst({
           where: { deletedAt: null },
+          orderBy: { createdAt: 'asc' },
           select: { id: true },
         });
         restaurantId = rest?.id;

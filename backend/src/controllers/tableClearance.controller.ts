@@ -10,20 +10,23 @@ import { logger } from '../utils/logger';
 /**
  * Resolves the restaurant for an authenticated user (Owner, Manager, or Kitchen).
  */
-async function getAuthenticatedUserRestaurant(user: NonNullable<AuthenticatedRequest['user']>) {
-  let restaurantId = (user as any).restaurantId || (user as any).kitchenRestaurantId;
+async function getAuthenticatedUserRestaurant(user: NonNullable<AuthenticatedRequest['user']>, requestedRestaurantId?: string) {
+  let restaurantId = requestedRestaurantId || (user as any).restaurantId || (user as any).kitchenRestaurantId;
 
-  if (!restaurantId && user.role === 'RESTAURANT_OWNER') {
+  if (restaurantId) {
     const rest = await prisma.restaurant.findFirst({
-      where: { ownerId: user.id, deletedAt: null },
+      where: user.role === 'RESTAURANT_OWNER'
+        ? { id: restaurantId, ownerId: user.id, deletedAt: null }
+        : { id: restaurantId, deletedAt: null },
       select: { id: true, name: true, slug: true, sessionManagementMode: true, qrSettings: true, platformType: true },
     });
     if (rest) return rest;
   }
 
-  if (restaurantId) {
-    const rest = await prisma.restaurant.findUnique({
-      where: { id: restaurantId },
+  if (user.role === 'RESTAURANT_OWNER') {
+    const rest = await prisma.restaurant.findFirst({
+      where: { ownerId: user.id, deletedAt: null },
+      orderBy: { createdAt: 'asc' },
       select: { id: true, name: true, slug: true, sessionManagementMode: true, qrSettings: true, platformType: true },
     });
     if (rest) return rest;
@@ -32,6 +35,7 @@ async function getAuthenticatedUserRestaurant(user: NonNullable<AuthenticatedReq
   if (user.role === 'SUPER_ADMIN') {
     const rest = await prisma.restaurant.findFirst({
       where: { deletedAt: null },
+      orderBy: { createdAt: 'asc' },
       select: { id: true, name: true, slug: true, sessionManagementMode: true, qrSettings: true, platformType: true },
     });
     if (rest) return rest;
@@ -50,7 +54,8 @@ export async function getSessionManagementMode(
   next: NextFunction
 ): Promise<void> {
   try {
-    const restaurant = await getAuthenticatedUserRestaurant(req.user!);
+    const reqRestId = (req.headers['x-restaurant-id'] as string) || (req.query.restaurantId as string);
+    const restaurant = await getAuthenticatedUserRestaurant(req.user!, reqRestId);
     res.json({
       success: true,
       data: {
@@ -74,7 +79,8 @@ export async function updateSessionManagementMode(
   next: NextFunction
 ): Promise<void> {
   try {
-    const restaurant = await getAuthenticatedUserRestaurant(req.user!);
+    const reqRestId = (req.headers['x-restaurant-id'] as string) || (req.query.restaurantId as string);
+    const restaurant = await getAuthenticatedUserRestaurant(req.user!, reqRestId);
     const { mode } = req.body as { mode?: string };
 
     if (!mode || !['AUTO', 'MANUAL'].includes(mode.toUpperCase())) {
@@ -115,7 +121,8 @@ export async function getTableClearanceDashboard(
   next: NextFunction
 ): Promise<void> {
   try {
-    const restaurant = await getAuthenticatedUserRestaurant(req.user!);
+    const reqRestId = (req.headers['x-restaurant-id'] as string) || (req.query.restaurantId as string);
+    const restaurant = await getAuthenticatedUserRestaurant(req.user!, reqRestId);
 
     // 1. Gather all tables configured for this restaurant
     const defaultTables = restaurant.platformType === 'HOTEL'
@@ -286,7 +293,8 @@ export async function clearTableManual(
   next: NextFunction
 ): Promise<void> {
   try {
-    const restaurant = await getAuthenticatedUserRestaurant(req.user!);
+    const reqRestId = (req.headers['x-restaurant-id'] as string) || (req.query.restaurantId as string);
+    const restaurant = await getAuthenticatedUserRestaurant(req.user!, reqRestId);
     const { tableNumber, sessionId, reason, forceClear = false } = req.body as {
       tableNumber?: string;
       sessionId?: string;
