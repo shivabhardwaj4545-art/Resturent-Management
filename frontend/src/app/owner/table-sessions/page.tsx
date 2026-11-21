@@ -26,6 +26,7 @@ import {
   ArrowRight,
   UserCheck,
   Printer,
+  FileText,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { useRouter } from 'next/navigation';
@@ -35,6 +36,7 @@ import { toast } from 'sonner';
 import { io } from 'socket.io-client';
 import { WaiterBell } from '@/components/owner/WaiterBell';
 import { OwnerSidebar } from '@/components/owner/OwnerSidebar';
+import { downloadInvoicePdf } from '@/utils/pdfInvoice';
 
 interface BatchItem {
   id: string;
@@ -976,13 +978,68 @@ export default function OwnerTableSessionsPage() {
               </div>
 
               <div className="pt-3 border-t border-border flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="px-4 py-2.5 bg-card border border-border hover:bg-muted text-foreground font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors shadow-2xs"
-                >
-                  <Printer className="w-4 h-4 text-primary" /> Print Bill Receipt
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="px-4 py-2.5 bg-card border border-border hover:bg-muted text-foreground font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors shadow-2xs"
+                    title="Print Thermal / POS Bill Receipt"
+                  >
+                    <Printer className="w-4 h-4 text-primary" /> Print Receipt
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!sessionBillData) return;
+                      const itemMap = new Map<string, { itemName: string; quantity: number; unitPrice: number; subtotal: number }>();
+                      (sessionBillData.batches || []).forEach((b: any) => {
+                        (b.items || []).forEach((it: any) => {
+                          const key = it.itemName;
+                          const existing = itemMap.get(key);
+                          const qty = it.quantity || 1;
+                          const price = it.unitPrice || (it.subtotal ? it.subtotal / qty : 0);
+                          const sub = it.subtotal || price * qty;
+                          if (existing) {
+                            existing.quantity += qty;
+                            existing.subtotal += sub;
+                          } else {
+                            itemMap.set(key, {
+                              itemName: it.itemName,
+                              quantity: qty,
+                              unitPrice: price,
+                              subtotal: sub,
+                            });
+                          }
+                        });
+                      });
+
+                      const items = Array.from(itemMap.values()).map(it => ({
+                        name: it.itemName,
+                        quantity: it.quantity,
+                        unitPrice: it.unitPrice,
+                        subtotal: it.subtotal,
+                      }));
+
+                      downloadInvoicePdf({
+                        id: sessionBillData.sessionCode || 'SESSION',
+                        tableNumber: sessionBillData.tableNumber,
+                        subtotal: Number(sessionBillData.totals?.subtotal || 0),
+                        gstAmount: Number(sessionBillData.totals?.tax || 0),
+                        discount: Number(sessionBillData.totals?.discount || 0),
+                        total: Number(sessionBillData.totals?.grandTotal || 0),
+                        paymentMethod: sessionBillData.totals?.paymentMethod || 'COUNTER_CASH',
+                        paymentStatus: sessionBillData.totals?.isPaid ? 'PAID' : 'PENDING',
+                        verificationCode: sessionBillData.sessionCode,
+                        items,
+                      }, sessionBillData.restaurant);
+                      toast.success('Session Tax Invoice PDF downloaded!');
+                    }}
+                    className="px-4 py-2.5 bg-primary/10 border border-primary/20 hover:bg-primary/20 text-primary font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                    title="Download Consolidated GST Tax Invoice in PDF format"
+                  >
+                    <FileText className="w-4 h-4" /> Download PDF
+                  </button>
+                </div>
                 <button
                   onClick={() => setViewBillSessionId(null)}
                   className="px-5 py-2.5 bg-muted hover:bg-muted/80 text-foreground font-semibold text-xs rounded-xl"

@@ -36,6 +36,7 @@ import { QuickServiceModal, QuickServiceType } from './QuickServiceModal';
 import { playNewOrderSound, processRealTimeEvent } from '@/utils/audio';
 import { applyThemeColor } from '@/utils/theme';
 import { printCustomerBill } from '@/utils/billPrint';
+import { downloadInvoicePdf } from '@/utils/pdfInvoice';
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
 
@@ -692,14 +693,24 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
                       themeColor: order.restaurant?.themeColor,
                     },
                   })}
-                  className="flex-1 py-3 px-4 rounded-xl border border-primary/20 bg-primary/10 text-primary text-center text-xs font-bold hover:bg-primary/20 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                  className="flex-1 py-3 px-3 rounded-xl border border-primary/20 bg-primary/10 text-primary text-center text-xs font-bold hover:bg-primary/20 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Print Thermal / POS Receipt"
                 >
                   <Receipt className="w-4 h-4" />
-                  Print / View Tax Invoice
+                  <span>Print Receipt</span>
                 </button>
-                {order.paymentStatus === 'PAID' && (
-                  <InvoiceDownload order={order as any} themeColor={order.restaurant?.themeColor || '#E85D04'} />
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    downloadInvoicePdf(order, order.restaurant);
+                    toast.success('Tax Invoice PDF downloaded directly!');
+                  }}
+                  className="flex-1 py-3 px-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 text-center text-xs font-bold hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Download GST Tax Invoice in PDF format"
+                >
+                  <FileText className="w-4 h-4 text-primary" />
+                  <span>Download PDF</span>
+                </button>
               </div>
 
               <button

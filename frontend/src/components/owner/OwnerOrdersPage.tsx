@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import {
   ShoppingBag, UtensilsCrossed, LayoutDashboard, Tag, BarChart3, Settings, LogOut,
   Menu, Search, Clock, ChevronDown, RefreshCw, User, MapPin, Palette,
-  Mail, Phone, CreditCard, Receipt, Check, Wallet, Banknote, Sparkles, Star, AlertTriangle, ChefHat, Trash2, Utensils, Printer, Download
+  Mail, Phone, CreditCard, Receipt, Check, Wallet, Banknote, Sparkles, Star, AlertTriangle, ChefHat, Trash2, Utensils, Printer, Download, FileText
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api, { getSocketUrl } from '@/services/api';
@@ -20,6 +20,7 @@ import { isItemAddon } from '@/utils/orderAddon';
 import { CounterOrderVerification } from '@/components/owner/CounterOrderVerification';
 import { printKitchenOrderTicket } from '@/utils/kotPrint';
 import { printCustomerBill, exportGstOrdersCsv } from '@/utils/billPrint';
+import { downloadInvoicePdf } from '@/utils/pdfInvoice';
 import { ManualKotModal } from '@/components/owner/ManualKotModal';
 import { PREDEFINED_REJECTION_REASONS } from '@/utils/orderRejection';
 
@@ -751,17 +752,29 @@ export function OwnerOrdersPage() {
                                   )}
                                 </div>
 
-                                {/* Customer GST Tax Invoice / Bill Print */}
-                                <div className="pt-2">
+                                {/* Customer GST Tax Invoice / Bill Print & PDF Download */}
+                                <div className="pt-2 flex gap-2">
                                   <button
                                     onClick={() => printCustomerBill({
                                       order,
                                       restaurant: currentRestaurantInfo,
                                     })}
-                                    className="w-full py-2.5 px-3 text-xs font-bold rounded-xl bg-card border border-border hover:bg-muted text-foreground transition-all flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
+                                    className="flex-1 py-2.5 px-3 text-xs font-bold rounded-xl bg-card border border-border hover:bg-muted text-foreground transition-all flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
+                                    title="Print Thermal / POS GST Tax Bill"
                                   >
                                     <Receipt className="w-4 h-4 text-primary" />
-                                    <span>Print Customer Tax Invoice / Bill (GST)</span>
+                                    <span>Print Tax Bill</span>
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      downloadInvoicePdf(order, currentRestaurantInfo);
+                                      toast.success('GST Tax Invoice PDF downloaded!');
+                                    }}
+                                    className="flex-1 py-2.5 px-3 text-xs font-bold rounded-xl bg-primary/10 border border-primary/20 hover:bg-primary/20 text-primary transition-all flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
+                                    title="Download Official GST Tax Invoice in PDF format"
+                                  >
+                                    <FileText className="w-4 h-4" />
+                                    <span>Download PDF</span>
                                   </button>
                                 </div>
 
