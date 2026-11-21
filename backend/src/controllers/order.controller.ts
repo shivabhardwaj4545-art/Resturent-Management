@@ -1711,6 +1711,7 @@ async function resolveOrCreateTableSession(
         id: orderId,
         orderId,
         status: updatedOrder.status,
+        addOnStatus: 'PENDING',
         isAddon: true,
         isNewAddon: true,
       }, order.restaurant?.ownerId);

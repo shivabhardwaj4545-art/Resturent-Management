@@ -385,14 +385,6 @@ export function generateKotHtml(options: KotPrintOptions): string {
         ${isReprint ? '<div style="font-weight:900; margin-bottom:2px;">*** REPRINT COPY — DO NOT DUPLICATE PREPARATION ***</div>' : ''}
         Printed: ${printTimestamp} • Direct Kitchen Ticket
       </div>
-
-      <script>
-        window.onload = function() {
-          setTimeout(function() {
-            window.print();
-          }, 200);
-        };
-      </script>
     </body>
     </html>
   `;

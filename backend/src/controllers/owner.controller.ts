@@ -1284,6 +1284,7 @@ export async function updateOrderStatus(req: AuthenticatedRequest, res: Response
       addOnStatus: updatedOrder.addOnStatus,
       lastAddOnAt: updatedOrder.lastAddOnAt,
       updatedAt: updatedOrder.updatedAt.toISOString(),
+      reason,
     });
 
     // Synchronize linked TableSession and OrderBatch

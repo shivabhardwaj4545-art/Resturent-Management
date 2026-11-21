@@ -20,6 +20,7 @@ import { isItemAddon } from '@/utils/orderAddon';
 import { CounterOrderVerification } from '@/components/owner/CounterOrderVerification';
 import { printKitchenOrderTicket } from '@/utils/kotPrint';
 import { ManualKotModal } from '@/components/owner/ManualKotModal';
+import { PREDEFINED_REJECTION_REASONS } from '@/utils/orderRejection';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
@@ -132,6 +133,9 @@ export function OwnerOrdersPage() {
   const [page, setPage] = useState(1);
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [showManualKotModal, setShowManualKotModal] = useState(false);
+  const [rejectOrderTarget, setRejectOrderTarget] = useState<{ orderId: string; isAddon?: boolean } | null>(null);
+  const [selectedRejectReason, setSelectedRejectReason] = useState<string>(PREDEFINED_REJECTION_REASONS[0]);
+  const [customRejectReason, setCustomRejectReason] = useState<string>('');
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['owner-orders', statusFilter, search, page],
@@ -201,8 +205,8 @@ export function OwnerOrdersPage() {
   }, [restId, qc]);
 
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status, addOnStatus }: { id: string; status?: string; addOnStatus?: string }) => {
-      await api.patch(`/owner/orders/${id}/status`, { status, addOnStatus });
+    mutationFn: async ({ id, status, addOnStatus, reason }: { id: string; status?: string; addOnStatus?: string; reason?: string }) => {
+      await api.patch(`/owner/orders/${id}/status`, { status, addOnStatus, reason });
     },
     onSuccess: () => {
       toast.success('Order status updated');
@@ -811,7 +815,11 @@ export function OwnerOrdersPage() {
                                           Accept & Print KOT
                                         </button>
                                         <button
-                                          onClick={() => updateStatusMutation.mutate({ id: order.id, status: 'CANCELLED' })}
+                                          onClick={() => {
+                                            setSelectedRejectReason(PREDEFINED_REJECTION_REASONS[0]);
+                                            setCustomRejectReason('');
+                                            setRejectOrderTarget({ orderId: order.id, isAddon: false });
+                                          }}
                                           disabled={updateStatusMutation.isPending}
                                           className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 transition-all cursor-pointer"
                                         >
@@ -836,7 +844,11 @@ export function OwnerOrdersPage() {
                                               Accept & Print Add-on KOT
                                             </button>
                                             <button
-                                              onClick={() => updateStatusMutation.mutate({ id: order.id, addOnStatus: 'CANCELLED' })}
+                                              onClick={() => {
+                                                setSelectedRejectReason(PREDEFINED_REJECTION_REASONS[0]);
+                                                setCustomRejectReason('');
+                                                setRejectOrderTarget({ orderId: order.id, isAddon: true });
+                                              }}
                                               disabled={updateStatusMutation.isPending}
                                               className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 transition-all cursor-pointer"
                                             >
@@ -878,7 +890,15 @@ export function OwnerOrdersPage() {
                                   NEXT_STATUS[order.status]?.length > 0 && (
                                     <div className="flex gap-2 flex-wrap pt-2 border-t border-border">
                                       {NEXT_STATUS[order.status].map((next) => (
-                                        <button key={next} onClick={() => updateStatusMutation.mutate({ id: order.id, status: next })}
+                                        <button key={next} onClick={() => {
+                                          if (next === 'CANCELLED') {
+                                            setSelectedRejectReason(PREDEFINED_REJECTION_REASONS[0]);
+                                            setCustomRejectReason('');
+                                            setRejectOrderTarget({ orderId: order.id, isAddon: false });
+                                          } else {
+                                            updateStatusMutation.mutate({ id: order.id, status: next });
+                                          }
+                                        }}
                                           disabled={updateStatusMutation.isPending}
                                           className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all disabled:opacity-50 flex items-center gap-1 shadow-sm ${next === 'CANCELLED'
                                             ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200'
@@ -1049,6 +1069,89 @@ export function OwnerOrdersPage() {
         onClose={() => setShowManualKotModal(false)}
         restaurantName={restaurantName}
       />
+
+      {/* Polite Rejection Modal with Predefined Reasons */}
+      {rejectOrderTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-card border border-border rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4">
+            <div>
+              <h3 className="font-bold text-base text-foreground">
+                {rejectOrderTarget.isAddon ? 'Reject Add-on Request' : 'Reject Order'}
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Select a polite reason to notify the customer and automatically return them to the menu.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              {PREDEFINED_REJECTION_REASONS.map((r) => (
+                <label
+                  key={r}
+                  className={`flex items-start gap-2.5 p-2.5 rounded-xl border text-xs cursor-pointer transition-all ${
+                    selectedRejectReason === r
+                      ? 'border-primary bg-primary/5 font-semibold text-foreground'
+                      : 'border-border/70 hover:bg-muted/50 text-muted-foreground'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="tableRejectReason"
+                    value={r}
+                    checked={selectedRejectReason === r}
+                    onChange={() => setSelectedRejectReason(r)}
+                    className="mt-0.5 text-primary focus:ring-primary"
+                  />
+                  <span>{r}</span>
+                </label>
+              ))}
+            </div>
+
+            {selectedRejectReason === 'Other / Custom reason' && (
+              <textarea
+                placeholder="Enter custom polite reason for customer..."
+                value={customRejectReason}
+                onChange={(e) => setCustomRejectReason(e.target.value)}
+                className="w-full p-2.5 bg-muted rounded-xl text-xs border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 text-foreground resize-none h-20"
+              />
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setRejectOrderTarget(null);
+                  setSelectedRejectReason(PREDEFINED_REJECTION_REASONS[0]);
+                  setCustomRejectReason('');
+                }}
+                className="flex-1 py-2 px-3 rounded-xl border border-border font-semibold text-xs hover:bg-muted transition-colors text-foreground"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const finalReason = selectedRejectReason === 'Other / Custom reason'
+                    ? (customRejectReason.trim() || 'Unable to accept this order at this time.')
+                    : selectedRejectReason;
+                  const target = rejectOrderTarget;
+                  setRejectOrderTarget(null);
+                  if (target.isAddon) {
+                    await updateStatusMutation.mutateAsync({ id: target.orderId, addOnStatus: 'CANCELLED', reason: finalReason });
+                  } else {
+                    await updateStatusMutation.mutateAsync({ id: target.orderId, status: 'CANCELLED', reason: finalReason });
+                  }
+                  setSelectedRejectReason(PREDEFINED_REJECTION_REASONS[0]);
+                  setCustomRejectReason('');
+                }}
+                disabled={updateStatusMutation.isPending}
+                className="flex-1 py-2 px-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition-colors disabled:opacity-50"
+              >
+                Confirm Rejection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -160,15 +160,24 @@ export function emitOrderStatusUpdate(orderId: string, restaurantId: string, dat
   items?: any;
   toggledItemId?: string;
   isServed?: boolean;
+  reason?: string;
 }): void {
   if (!io) return;
   io.to(`order:${orderId}`).emit('order:status_updated', data);
   io.to(`order:${orderId}`).emit('order_status_changed', data);
   io.to(`restaurant:${restaurantId}`).emit('order:status_updated', data);
   io.to(`restaurant:${restaurantId}`).emit('order_status_changed', data);
-  io.to(`restaurant:${restaurantId}`).emit('order:dismiss_alert', { orderId, status: data.status, addOnStatus: data.addOnStatus });
 
-  // Also emit to owner's personal room so all owner devices receive status updates and dismiss popups
+  const shouldDismissAlert = !data.isNewAddon && data.addOnStatus !== 'PENDING' && (data.status === 'CONFIRMED' || data.status === 'CANCELLED' || data.status === 'DELIVERED');
+  if (shouldDismissAlert) {
+    io.to(`restaurant:${restaurantId}`).emit('order:dismiss_alert', { orderId, status: data.status, addOnStatus: data.addOnStatus });
+  }
+
+  if (data.isNewAddon || data.addOnStatus === 'PENDING') {
+    io.to(`restaurant:${restaurantId}`).emit('order:new_addon', data);
+  }
+
+  // Also emit to owner's personal room so all owner devices receive status updates
   void (async () => {
     try {
       const rest = await prisma.restaurant.findUnique({
@@ -178,7 +187,13 @@ export function emitOrderStatusUpdate(orderId: string, restaurantId: string, dat
       if (rest?.ownerId && io) {
         io.to(`user:${rest.ownerId}`).emit('order:status_updated', data);
         io.to(`user:${rest.ownerId}`).emit('order_status_changed', data);
-        io.to(`user:${rest.ownerId}`).emit('order:dismiss_alert', { orderId, status: data.status, addOnStatus: data.addOnStatus });
+        if (shouldDismissAlert) {
+          io.to(`user:${rest.ownerId}`).emit('order:dismiss_alert', { orderId, status: data.status, addOnStatus: data.addOnStatus });
+        }
+        if (data.isNewAddon || data.addOnStatus === 'PENDING') {
+          io.to(`user:${rest.ownerId}`).emit('order:new_addon', data);
+          io.to(`user:${rest.ownerId}`).emit('new_order', data);
+        }
       }
     } catch {
       // Ignore lookup error

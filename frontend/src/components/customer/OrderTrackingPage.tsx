@@ -102,6 +102,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
 
   const [mounted, setMounted] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<string>('PENDING');
+  const [cancelReason, setCancelReason] = useState<string | null>(null);
   const [activeServiceModal, setActiveServiceModal] = useState<QuickServiceType | null>(null);
   const [showBillModal, setShowBillModal] = useState(false);
   const [showMoreModal, setShowMoreModal] = useState(false);
@@ -170,6 +171,9 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
       reason?: string;
     }) => {
       if (data.orderId === orderId) {
+        if (data.reason) {
+          setCancelReason(data.reason);
+        }
         processRealTimeEvent('order_status_changed', () => {
           if (data.addOnStatus && data.addOnStatus !== lastNotifiedAddOnStatusRef.current) {
             lastNotifiedAddOnStatusRef.current = data.addOnStatus;
@@ -177,7 +181,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
               playNewOrderSound();
               toast.success('🎉 Add-on Accepted! Your items are now being prepared.');
             } else if (data.addOnStatus === 'CANCELLED') {
-              toast.error('Add-on request could not be accepted by the counter.');
+              toast.error(data.reason ? `Add-on Rejected: ${data.reason}` : 'Add-on request could not be accepted by the counter.');
             }
           }
 
@@ -206,6 +210,9 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
     socket.on('order_cancelled', (data: any) => {
       if (data?.orderId === orderId) {
         setCurrentStatus('CANCELLED');
+        if (data.reason) {
+          setCancelReason(data.reason);
+        }
         toast.error(`Order Not Accepted${data.reason ? `: ${data.reason}` : ''}`);
         queryClient.invalidateQueries({ queryKey: ['order', orderId] });
       }
@@ -219,6 +226,22 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
       socket.disconnect();
     };
   }, [orderId, queryClient]);
+
+  // Auto-redirect to menu when order is cancelled
+  useEffect(() => {
+    if (currentStatus === 'CANCELLED' || order?.status === 'CANCELLED') {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('active_table_order_id');
+        localStorage.removeItem(`active_table_order_id_${restaurantSlug}`);
+        sessionStorage.removeItem('qr_restaurant_addon_order_id');
+        sessionStorage.removeItem('qr_restaurant_addon_order_num');
+      }
+      const timer = setTimeout(() => {
+        router.push(`/r/${restaurantSlug}`);
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [currentStatus, order?.status, restaurantSlug, router]);
 
   // ── Add More Items Handler ────────────────────────────────────────────────
   const handleAddMoreItems = () => {
@@ -344,13 +367,34 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
           </h2>
 
           {/* Supporting Message */}
-          <p className="text-xs text-neutral-600 dark:text-neutral-300 font-medium leading-relaxed max-w-xs mx-auto">
-            {isAddonPending && "Your add-on request has been sent to the counter. The staff will accept and print your KOT shortly."}
-            {!isAddonPending && isPending && "We'll notify you once it is accepted or if there is any issue."}
-            {isAccepted && 'Your order has been accepted and sent to the kitchen.'}
-            {isRejected && 'The restaurant could not accept your order. Please place a new order or contact staff.'}
-            {isDelivered && 'Your food has been served. Enjoy your meal!'}
-          </p>
+          <div className="text-xs text-neutral-600 dark:text-neutral-300 font-medium leading-relaxed max-w-xs mx-auto space-y-2">
+            {isAddonPending && <p>Your add-on request has been sent to the counter. The staff will accept and print your KOT shortly.</p>}
+            {!isAddonPending && isPending && <p>We'll notify you once it is accepted or if there is any issue.</p>}
+            {isAccepted && <p>Your order has been accepted and sent to the kitchen.</p>}
+            {isRejected && (
+              <div className="space-y-2.5">
+                {cancelReason ? (
+                  <div className="font-semibold text-rose-600 dark:text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl p-2.5 text-xs">
+                    Reason: {cancelReason}
+                  </div>
+                ) : (
+                  <p>The restaurant could not accept your order at this moment.</p>
+                )}
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                  Redirecting back to the menu in a few seconds...
+                </p>
+                <div>
+                  <Link
+                    href={`/r/${restaurantSlug}`}
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 text-xs font-bold shadow-xs hover:opacity-90 transition-opacity"
+                  >
+                    <UtensilsCrossed className="w-3.5 h-3.5" /> Return to Menu Now
+                  </Link>
+                </div>
+              </div>
+            )}
+            {isDelivered && <p>Your food has been served. Enjoy your meal!</p>}
+          </div>
 
           {/* Verification Code pill if counter verification is active */}
           {order.verificationCode && (

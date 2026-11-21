@@ -275,7 +275,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
   const grandTotalBeforePoints = Math.max(subtotalAmount + gst - finalCouponDiscount, 0);
 
   // Live coupons for this restaurant
-  const { data: publicCoupons = [] } = useQuery<Array<{
+  const { data: publicCoupons = [], isSuccess: isCouponsFetched } = useQuery<Array<{
     id: string;
     code: string;
     type: 'FLAT' | 'PERCENT';
@@ -304,9 +304,15 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
       transports: ['polling', 'websocket'],
     });
 
-    const handleCouponsUpdated = () => {
+    const handleCouponsUpdated = (payload?: any) => {
       queryClient.invalidateQueries({ queryKey: ['public-coupons', restaurantSlug] });
       queryClient.invalidateQueries({ queryKey: ['coupon-suggestion'] });
+      if (payload && (payload.action === 'DELETED' || payload.action === 'TOGGLED' || payload.action === 'DISABLED')) {
+        if (couponCode && payload.coupon && payload.coupon.code && payload.coupon.code.toUpperCase() === couponCode.toUpperCase()) {
+          removeCoupon();
+          toast.error(`Coupon "${couponCode}" is no longer active.`);
+        }
+      }
     };
 
     socket.on('coupons:updated', handleCouponsUpdated);
@@ -315,18 +321,18 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
     return () => {
       socket.disconnect();
     };
-  }, [restaurantSlug, queryClient]);
+  }, [restaurantSlug, queryClient, couponCode, removeCoupon]);
 
   // If a previously applied coupon becomes invalid or disabled, remove it automatically
   useEffect(() => {
-    if (couponCode && publicCoupons.length > 0) {
+    if (couponCode && isCouponsFetched) {
       const stillValid = publicCoupons.some((c) => c.code.toUpperCase() === couponCode.toUpperCase());
       if (!stillValid) {
         removeCoupon();
         toast.error(`Coupon "${couponCode}" is no longer active.`);
       }
     }
-  }, [couponCode, publicCoupons, removeCoupon]);
+  }, [couponCode, publicCoupons, isCouponsFetched, removeCoupon]);
 
   const handleApplyCoupon = async (code: string) => {
     if (!code.trim()) return;
@@ -560,47 +566,6 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
     return () => clearInterval(interval);
   }, [showUpiModal, upiData?.paymentId]);
 
-
-  // Order Confirmation & Review Modal state
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [pendingGuestData, setPendingGuestData] = useState<GuestForm | null>(null);
-
-  const initiateGuestOrder = (formData: GuestForm) => {
-    if (items.length === 0) {
-      toast.error('Your cart is empty');
-      return;
-    }
-    if (!manualTableNumber || !manualTableNumber.trim()) {
-      toast.error('Please enter your table or room number.');
-      return;
-    }
-    setPendingGuestData(formData);
-    setShowConfirmModal(true);
-  };
-
-  const initiateUserOrder = () => {
-    if (items.length === 0) {
-      toast.error('Your cart is empty');
-      return;
-    }
-    if (!manualTableNumber || !manualTableNumber.trim()) {
-      toast.error('Please enter your table or room number.');
-      return;
-    }
-    setPendingGuestData(null);
-    setShowConfirmModal(true);
-  };
-
-  const confirmAndPlaceOrder = async () => {
-    setShowConfirmModal(false);
-    if (activeUser) {
-      await onUserOrder();
-    } else if (pendingGuestData) {
-      await onGuestSubmit(pendingGuestData);
-    } else {
-      await onGuestSubmit({} as any);
-    }
-  };
 
   const onGuestSubmit = async (formData: GuestForm) => {
     if (items.length === 0) {
@@ -1142,7 +1107,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                 </button>
               </div>
             ) : (
-              <form onSubmit={handleSubmit(initiateGuestOrder)} className="bg-card border border-border rounded-2xl p-4 space-y-4">
+              <form onSubmit={handleSubmit(onGuestSubmit)} className="bg-card border border-border rounded-2xl p-4 space-y-4">
                 <div className="flex items-center justify-between">
                   <h2 className="font-display font-semibold">Your Details</h2>
                   <Link
@@ -1215,151 +1180,6 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
               </form>
             )}
           </div>
-
-
-          {/* Final Order Review & Confirmation Modal */}
-          <AnimatePresence>
-            {showConfirmModal && (
-              <div className="fixed inset-0 z-50 overflow-y-auto flex min-h-full items-center justify-center p-3 sm:p-4">
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  onClick={() => setShowConfirmModal(false)}
-                  className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-                />
-
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                  className="relative w-full max-w-md bg-card border border-border rounded-3xl shadow-2xl overflow-hidden z-10 max-h-[90vh] flex flex-col"
-                >
-                  {/* Header */}
-                  <div className="p-4 sm:p-5 border-b border-border flex items-center justify-between bg-muted/20">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-500">
-                        <UtensilsCrossed className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h2 className="font-display font-bold text-base text-foreground">Confirm Your Order</h2>
-                        <p className="text-xs text-muted-foreground">Review your dishes before sending to kitchen</p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmModal(false)}
-                      className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground transition-colors"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  </div>
-
-                  {/* Scrollable Content */}
-                  <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
-                    {/* Warning Alert Banner */}
-                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 flex items-start gap-2.5">
-                      <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                      <div className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
-                        <span className="font-semibold">Notice: Orders cannot be changed after placing!</span>
-                        <p className="mt-0.5 opacity-90">
-                          Once placed, your order is sent directly to the kitchen. Please check items and quantities below. If you want to change anything, you can edit it right here!
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Items List with Edit Quantities */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Order Items</h3>
-                        <Link
-                          href={`/r/${restaurantSlug}`}
-                          onClick={() => setShowConfirmModal(false)}
-                          className="text-xs text-primary font-semibold hover:underline flex items-center gap-1"
-                        >
-                          <Plus className="w-3 h-3" /> Add More Dishes
-                        </Link>
-                      </div>
-
-                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1 divide-y divide-border/40">
-                        {items.map((item) => (
-                          <div key={item.id} className="pt-2 first:pt-0 flex items-center justify-between gap-3">
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium text-sm text-foreground truncate">{item.name}</p>
-                              <p className="text-xs text-muted-foreground">₹{item.unitPrice.toFixed(0)} each</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="flex items-center border border-border rounded-lg overflow-hidden bg-muted/40">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (item.quantity > 1) updateQuantity(item.id, item.quantity - 1);
-                                    else removeItem(item.id);
-                                  }}
-                                  className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors font-bold text-xs"
-                                >
-                                  -
-                                </button>
-                                <span className="w-6 text-center text-xs font-bold">{item.quantity}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                                  className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors font-bold text-xs"
-                                >
-                                  +
-                                </button>
-                              </div>
-                              <span className="font-semibold text-sm w-14 text-right">
-                                ₹{(item.unitPrice * item.quantity).toFixed(0)}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Table & Payment Details */}
-                    <div className="bg-muted/40 border border-border/60 rounded-2xl p-3.5 space-y-2 text-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Dining Location:</span>
-                        <span className="font-bold text-foreground">Table {manualTableNumber}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Payment Method:</span>
-                          <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                            Pay at Restaurant / Counter
-                          </span>
-                      </div>
-                      <div className="border-t border-border/50 pt-2 flex items-center justify-between font-bold text-sm">
-                        <span className="text-foreground">Total to Pay:</span>
-                        <span className="text-primary font-bold text-base">₹{grandTotal.toFixed(2)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Modal Footer Actions */}
-                  <div className="p-4 sm:p-5 border-t border-border bg-muted/10 flex gap-2.5">
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmModal(false)}
-                      className="flex-1 py-3 px-3 rounded-xl border border-border font-semibold text-xs hover:bg-muted transition-colors text-foreground flex items-center justify-center gap-1.5"
-                    >
-                      <Pencil className="w-3.5 h-3.5" /> Edit Order
-                    </button>
-                    <button
-                      type="button"
-                      onClick={confirmAndPlaceOrder}
-                      disabled={loading || items.length === 0}
-                      className="flex-[1.5] py-3 px-4 rounded-xl font-bold text-xs text-white bg-gradient-to-r from-orange-500 to-amber-500 shadow-md shadow-orange-500/20 hover:opacity-95 disabled:opacity-60 flex items-center justify-center gap-1.5"
-                    >
-                      {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                      {loading ? 'Sending to Kitchen...' : `Confirm & Place Order · ₹${grandTotal.toFixed(2)}`}
-                    </button>
-                  </div>
-                </motion.div>
-              </div>
-            )}
-          </AnimatePresence>
 
           {/* UPI Intent Payment Modal & Verification Screen */}
           <AnimatePresence>
