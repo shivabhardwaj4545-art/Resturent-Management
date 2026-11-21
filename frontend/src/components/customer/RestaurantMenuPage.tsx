@@ -1158,6 +1158,13 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
     };
     socket.on('restaurant:qr_service_toggled', handleQrServiceToggled);
 
+    const handleCouponsUpdated = () => {
+      queryClient.invalidateQueries({ queryKey: ['coupon-suggestion'] });
+      queryClient.invalidateQueries({ queryKey: ['public-coupons'] });
+    };
+    socket.on('coupons:updated', handleCouponsUpdated);
+    socket.on('coupon:updated', handleCouponsUpdated);
+
     return () => {
       socket.disconnect();
       socketRef.current = null;

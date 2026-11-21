@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { uploadMenuItemImage, uploadRestaurantLogo, uploadRestaurantBanner, uploadRestaurantPaymentQr } from '../services/cloudinary.service';
-import { emitOrderStatusUpdate, emitNotification, emitUserLoyaltyUpdate, emitPaymentNotReceived, emitOrderDeleted, emitTableSessionUpdate, getSocketServer } from '../services/socket.service';
+import { emitOrderStatusUpdate, emitNotification, emitUserLoyaltyUpdate, emitPaymentNotReceived, emitOrderDeleted, emitTableSessionUpdate, emitCouponsUpdated, getSocketServer } from '../services/socket.service';
 import { cacheDelPattern, cacheSet } from '../services/redis.service';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { generateTableSignature } from '../utils/tableSignature';
@@ -992,6 +992,7 @@ export async function createCoupon(req: AuthenticatedRequest, res: Response, nex
     const coupon = await prisma.coupon.create({
       data: { ...req.body as any, restaurantId: restaurant.id },
     });
+    emitCouponsUpdated(restaurant.id, { action: 'CREATED', coupon, restaurantSlug: restaurant.slug });
     res.status(201).json({ success: true, data: { coupon }, message: 'Coupon created' });
   } catch (error) { next(error); }
 }
@@ -1003,6 +1004,7 @@ export async function updateCoupon(req: AuthenticatedRequest, res: Response, nex
     const existing = await prisma.coupon.findFirst({ where: { id, restaurantId: restaurant.id } });
     if (!existing) throw new AppError('Coupon not found.', 404, 'COUPON_NOT_FOUND');
     const coupon = await prisma.coupon.update({ where: { id }, data: req.body as Record<string, unknown> });
+    emitCouponsUpdated(restaurant.id, { action: 'UPDATED', coupon, restaurantSlug: restaurant.slug });
     res.json({ success: true, data: { coupon }, message: 'Coupon updated' });
   } catch (error) { next(error); }
 }
@@ -1014,6 +1016,7 @@ export async function deleteCoupon(req: AuthenticatedRequest, res: Response, nex
     const existing = await prisma.coupon.findFirst({ where: { id, restaurantId: restaurant.id } });
     if (!existing) throw new AppError('Coupon not found.', 404, 'COUPON_NOT_FOUND');
     await prisma.coupon.delete({ where: { id } });
+    emitCouponsUpdated(restaurant.id, { action: 'DELETED', id, restaurantSlug: restaurant.slug });
     res.json({ success: true, data: null, message: 'Coupon deleted' });
   } catch (error) { next(error); }
 }
@@ -1025,6 +1028,7 @@ export async function toggleCoupon(req: AuthenticatedRequest, res: Response, nex
     const existing = await prisma.coupon.findFirst({ where: { id, restaurantId: restaurant.id } });
     if (!existing) throw new AppError('Coupon not found.', 404, 'COUPON_NOT_FOUND');
     const updated = await prisma.coupon.update({ where: { id }, data: { isActive: !existing.isActive } });
+    emitCouponsUpdated(restaurant.id, { action: 'TOGGLED', coupon: updated, restaurantSlug: restaurant.slug });
     res.json({ success: true, data: { isActive: updated.isActive } });
   } catch (error) { next(error); }
 }
@@ -1047,7 +1051,16 @@ export async function getOrders(req: AuthenticatedRequest, res: Response, next: 
         paymentMethod: 'UPI_INTENT',
         paymentStatus: 'PENDING',
       },
-      ...(status && status !== 'ALL' && { status }),
+      ...(status && status !== 'ALL' && (
+        status === 'PENDING'
+          ? {
+              OR: [
+                { status: 'PENDING' },
+                { addOnStatus: 'PENDING' },
+              ],
+            }
+          : { status }
+      )),
       ...(search && {
         OR: [
           { id: { contains: search, mode: 'insensitive' } },
@@ -1301,6 +1314,62 @@ export async function updateOrderStatus(req: AuthenticatedRequest, res: Response
           where: { id: updatedOrder.tableSessionId },
           data: {
             totalAmount: { decrement: updatedOrder.total },
+          },
+        });
+      }
+
+      // Handle Add-on acceptance or rejection
+      if (addOnStatus === 'CONFIRMED' && order.addOnStatus === 'PENDING') {
+        const pendingBatch = await prisma.orderBatch.findFirst({
+          where: { sessionId: updatedOrder.tableSessionId, status: 'SUBMITTED' },
+          orderBy: { batchNumber: 'desc' },
+        });
+
+        const addonItems = await prisma.orderItem.findMany({
+          where: { orderId: updatedOrder.id, isAddon: true },
+        });
+        const addonSubtotal = addonItems.reduce((sum, item) => sum + (item.subtotal || 0), 0);
+        const addonTax = addonSubtotal * 0.05;
+        const addOnIncrement = pendingBatch?.total || (addonSubtotal + addonTax);
+
+        await prisma.tableSession.update({
+          where: { id: updatedOrder.tableSessionId },
+          data: {
+            totalAmount: { increment: addOnIncrement },
+            paymentStatus: 'PENDING',
+          },
+        });
+
+        if (pendingBatch) {
+          await prisma.orderBatch.update({
+            where: { id: pendingBatch.id },
+            data: { status: 'ACCEPTED', acceptedAt: now },
+          });
+        }
+      } else if (addOnStatus === 'CANCELLED' && order.addOnStatus === 'PENDING') {
+        await prisma.orderBatch.updateMany({
+          where: { sessionId: updatedOrder.tableSessionId, status: 'SUBMITTED' },
+          data: { status: 'CANCELLED' },
+        });
+
+        const addonItems = await prisma.orderItem.findMany({
+          where: { orderId: updatedOrder.id, isAddon: true },
+        });
+        const addonSubtotal = addonItems.reduce((sum, item) => sum + (item.subtotal || 0), 0);
+        const addonTax = addonSubtotal * 0.05;
+        const addonTotal = addonSubtotal + addonTax;
+
+        await prisma.orderItem.deleteMany({
+          where: { orderId: updatedOrder.id, isAddon: true },
+        });
+
+        await prisma.order.update({
+          where: { id: updatedOrder.id },
+          data: {
+            subtotal: { decrement: addonSubtotal },
+            gstAmount: { decrement: addonTax },
+            total: { decrement: addonTotal },
+            addOnStatus: 'CANCELLED',
           },
         });
       }

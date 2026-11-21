@@ -160,9 +160,16 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
     }) => {
       if (data.orderId === orderId) {
         processRealTimeEvent('order_status_changed', () => {
+          if (data.addOnStatus === 'CONFIRMED') {
+            playNewOrderSound();
+            toast.success('🎉 Add-on Accepted! Your items are now being prepared.');
+          } else if (data.addOnStatus === 'CANCELLED') {
+            toast.error('Add-on request could not be accepted by the counter.');
+          }
+
           if (data.status) {
             setCurrentStatus(data.status);
-            if (data.status === 'CONFIRMED') {
+            if (data.status === 'CONFIRMED' && !data.addOnStatus) {
               playNewOrderSound();
               toast.success('🎉 Order Accepted! Your food is now being prepared.');
             } else if (data.status === 'CANCELLED') {
@@ -249,10 +256,11 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
     );
   }
 
-  const isPending = currentStatus === 'PENDING';
-  const isAccepted = currentStatus === 'CONFIRMED' || currentStatus === 'PREPARING' || currentStatus === 'BAKING' || currentStatus === 'READY';
+  const isAddonPending = order?.addOnStatus === 'PENDING';
+  const isPending = currentStatus === 'PENDING' || isAddonPending;
+  const isAccepted = !isAddonPending && (currentStatus === 'CONFIRMED' || currentStatus === 'PREPARING' || currentStatus === 'BAKING' || currentStatus === 'READY');
   const isRejected = currentStatus === 'CANCELLED';
-  const isDelivered = currentStatus === 'DELIVERED';
+  const isDelivered = !isAddonPending && currentStatus === 'DELIVERED';
 
   return (
     <div className="min-h-screen bg-[#F8F9FA] dark:bg-neutral-950 flex flex-col justify-between max-w-md mx-auto relative pb-28 selection:bg-purple-200">
@@ -311,7 +319,8 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
 
           {/* Heading */}
           <h2 className="font-extrabold text-base sm:text-lg leading-snug mb-1.5 px-2">
-            {isPending && 'Your order has been sent to the restaurant for confirmation.'}
+            {isAddonPending && 'Add-on Order Submitted! Wait for Confirmation'}
+            {!isAddonPending && isPending && 'Your order has been sent to the restaurant for confirmation.'}
             {isAccepted && 'Order Accepted!'}
             {isRejected && 'Order Not Accepted'}
             {isDelivered && 'Order Served & Completed!'}
@@ -319,7 +328,8 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
 
           {/* Supporting Message */}
           <p className="text-xs text-neutral-600 dark:text-neutral-300 font-medium leading-relaxed max-w-xs mx-auto">
-            {isPending && "We'll notify you once it is accepted or if there is any issue."}
+            {isAddonPending && "Your add-on request has been sent to the counter. The staff will accept and print your KOT shortly."}
+            {!isAddonPending && isPending && "We'll notify you once it is accepted or if there is any issue."}
             {isAccepted && 'Your order has been accepted and sent to the kitchen.'}
             {isRejected && 'The restaurant could not accept your order. Please place a new order or contact staff.'}
             {isDelivered && 'Your food has been served. Enjoy your meal!'}

@@ -1,4 +1,4 @@
-import { Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import type { AuthenticatedRequest } from '../middlewares/auth.middleware';
@@ -292,6 +292,58 @@ export async function removeCoupon(
 ): Promise<void> {
   try {
     res.json({ success: true, data: null, message: 'Coupon removed' });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getPublicCoupons(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const restaurantSlug = req.params.restaurantSlug as string;
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { slug: restaurantSlug },
+      select: { id: true },
+    });
+
+    if (!restaurant) {
+      throw new AppError('Restaurant not found.', 404, 'RESTAURANT_NOT_FOUND');
+    }
+
+    const coupons = await prisma.coupon.findMany({
+      where: {
+        isActive: true,
+        OR: [{ restaurantId: restaurant.id }, { restaurantId: null }],
+        AND: [
+          {
+            OR: [
+              { expiresAt: null },
+              { expiresAt: { gt: new Date() } },
+            ],
+          },
+        ],
+      },
+      select: {
+        id: true,
+        code: true,
+        type: true,
+        value: true,
+        minOrderAmount: true,
+        maxDiscount: true,
+        maxUses: true,
+        usedCount: true,
+        expiresAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json({
+      success: true,
+      data: { coupons },
+    });
   } catch (error) {
     next(error);
   }

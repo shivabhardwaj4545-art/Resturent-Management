@@ -6,10 +6,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, CreditCard, Banknote, Wallet, MapPin, User, Phone, Loader2, Plus, PlusCircle, Check, Lock, X, Smartphone, Building, Gift, Copy, QrCode, AlertCircle, UtensilsCrossed, Pencil } from 'lucide-react';
+import { ChevronLeft, CreditCard, Banknote, Wallet, MapPin, User, Phone, Loader2, Plus, PlusCircle, Check, Lock, X, Smartphone, Building, Gift, Copy, QrCode, AlertCircle, UtensilsCrossed, Pencil, Tag, Percent } from 'lucide-react';
 import { useCartStore } from '@/store/cart.store';
 import { useAuthStore } from '@/store/auth.store';
-import api from '@/services/api';
+import api, { getSocketUrl } from '@/services/api';
+import { io } from 'socket.io-client';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -200,8 +201,20 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
 
   const [usePoints, setUsePoints] = useState(false);
 
-
-  const { items, couponCode, couponDiscount, clearCart, subtotal, total, removeItem, updateQuantity } = useCartStore();
+  const {
+    items,
+    couponCode,
+    couponDiscount,
+    applyCoupon,
+    removeCoupon,
+    clearCart,
+    subtotal,
+    total,
+    removeItem,
+    updateQuantity,
+  } = useCartStore();
+  const [couponInput, setCouponInput] = useState('');
+  const [couponLoading, setCouponLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<'PAY_AT_COUNTER' | 'PAY_TO_WAITER' | 'COD' | 'UPI_INTENT'>('PAY_AT_COUNTER');
@@ -260,6 +273,89 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
   const gst = subtotalAmount * GST_RATE;
   const finalCouponDiscount = addonOrderId ? 0 : couponDiscount;
   const grandTotalBeforePoints = Math.max(subtotalAmount + gst - finalCouponDiscount, 0);
+
+  // Live coupons for this restaurant
+  const { data: publicCoupons = [] } = useQuery<Array<{
+    id: string;
+    code: string;
+    type: 'FLAT' | 'PERCENT';
+    value: number;
+    minOrderAmount: number;
+    maxDiscount?: number | null;
+    maxUses?: number | null;
+    usedCount?: number;
+    expiresAt?: string | null;
+  }>>({
+    queryKey: ['public-coupons', restaurantSlug],
+    queryFn: async () => {
+      try {
+        const res = await api.get(`/cart/coupons/${restaurantSlug}`);
+        return res.data?.data?.coupons ?? [];
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 0,
+  });
+
+  // Socket listener for real-time coupon updates from dashboard
+  useEffect(() => {
+    const socket = io(getSocketUrl(), {
+      transports: ['polling', 'websocket'],
+    });
+
+    const handleCouponsUpdated = () => {
+      queryClient.invalidateQueries({ queryKey: ['public-coupons', restaurantSlug] });
+      queryClient.invalidateQueries({ queryKey: ['coupon-suggestion'] });
+    };
+
+    socket.on('coupons:updated', handleCouponsUpdated);
+    socket.on('coupon:updated', handleCouponsUpdated);
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [restaurantSlug, queryClient]);
+
+  // If a previously applied coupon becomes invalid or disabled, remove it automatically
+  useEffect(() => {
+    if (couponCode && publicCoupons.length > 0) {
+      const stillValid = publicCoupons.some((c) => c.code.toUpperCase() === couponCode.toUpperCase());
+      if (!stillValid) {
+        removeCoupon();
+        toast.error(`Coupon "${couponCode}" is no longer active.`);
+      }
+    }
+  }, [couponCode, publicCoupons, removeCoupon]);
+
+  const handleApplyCoupon = async (code: string) => {
+    if (!code.trim()) return;
+    setCouponLoading(true);
+    try {
+      const response = await api.post('/cart/coupon', {
+        code: code.toUpperCase().trim(),
+        restaurantSlug,
+        cartTotal: subtotalAmount,
+      });
+      const { discount: discountAmount, coupon } = response.data.data as {
+        discount: number;
+        coupon: { code: string };
+      };
+      applyCoupon(coupon.code, discountAmount);
+      setCouponInput('');
+      toast.success(`Coupon applied! Saved ₹${discountAmount}`);
+    } catch (error: any) {
+      const msg = error.response?.data?.error || error.response?.data?.message || 'Invalid coupon code';
+      toast.error(msg);
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    removeCoupon();
+    toast.info('Coupon removed');
+  };
 
   const pointsAvailable = profileData?.loyaltyPoints ?? activeUser?.loyaltyPoints ?? 0;
   const maxPointsDiscount = pointsAvailable / pointsPerDiscountRupee;
@@ -767,6 +863,131 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
             </div>
           </div>
         </div>
+
+        {/* Live Coupons & Offers Card */}
+        {mounted && !addonOrderId && (
+          <div className="bg-card border border-border rounded-2xl p-4 space-y-3 shadow-xs">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                  <Tag className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">Offers & Coupons</h3>
+                  <p className="text-xs text-muted-foreground">Real-time restaurant coupons & discounts</p>
+                </div>
+              </div>
+              {couponCode && (
+                <span className="text-xs bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400 font-medium px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <Check className="w-3 h-3" /> Applied
+                </span>
+              )}
+            </div>
+
+            {couponCode ? (
+              <div className="flex items-center justify-between p-3 rounded-xl bg-green-50/60 dark:bg-green-950/20 border border-green-200 dark:border-green-900/50">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-green-100 dark:bg-green-900/40 flex items-center justify-center text-green-700 dark:text-green-300">
+                    <Tag className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold tracking-wider font-mono text-green-800 dark:text-green-300">
+                      {couponCode}
+                    </p>
+                    <p className="text-xs text-green-700 dark:text-green-400">
+                      Saving ₹{couponDiscount.toFixed(2)} on this order
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRemoveCoupon}
+                  className="text-xs font-semibold text-red-600 hover:text-red-700 px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-50 dark:border-red-900/50 transition-colors"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={couponInput}
+                    onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                    placeholder="Enter coupon code"
+                    className="flex-1 px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 uppercase font-mono"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleApplyCoupon(couponInput);
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleApplyCoupon(couponInput)}
+                    disabled={couponLoading || !couponInput.trim()}
+                    className="px-4 py-2 text-sm font-medium rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all flex items-center gap-1"
+                  >
+                    {couponLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Apply'}
+                  </button>
+                </div>
+
+                {publicCoupons.length > 0 && (
+                  <div className="space-y-2 pt-1 border-t border-border/60">
+                    <p className="text-xs font-medium text-muted-foreground">Available Coupons:</p>
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {publicCoupons.map((c) => {
+                        const meetsMin = !c.minOrderAmount || subtotalAmount >= c.minOrderAmount;
+                        const isLimitReached = c.maxUses !== null && c.maxUses !== undefined && (c.usedCount ?? 0) >= c.maxUses;
+                        const discountLabel = c.type === 'PERCENT' ? `${c.value}% OFF` : `₹${c.value} OFF`;
+                        return (
+                          <div
+                            key={c.id || c.code}
+                            className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${
+                              meetsMin && !isLimitReached
+                                ? 'bg-background hover:border-primary/40 border-border'
+                                : 'bg-muted/40 border-dashed border-border opacity-60'
+                            }`}
+                          >
+                            <div className="min-w-0 pr-2">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-bold text-xs px-2 py-0.5 rounded bg-primary/10 text-primary">
+                                  {c.code}
+                                </span>
+                                <span className="text-xs font-semibold text-foreground">{discountLabel}</span>
+                              </div>
+                              <p className="text-[11px] text-muted-foreground mt-0.5">
+                                {c.minOrderAmount && c.minOrderAmount > 0 ? `Min order ₹${c.minOrderAmount}` : 'No min order'}
+                                {c.maxDiscount ? ` • Up to ₹${c.maxDiscount}` : ''}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleApplyCoupon(c.code)}
+                              disabled={!meetsMin || isLimitReached || couponLoading}
+                              className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all shrink-0 ${
+                                meetsMin && !isLimitReached
+                                  ? 'bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground'
+                                  : 'bg-muted text-muted-foreground cursor-not-allowed'
+                              }`}
+                            >
+                              {!meetsMin
+                                ? `Add ₹${Math.ceil(c.minOrderAmount - subtotalAmount)}`
+                                : isLimitReached
+                                ? 'Limit Reached'
+                                : 'Apply'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Loyalty Points Card */}
         {loyaltyEnabled && activeUser && pointsAvailable > 0 && !addonOrderId && (

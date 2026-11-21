@@ -6,9 +6,10 @@ import { X, ShoppingBag, Minus, Plus, Trash2, Tag, ChevronRight, Sparkles, Loade
 import { useCartStore } from '@/store/cart.store';
 import { useAuthStore } from '@/store/auth.store';
 import { useRouter } from 'next/navigation';
-import api from '@/services/api';
+import api, { getSocketUrl } from '@/services/api';
 import { toast } from 'sonner';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { io } from 'socket.io-client';
 import { UpsellModal, UpsellItem } from './UpsellModal';
 
 const GST_RATE = 0.05;
@@ -33,6 +34,27 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, tableTo
   const [couponLoading, setCouponLoading] = useState(false);
   const [showUpsell, setShowUpsell] = useState(false);
   const [upsellDismissed, setUpsellDismissed] = useState(false);
+  const queryClient = useQueryClient();
+
+  // Real-time socket listener for coupon changes
+  useEffect(() => {
+    if (!open) return;
+    const socket = io(getSocketUrl(), {
+      transports: ['polling', 'websocket'],
+    });
+
+    const handleCouponsUpdated = () => {
+      queryClient.invalidateQueries({ queryKey: ['coupon-suggestion'] });
+      queryClient.invalidateQueries({ queryKey: ['public-coupons'] });
+    };
+
+    socket.on('coupons:updated', handleCouponsUpdated);
+    socket.on('coupon:updated', handleCouponsUpdated);
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [open, queryClient]);
 
   // Prevent background scrolling when cart drawer is open
   useEffect(() => {
@@ -85,7 +107,7 @@ export function CartDrawer({ open, onClose, restaurantSlug, tableNumber, tableTo
       };
     },
     enabled: open && items.length > 0,
-    staleTime: 60 * 1000,
+    staleTime: 0,
   });
 
   const handleApplyCouponDirectly = async (code: string) => {

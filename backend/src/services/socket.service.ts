@@ -401,6 +401,19 @@ export function emitRestaurantFeaturesUpdated(restaurantId: string, data: any): 
   io.to(`restaurant:${restaurantId}`).emit('restaurant:updated', data);
 }
 
+export function emitCouponsUpdated(restaurantId: string, data?: any): void {
+  if (!io) return;
+  const payload = {
+    restaurantId,
+    timestamp: new Date().toISOString(),
+    ...data,
+  };
+  io.to(`restaurant:${restaurantId}`).emit('coupons:updated', payload);
+  io.to(`restaurant:${restaurantId}`).emit('coupon:updated', payload);
+  io.emit('coupons:updated', payload);
+  io.emit('coupon:updated', payload);
+}
+
 export function getSocketIO(): SocketIOServer {
   if (!io) throw new Error('Socket.IO not initialized');
   return io;

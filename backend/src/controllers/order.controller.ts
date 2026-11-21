@@ -517,11 +517,12 @@ async function resolveOrCreateTableSession(
               },
             });
 
+            // Do not increment TableSession.totalAmount here.
+            // TableSession running total must only increment when the counter accepts the add-on.
             if (sessionRes.tableSessionId) {
               await tx.tableSession.update({
                 where: { id: sessionRes.tableSessionId },
                 data: {
-                  totalAmount: { increment: total },
                   paymentStatus: 'PENDING',
                 },
               });
@@ -962,11 +963,12 @@ async function resolveOrCreateTableSession(
               },
             });
 
+            // Do not increment TableSession.totalAmount here.
+            // TableSession running total must only increment when the counter accepts the add-on.
             if (sessionRes.tableSessionId) {
               await tx.tableSession.update({
                 where: { id: sessionRes.tableSessionId },
                 data: {
-                  totalAmount: { increment: total },
                   paymentStatus: 'PENDING',
                 },
               });
@@ -1668,12 +1670,12 @@ async function resolveOrCreateTableSession(
           });
         }
 
-        // Synchronize with TableSession if order is part of a table dining session
+        // Do not increment TableSession.totalAmount here.
+        // TableSession running total must only increment when the counter accepts the add-on.
         if (order.tableSessionId) {
           await tx.tableSession.update({
             where: { id: order.tableSessionId },
             data: {
-              totalAmount: { increment: addedTotal },
               paymentStatus: 'PENDING',
             },
           });

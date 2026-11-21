@@ -10,12 +10,14 @@ import {
   clearCart,
   applyCoupon,
   removeCoupon,
+  getPublicCoupons,
 } from '../controllers/cart.controller';
 import { applyCouponSchema } from '@qr-restaurant/shared/schemas';
 
 const router = Router();
 
 router.get('/', authenticate, getCart);
+router.get('/coupons/:restaurantSlug', optionalAuth, getPublicCoupons);
 router.post('/', authenticate, validate(cartItemSchema), addToCart);
 router.put('/:cartItemId', authenticate, validate(updateCartItemSchema), updateCartItem);
 router.delete('/:cartItemId', authenticate, removeCartItem);

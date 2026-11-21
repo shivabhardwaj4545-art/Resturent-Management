@@ -820,21 +820,47 @@ export function OwnerOrdersPage() {
                                     )}
                                     {order.status === 'CONFIRMED' && (
                                       <>
-                                        <button
-                                          onClick={() => updateStatusMutation.mutate({ id: order.id, status: 'DELIVERED' })}
-                                          disabled={updateStatusMutation.isPending}
-                                          className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-primary text-primary-foreground hover:bg-primary/95 transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-sm cursor-pointer"
-                                        >
-                                          <Check className="w-3.5 h-3.5" />
-                                          Mark as Served
-                                        </button>
-                                        <button
-                                          onClick={() => printKitchenOrderTicket({ order, restaurantName })}
-                                          className="px-3 py-1.5 text-xs font-bold rounded-lg bg-orange-500/15 hover:bg-orange-500/25 text-orange-600 dark:text-orange-400 border border-orange-500/30 transition-all flex items-center gap-1.5 cursor-pointer"
-                                        >
-                                          <Printer className="w-3.5 h-3.5" />
-                                          Re-Print KOT
-                                        </button>
+                                        {order.addOnStatus === 'PENDING' ? (
+                                          <>
+                                            <button
+                                              onClick={() => {
+                                                updateStatusMutation.mutate({ id: order.id, addOnStatus: 'CONFIRMED' });
+                                                printKitchenOrderTicket({ order: { ...order, isAddon: true }, restaurantName, isAddonOnly: true });
+                                              }}
+                                              disabled={updateStatusMutation.isPending}
+                                              className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-sm cursor-pointer animate-pulse"
+                                            >
+                                              <Check className="w-3.5 h-3.5" />
+                                              <Printer className="w-3.5 h-3.5" />
+                                              Accept & Print Add-on KOT
+                                            </button>
+                                            <button
+                                              onClick={() => updateStatusMutation.mutate({ id: order.id, addOnStatus: 'CANCELLED' })}
+                                              disabled={updateStatusMutation.isPending}
+                                              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 transition-all cursor-pointer"
+                                            >
+                                              Reject Add-on
+                                            </button>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <button
+                                              onClick={() => updateStatusMutation.mutate({ id: order.id, status: 'DELIVERED' })}
+                                              disabled={updateStatusMutation.isPending}
+                                              className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-primary text-primary-foreground hover:bg-primary/95 transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-sm cursor-pointer"
+                                            >
+                                              <Check className="w-3.5 h-3.5" />
+                                              Mark as Served
+                                            </button>
+                                            <button
+                                              onClick={() => printKitchenOrderTicket({ order, restaurantName })}
+                                              className="px-3 py-1.5 text-xs font-bold rounded-lg bg-orange-500/15 hover:bg-orange-500/25 text-orange-600 dark:text-orange-400 border border-orange-500/30 transition-all flex items-center gap-1.5 cursor-pointer"
+                                            >
+                                              <Printer className="w-3.5 h-3.5" />
+                                              Re-Print KOT
+                                            </button>
+                                          </>
+                                        )}
                                       </>
                                     )}
                                     {order.status === 'DELIVERED' && (

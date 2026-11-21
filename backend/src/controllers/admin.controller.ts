@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { cacheGet, cacheSet, cacheDelPattern } from '../services/redis.service';
-import { emitNotification, getSocketServer, emitRestaurantFeaturesUpdated } from '../services/socket.service';
+import { emitNotification, getSocketServer, emitRestaurantFeaturesUpdated, emitCouponsUpdated } from '../services/socket.service';
 import {
   sendBroadcastEmail,
   sendRestaurantWelcomeEmail,
@@ -1730,6 +1730,7 @@ export async function createAdminCoupon(req: AuthenticatedRequest, res: Response
         restaurantId: null,
       },
     });
+    emitCouponsUpdated('global', { action: 'CREATED', coupon });
     res.status(201).json({ success: true, data: { coupon } });
   } catch (error) { next(error); }
 }
@@ -1740,6 +1741,7 @@ export async function deleteAdminCoupon(req: AuthenticatedRequest, res: Response
     const coupon = await prisma.coupon.findFirst({ where: { id, restaurantId: null } });
     if (!coupon) throw new AppError('Coupon not found.', 404, 'COUPON_NOT_FOUND');
     await prisma.coupon.delete({ where: { id } });
+    emitCouponsUpdated('global', { action: 'DELETED', id });
     res.json({ success: true, message: 'Coupon deleted' });
   } catch (error) { next(error); }
 }
@@ -1753,6 +1755,7 @@ export async function toggleAdminCoupon(req: AuthenticatedRequest, res: Response
       where: { id },
       data: { isActive: !coupon.isActive },
     });
+    emitCouponsUpdated('global', { action: 'TOGGLED', coupon: updated });
     res.json({ success: true, data: { isActive: updated.isActive } });
   } catch (error) { next(error); }
 }
