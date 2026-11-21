@@ -44,15 +44,6 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLED: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
 };
 
-const NEXT_STATUS: Record<string, string[]> = {
-  PENDING: ['CONFIRMED', 'CANCELLED'],
-  CONFIRMED: ['PREPARING', 'CANCELLED'],
-  PREPARING: ['READY', 'CANCELLED'],
-  READY: ['DELIVERED'],
-  DELIVERED: [],
-  CANCELLED: [],
-};
-
 type Order = {
   id: string;
   status: string;
@@ -218,20 +209,6 @@ export function OwnerOrdersPage() {
     onError: () => toast.error('Failed to update order status'),
   });
 
-  const toggleItemServedMutation = useMutation({
-    mutationFn: async ({ orderId, itemId }: { orderId: string; itemId: string }) => {
-      await api.patch(`/kitchen/orders/${orderId}/items/${itemId}/served`);
-    },
-    onSuccess: () => {
-      toast.success('Item served status updated');
-      qc.invalidateQueries({ queryKey: ['owner-orders'] });
-      qc.invalidateQueries({ queryKey: ['owner-dashboard'] });
-      qc.invalidateQueries({ queryKey: ['owner-recent-orders'] });
-      qc.invalidateQueries({ queryKey: ['kitchen-orders'] });
-    },
-    onError: () => toast.error('Failed to update item served status'),
-  });
-
   const confirmPaymentMutation = useMutation({
     mutationFn: async (id: string) => {
       await api.patch(`/owner/orders/${id}/payment`);
@@ -367,7 +344,6 @@ export function OwnerOrdersPage() {
                         { key: 'ALL', label: 'All Orders' },
                         { key: 'PENDING', label: 'Pending (New)' },
                         { key: 'CONFIRMED', label: 'Sent to Kitchen' },
-                        { key: 'DELIVERED', label: 'Served' },
                         { key: 'CANCELLED', label: 'Cancelled' },
                       ]
                     : ORDER_STATUSES.map((s) => ({ key: s, label: s }))
@@ -413,7 +389,7 @@ export function OwnerOrdersPage() {
                             )}
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[order.status] ?? ''}`}>
                               {isPrintKotMode
-                                ? (order.status === 'CONFIRMED' ? 'SENT TO KITCHEN' : order.status === 'DELIVERED' ? 'SERVED' : order.status)
+                                ? (order.status === 'CONFIRMED' ? 'SENT TO KITCHEN' : order.status === 'DELIVERED' ? 'COMPLETED' : order.status)
                                 : order.status}
                             </span>
                             {order.tableNumber && (
@@ -484,25 +460,24 @@ export function OwnerOrdersPage() {
 
                       {expandedOrder === order.id && (
                         <div className="px-5 pb-5 border-t border-border pt-4 bg-muted/10">
-                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
 
-                            {/* Left Pane - Items and Billing Details (spans 2 columns on large screens) */}
-                            <div className="lg:col-span-2 space-y-5">
-
-                              {/* Order Items Section - Clearly Differentiates Initial Items vs Add-on Items */}
+                            {/* Left Column: Dishes Ordered & Customer Details (7 of 12 cols on desktop) */}
+                            <div className="lg:col-span-7 space-y-4">
+                              {/* Order Items List */}
                               {(() => {
                                 const initialItems = order.items.filter((item) => !isItemAddon(item, order));
                                 const addonItems = order.items.filter((item) => isItemAddon(item, order));
                                 const hasAddons = addonItems.length > 0;
 
                                 return (
-                                  <div className="space-y-4">
-                                    {/* 1. Initial Order Items */}
+                                  <div className="space-y-3">
+                                    {/* Initial Items */}
                                     <div className="space-y-1.5">
                                       <div className="flex items-center justify-between">
                                         <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                                           <Utensils className="w-3.5 h-3.5" />
-                                          {hasAddons ? `Initial Order Items (${initialItems.length})` : 'Order Items'}
+                                          {hasAddons ? `Initial Items (${initialItems.length})` : 'Order Items'}
                                         </p>
                                         {hasAddons && (
                                           <span className="text-[11px] font-medium text-muted-foreground">
@@ -511,46 +486,28 @@ export function OwnerOrdersPage() {
                                         )}
                                       </div>
                                       <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border shadow-2xs">
-                                        {initialItems.map((item, idx) => {
-                                          const isServed = item.isServed || order.status === 'DELIVERED';
-                                          return (
-                                            <div key={idx} className="flex items-center justify-between p-3 text-sm">
-                                              <div className="flex-1">
-                                                <span className={`font-medium ${isServed ? 'text-emerald-700 dark:text-emerald-300 line-through' : 'text-foreground'}`}>{item.menuItem.name}</span>
-                                                <span className="text-xs text-muted-foreground ml-2">
-                                                  ({item.quantity} × ₹{formatAmount(item.unitPrice || (item.subtotal / item.quantity))})
-                                                </span>
-                                                {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
-                                                  <div className="text-[11px] text-muted-foreground mt-0.5 ml-2">
-                                                    + {item.addOns.map((ao: any) => ao.name).join(', ')}
-                                                  </div>
-                                                )}
-                                              </div>
-                                              <div className="flex items-center gap-2">
-                                                <span className="font-semibold text-foreground">₹{formatAmount(item.subtotal)}</span>
-                                                {item.id && (
-                                                  <button
-                                                    type="button"
-                                                    onClick={() => toggleItemServedMutation.mutate({ orderId: order.id, itemId: item.id! })}
-                                                    disabled={toggleItemServedMutation.isPending}
-                                                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase transition-all flex items-center gap-1 cursor-pointer ${
-                                                      isServed
-                                                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                                                        : 'bg-muted hover:bg-emerald-500/20 text-muted-foreground hover:text-emerald-600 border border-border'
-                                                    }`}
-                                                  >
-                                                    {isServed && <Check className="w-2.5 h-2.5 text-emerald-500" />}
-                                                    {isServed ? 'Served' : 'Serve'}
-                                                  </button>
-                                                )}
-                                              </div>
+                                        {initialItems.map((item, idx) => (
+                                          <div key={idx} className="flex items-center justify-between p-3 text-sm">
+                                            <div className="flex-1 min-w-0 pr-3">
+                                              <p className="font-semibold text-foreground truncate">{item.menuItem.name}</p>
+                                              <p className="text-xs text-muted-foreground mt-0.5">
+                                                {item.quantity} × ₹{formatAmount(item.unitPrice || (item.subtotal / item.quantity))}
+                                              </p>
+                                              {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
+                                                <div className="text-[11px] text-muted-foreground mt-0.5">
+                                                  + {item.addOns.map((ao: any) => ao.name).join(', ')}
+                                                </div>
+                                              )}
                                             </div>
-                                          );
-                                        })}
+                                            <div className="text-right shrink-0">
+                                              <span className="font-bold text-foreground">₹{formatAmount(item.subtotal)}</span>
+                                            </div>
+                                          </div>
+                                        ))}
                                       </div>
                                     </div>
 
-                                    {/* 2. Add-on Items Section (Distinctive highlighted styling) */}
+                                    {/* Add-on Items Section */}
                                     {hasAddons && (
                                       <div className="space-y-2 p-3.5 rounded-2xl bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-transparent border-2 border-amber-500/30 dark:border-amber-500/25 shadow-xs">
                                         <div className="flex items-center justify-between flex-wrap gap-2">
@@ -577,49 +534,31 @@ export function OwnerOrdersPage() {
                                         </div>
 
                                         <div className="bg-card/90 border border-amber-500/30 rounded-xl overflow-hidden divide-y divide-amber-500/15">
-                                          {addonItems.map((item, idx) => {
-                                            const isServed = item.isServed || order.status === 'DELIVERED';
-                                            return (
-                                              <div key={idx} className="flex items-center justify-between p-3 text-sm bg-amber-500/5">
-                                                <div className="flex-1">
-                                                  <div className="flex items-center gap-2 flex-wrap">
-                                                    <span className={`font-bold ${isServed ? 'text-emerald-700 dark:text-emerald-300 line-through' : 'text-foreground'}`}>{item.menuItem.name}</span>
-                                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black tracking-wider uppercase bg-amber-500/25 text-amber-600 dark:text-amber-300 border border-amber-500/40">
-                                                      ⚡ ADD-ON
-                                                    </span>
+                                          {addonItems.map((item, idx) => (
+                                            <div key={idx} className="flex items-center justify-between p-3 text-sm bg-amber-500/5">
+                                              <div className="flex-1 min-w-0 pr-3">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                  <span className="font-bold text-foreground truncate">{item.menuItem.name}</span>
+                                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-black tracking-wider uppercase bg-amber-500/25 text-amber-600 dark:text-amber-300 border border-amber-500/40">
+                                                    ⚡ ADD-ON
+                                                  </span>
+                                                </div>
+                                                <p className="text-xs text-muted-foreground mt-0.5">
+                                                  {item.quantity} × ₹{formatAmount(item.unitPrice || (item.subtotal / item.quantity))}
+                                                </p>
+                                                {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
+                                                  <div className="text-[11px] text-muted-foreground mt-0.5">
+                                                    + {item.addOns.map((ao: any) => ao.name).join(', ')}
                                                   </div>
-                                                  <span className="text-xs text-muted-foreground">
-                                                    ({item.quantity} × ₹{formatAmount(item.unitPrice || (item.subtotal / item.quantity))})
-                                                  </span>
-                                                  {item.addOns && Array.isArray(item.addOns) && item.addOns.length > 0 && (
-                                                    <div className="text-[11px] text-muted-foreground mt-0.5 ml-2">
-                                                      + {item.addOns.map((ao: any) => ao.name).join(', ')}
-                                                    </div>
-                                                  )}
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                  <span className="font-bold text-amber-600 dark:text-amber-400">
-                                                    ₹{formatAmount(item.subtotal)}
-                                                  </span>
-                                                  {item.id && (
-                                                    <button
-                                                      type="button"
-                                                      onClick={() => toggleItemServedMutation.mutate({ orderId: order.id, itemId: item.id! })}
-                                                      disabled={toggleItemServedMutation.isPending}
-                                                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase transition-all flex items-center gap-1 cursor-pointer ${
-                                                        isServed
-                                                          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                                                          : 'bg-muted hover:bg-emerald-500/20 text-muted-foreground hover:text-emerald-600 border border-border'
-                                                      }`}
-                                                    >
-                                                      {isServed && <Check className="w-2.5 h-2.5 text-emerald-500" />}
-                                                      {isServed ? 'Served' : 'Serve'}
-                                                    </button>
-                                                  )}
-                                                </div>
+                                                )}
                                               </div>
-                                            );
-                                          })}
+                                              <div className="text-right shrink-0">
+                                                <span className="font-bold text-amber-600 dark:text-amber-400">
+                                                  ₹{formatAmount(item.subtotal)}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          ))}
                                         </div>
                                       </div>
                                     )}
@@ -627,414 +566,214 @@ export function OwnerOrdersPage() {
                                 );
                               })()}
 
-                              {/* Sub-grid: Customer info and Receipt Billing */}
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-
-                                {/* Customer & Address Details */}
-                                <div className="space-y-3 bg-card border border-border p-4 rounded-xl flex flex-col justify-between">
-                                  <div>
-                                    <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-2.5">
-                                      <User className="w-3.5 h-3.5" /> Customer Details
-                                    </p>
-                                    <div className="space-y-2 text-sm">
-                                      <p className="font-semibold text-foreground">
-                                        {order.guestName ?? order.user?.name ?? 'Guest Customer'}
-                                      </p>
-                                      {(order.guestPhone || order.user?.phone) && (
-                                        <p className="text-muted-foreground flex items-center gap-2">
-                                          <Phone className="w-3.5 h-3.5 flex-shrink-0" />
-                                          <a href={`tel:${order.guestPhone ?? order.user?.phone}`} className="hover:text-primary transition-colors">
-                                            {order.guestPhone ?? order.user?.phone}
-                                          </a>
-                                        </p>
-                                      )}
-                                      {order.user?.email && (
-                                        <p className="text-muted-foreground flex items-center gap-2 truncate">
-                                          <Mail className="w-3.5 h-3.5 flex-shrink-0" />
-                                          <a href={`mailto:${order.user.email}`} className="hover:text-primary transition-colors truncate">
-                                            {order.user.email}
-                                          </a>
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  <div className="border-t border-border pt-3 mt-3">
-                                    {order.address ? (
-                                      <div className="space-y-1">
-                                        <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-1">
-                                          <MapPin className="w-3.5 h-3.5 flex-shrink-0" /> Delivery Address
-                                        </p>
-                                        <p className="text-muted-foreground text-xs leading-relaxed">
-                                          {order.address.flat}, {order.address.street}, {order.address.area}, {order.address.city} - {order.address.pincode}
-                                        </p>
-                                      </div>
-                                    ) : (
-                                      <div className="space-y-1.5">
-                                        <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Order Mode</p>
-                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
-                                          Dine-In {order.tableNumber ? `(Table ${order.tableNumber})` : ''}
-                                        </span>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {/* Billing details / Receipt Summary */}
-                                <div className="space-y-3 bg-card border border-border p-4 rounded-xl">
+                              {/* Customer & Dining Location Details */}
+                              <div className="bg-card border border-border p-4 rounded-xl space-y-3">
+                                <div className="flex items-center justify-between">
                                   <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                                    <Receipt className="w-3.5 h-3.5" /> Receipt Summary
+                                    <User className="w-3.5 h-3.5" /> Customer & Dining Info
                                   </p>
-                                  <div className="space-y-2 text-xs text-muted-foreground">
-                                    <div className="flex justify-between">
-                                      <span>Subtotal</span>
-                                      <span className="text-foreground font-medium">₹{formatAmount(order.subtotal)}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span>GST ({process.env.NEXT_PUBLIC_GST_RATE ?? '5'}%)</span>
-                                      <span className="text-foreground font-medium">₹{formatAmount(order.gstAmount)}</span>
-                                    </div>
-                                    {order.deliveryFee > 0 && (
-                                      <div className="flex justify-between">
-                                        <span>Delivery Fee</span>
-                                        <span className="text-foreground font-medium">₹{formatAmount(order.deliveryFee)}</span>
-                                      </div>
+                                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                    <Clock className="w-3.5 h-3.5" /> {formatTime(order.createdAt)}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between flex-wrap gap-2 text-sm pt-0.5">
+                                  <div>
+                                    <p className="font-bold text-foreground">
+                                      {order.guestName ?? order.user?.name ?? 'Guest Customer'}
+                                    </p>
+                                    {(order.guestPhone || order.user?.phone) && (
+                                      <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                                        <Phone className="w-3.5 h-3.5 text-muted-foreground" />
+                                        <a href={`tel:${order.guestPhone ?? order.user?.phone}`} className="hover:text-primary transition-colors font-medium">
+                                          {order.guestPhone ?? order.user?.phone}
+                                        </a>
+                                      </p>
                                     )}
-                                    {order.packagingFee > 0 && (
-                                      <div className="flex justify-between">
-                                        <span>Packaging Fee</span>
-                                        <span className="text-foreground font-medium">₹{formatAmount(order.packagingFee)}</span>
-                                      </div>
-                                    )}
-                                    {order.discount > 0 && (
-                                      <div className="flex justify-between text-green-600 dark:text-green-400 font-medium">
-                                        <span>Discount</span>
-                                        <span>-₹{formatAmount(order.discount)}</span>
-                                      </div>
-                                    )}
-                                    <div className="flex justify-between text-foreground text-sm font-bold border-t border-border pt-2 mt-2">
-                                      <span>Grand Total</span>
-                                      <span className="text-primary text-base font-extrabold">₹{formatAmount(order.total)}</span>
-                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                                      <MapPin className="w-3.5 h-3.5" />
+                                      {order.tableNumber
+                                        ? (order.tableNumber.toLowerCase().includes('room') ? order.tableNumber : `Table ${order.tableNumber}`)
+                                        : 'Dine-In'}
+                                    </span>
                                   </div>
                                 </div>
-
                               </div>
                             </div>
 
-                            {/* Right Pane - Timeline & Payment Information & Actions */}
-                            <div className="space-y-5">
+                            {/* Right Column: Receipt Summary & Payment / Action Hub (5 of 12 cols on desktop) */}
+                            <div className="lg:col-span-5 space-y-4">
 
-                              {/* Payment status, type and Action buttons */}
-                              <div className="bg-card border border-border p-4 rounded-xl space-y-4">
+                              {/* Receipt Summary */}
+                              <div className="bg-card border border-border p-4 rounded-xl space-y-3">
                                 <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                                  <CreditCard className="w-3.5 h-3.5" /> Payment Details
+                                  <Receipt className="w-3.5 h-3.5" /> Receipt Summary
                                 </p>
-                                <div className="flex gap-2 flex-wrap">
-                                  {/* Payment Method Badge */}
-                                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${order.paymentMethod === 'RAZORPAY' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300' :
-                                    order.paymentMethod === 'WALLET' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' :
-                                      order.paymentMethod === 'PAY_TO_WAITER' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' :
-                                        'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
-                                    }`}>
-                                    {order.paymentMethod === 'RAZORPAY' ? <CreditCard className="w-3 h-3" /> :
-                                      order.paymentMethod === 'WALLET' ? <Wallet className="w-3 h-3" /> :
-                                        order.paymentMethod === 'PAY_TO_WAITER' ? <User className="w-3 h-3" /> :
-                                          <Banknote className="w-3 h-3" />}
-                                    {order.paymentMethod === 'RAZORPAY' ? 'Pay Direct (Online)' : order.paymentMethod === 'WALLET' ? 'Wallet' : order.paymentMethod === 'PAY_TO_WAITER' ? 'Pay to Waiter' : 'Pay on Counter'}
-                                  </span>
+                                <div className="space-y-2 text-xs text-muted-foreground">
+                                  <div className="flex justify-between">
+                                    <span>Subtotal</span>
+                                    <span className="text-foreground font-medium">₹{formatAmount(order.subtotal)}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span>GST ({process.env.NEXT_PUBLIC_GST_RATE ?? '5'}%)</span>
+                                    <span className="text-foreground font-medium">₹{formatAmount(order.gstAmount)}</span>
+                                  </div>
+                                  {order.deliveryFee > 0 && (
+                                    <div className="flex justify-between">
+                                      <span>Delivery Fee</span>
+                                      <span className="text-foreground font-medium">₹{formatAmount(order.deliveryFee)}</span>
+                                    </div>
+                                  )}
+                                  {order.packagingFee > 0 && (
+                                    <div className="flex justify-between">
+                                      <span>Packaging Fee</span>
+                                      <span className="text-foreground font-medium">₹{formatAmount(order.packagingFee)}</span>
+                                    </div>
+                                  )}
+                                  {order.discount > 0 && (
+                                    <div className="flex justify-between text-green-600 dark:text-green-400 font-medium">
+                                      <span>Discount</span>
+                                      <span>-₹{formatAmount(order.discount)}</span>
+                                    </div>
+                                  )}
+                                  <div className="flex justify-between text-foreground text-sm font-bold border-t border-border pt-2 mt-2">
+                                    <span>Grand Total</span>
+                                    <span className="text-primary text-base font-extrabold">₹{formatAmount(order.total)}</span>
+                                  </div>
+                                </div>
+                              </div>
 
-                                  {/* Payment Status Badge */}
-                                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${order.paymentStatus === 'PAID' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
-                                    order.paymentStatus === 'FAILED' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' :
-                                      order.paymentStatus === 'REFUNDED' ? 'bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-300' :
-                                        'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
-                                    }`}>
-                                    {order.paymentStatus}
+                              {/* Payment Details & Kitchen Actions */}
+                              <div className="bg-card border border-border p-4 rounded-xl space-y-3.5">
+                                <div className="flex items-center justify-between">
+                                  <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                                    <CreditCard className="w-3.5 h-3.5" /> Payment & Actions
+                                  </p>
+                                  <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                                    order.paymentStatus === 'PAID'
+                                      ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                                      : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                                  }`}>
+                                    {order.paymentStatus === 'PAID' ? 'PAID' : 'PENDING'}
                                   </span>
                                 </div>
 
-                                {/* Additional Payment Info / Action */}
-                                <div className="pt-2 border-t border-border space-y-2">
+                                <div className="flex items-center gap-2 flex-wrap text-xs">
+                                  <span className="px-2.5 py-1 rounded-lg bg-muted text-foreground font-medium flex items-center gap-1.5">
+                                    {order.paymentMethod === 'RAZORPAY' ? <CreditCard className="w-3.5 h-3.5 text-muted-foreground" /> :
+                                     order.paymentMethod === 'WALLET' ? <Wallet className="w-3.5 h-3.5 text-muted-foreground" /> :
+                                     order.paymentMethod === 'PAY_TO_WAITER' ? <User className="w-3.5 h-3.5 text-muted-foreground" /> :
+                                     <Banknote className="w-3.5 h-3.5 text-muted-foreground" />}
+                                    {order.paymentMethod === 'RAZORPAY' ? 'Online' : order.paymentMethod === 'WALLET' ? 'Wallet' : order.paymentMethod === 'PAY_TO_WAITER' ? 'Pay to Waiter' : 'Pay at Counter'}
+                                  </span>
+                                </div>
+
+                                {/* Payment Action Buttons */}
+                                <div>
                                   {order.paymentStatus === 'PAID' ? (
-                                    <p className="text-xs font-semibold text-green-600 dark:text-green-400 flex items-center gap-1">
-                                      {order.paymentMethod === 'RAZORPAY' ? (
-                                        <>✅ Paid Direct to Owner (Online)</>
-                                      ) : order.paymentMethod === 'PAY_TO_WAITER' ? (
-                                        <>💵 Paid to Waiter</>
-                                      ) : (
-                                        <>💵 Cash Received / Paid at Counter</>
-                                      )}
-                                    </p>
+                                    <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-semibold flex items-center gap-2">
+                                      <Check className="w-4 h-4 text-emerald-500" />
+                                      {order.paymentMethod === 'RAZORPAY' ? 'Paid Direct Online' : order.paymentMethod === 'PAY_TO_WAITER' ? 'Paid to Waiter' : 'Paid at Counter / Cash Received'}
+                                    </div>
                                   ) : (
-                                    <>
+                                    <div className="space-y-2">
                                       <button
                                         onClick={() => confirmPaymentMutation.mutate(order.id)}
                                         disabled={confirmPaymentMutation.isPending}
-                                        className="w-full py-2 px-3 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
+                                        className="w-full py-2.5 px-3 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
                                       >
-                                        <Check className="w-3.5 h-3.5" />
+                                        <Check className="w-4 h-4" />
                                         {confirmPaymentMutation.isPending
                                           ? 'Confirming...'
                                           : order.paymentMethod === 'RAZORPAY'
-                                            ? 'Confirm Direct Online Payment Received'
+                                            ? 'Confirm Online Payment Received'
                                             : order.paymentMethod === 'PAY_TO_WAITER'
-                                              ? 'Confirm Payment Paid to Waiter'
+                                              ? 'Confirm Paid to Waiter'
                                               : 'Mark as Paid (Received Cash)'}
                                       </button>
-                                      {/* Only show "not received" for direct online payment (RAZORPAY) */}
                                       {order.paymentMethod === 'RAZORPAY' && (
                                         <button
                                           onClick={() => rejectPaymentMutation.mutate(order.id)}
                                           disabled={rejectPaymentMutation.isPending}
-                                          className="w-full py-2 px-3 text-xs font-semibold rounded-lg bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-950/60 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                                          className="w-full py-2 px-3 text-xs font-semibold rounded-xl bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-950/60 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
                                         >
                                           <AlertTriangle className="w-3.5 h-3.5" />
                                           {rejectPaymentMutation.isPending ? 'Notifying Customer...' : 'Payment Not Received — Notify Customer'}
                                         </button>
                                       )}
-                                    </>
+                                    </div>
                                   )}
                                 </div>
 
-                                {/* Action Buttons */}
-                                {isPrintKotMode ? (
-                                  <div className="flex gap-2 flex-wrap pt-2 border-t border-border">
-                                    {order.status === 'PENDING' && (
-                                      <>
-                                        <button
-                                          onClick={() => {
-                                            updateStatusMutation.mutate({ id: order.id, status: 'CONFIRMED' });
-                                            printKitchenOrderTicket({ order, restaurantName });
-                                          }}
-                                          disabled={updateStatusMutation.isPending}
-                                          className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-sm cursor-pointer"
-                                        >
-                                          <Check className="w-3.5 h-3.5" />
-                                          <Printer className="w-3.5 h-3.5" />
-                                          Accept & Print KOT
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            setSelectedRejectReason(PREDEFINED_REJECTION_REASONS[0]);
-                                            setCustomRejectReason('');
-                                            setRejectOrderTarget({ orderId: order.id, isAddon: false });
-                                          }}
-                                          disabled={updateStatusMutation.isPending}
-                                          className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 transition-all cursor-pointer"
-                                        >
-                                          Reject Order
-                                        </button>
-                                      </>
-                                    )}
-                                    {order.status === 'CONFIRMED' && (
-                                      <>
-                                        {order.addOnStatus === 'PENDING' ? (
-                                          <>
-                                            <button
-                                              onClick={() => {
-                                                updateStatusMutation.mutate({ id: order.id, addOnStatus: 'CONFIRMED' });
-                                                printKitchenOrderTicket({ order: { ...order, isAddon: true }, restaurantName, isAddonOnly: true });
-                                              }}
-                                              disabled={updateStatusMutation.isPending}
-                                              className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-sm cursor-pointer animate-pulse"
-                                            >
-                                              <Check className="w-3.5 h-3.5" />
-                                              <Printer className="w-3.5 h-3.5" />
-                                              Accept & Print Add-on KOT
-                                            </button>
-                                            <button
-                                              onClick={() => {
-                                                setSelectedRejectReason(PREDEFINED_REJECTION_REASONS[0]);
-                                                setCustomRejectReason('');
-                                                setRejectOrderTarget({ orderId: order.id, isAddon: true });
-                                              }}
-                                              disabled={updateStatusMutation.isPending}
-                                              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 transition-all cursor-pointer"
-                                            >
-                                              Reject Add-on
-                                            </button>
-                                          </>
-                                        ) : (
-                                          <>
-                                            <button
-                                              onClick={() => updateStatusMutation.mutate({ id: order.id, status: 'DELIVERED' })}
-                                              disabled={updateStatusMutation.isPending}
-                                              className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-primary text-primary-foreground hover:bg-primary/95 transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-sm cursor-pointer"
-                                            >
-                                              <Check className="w-3.5 h-3.5" />
-                                              Mark as Served
-                                            </button>
-                                            <button
-                                              onClick={() => printKitchenOrderTicket({ order, restaurantName })}
-                                              className="px-3 py-1.5 text-xs font-bold rounded-lg bg-orange-500/15 hover:bg-orange-500/25 text-orange-600 dark:text-orange-400 border border-orange-500/30 transition-all flex items-center gap-1.5 cursor-pointer"
-                                            >
-                                              <Printer className="w-3.5 h-3.5" />
-                                              Re-Print KOT
-                                            </button>
-                                          </>
-                                        )}
-                                      </>
-                                    )}
-                                    {order.status === 'DELIVERED' && (
+                                {/* Kitchen Print Actions */}
+                                <div className="pt-2.5 border-t border-border flex gap-2 flex-wrap">
+                                  {order.status === 'PENDING' && (
+                                    <>
                                       <button
-                                        onClick={() => printKitchenOrderTicket({ order, restaurantName })}
-                                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-muted hover:bg-muted/80 text-foreground border border-border transition-all flex items-center gap-1.5 cursor-pointer"
-                                      >
-                                        <Printer className="w-3.5 h-3.5" />
-                                        Print Duplicate KOT
-                                      </button>
-                                    )}
-                                  </div>
-                                ) : (
-                                  NEXT_STATUS[order.status]?.length > 0 && (
-                                    <div className="flex gap-2 flex-wrap pt-2 border-t border-border">
-                                      {NEXT_STATUS[order.status].map((next) => (
-                                        <button key={next} onClick={() => {
-                                          if (next === 'CANCELLED') {
-                                            setSelectedRejectReason(PREDEFINED_REJECTION_REASONS[0]);
-                                            setCustomRejectReason('');
-                                            setRejectOrderTarget({ orderId: order.id, isAddon: false });
-                                          } else {
-                                            updateStatusMutation.mutate({ id: order.id, status: next });
-                                          }
+                                        onClick={() => {
+                                          updateStatusMutation.mutate({ id: order.id, status: 'CONFIRMED' });
+                                          printKitchenOrderTicket({ order, restaurantName });
                                         }}
-                                          disabled={updateStatusMutation.isPending}
-                                          className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all disabled:opacity-50 flex items-center gap-1 shadow-sm ${next === 'CANCELLED'
-                                            ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200'
-                                            : 'bg-primary text-primary-foreground hover:bg-primary/95 hover:shadow-md'
-                                            }`}>
-                                          {next !== 'CANCELLED' && <Check className="w-3 h-3" />}
-                                          Mark as {next === 'DELIVERED' ? 'SERVED' : next}
-                                        </button>
-                                      ))}
-                                      <button
-                                        onClick={() => printKitchenOrderTicket({ order, restaurantName })}
-                                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-muted hover:bg-muted/80 text-foreground border border-border transition-all flex items-center gap-1.5 cursor-pointer"
+                                        disabled={updateStatusMutation.isPending}
+                                        className="flex-1 py-2 px-3 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
                                       >
                                         <Printer className="w-3.5 h-3.5" />
-                                        Print KOT
+                                        Accept & Print KOT
                                       </button>
-                                    </div>
-                                  )
-                                )}
+                                      <button
+                                        onClick={() => {
+                                          setSelectedRejectReason(PREDEFINED_REJECTION_REASONS[0]);
+                                          setCustomRejectReason('');
+                                          setRejectOrderTarget({ orderId: order.id, isAddon: false });
+                                        }}
+                                        disabled={updateStatusMutation.isPending}
+                                        className="py-2 px-3 text-xs font-semibold rounded-xl bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 transition-all cursor-pointer"
+                                      >
+                                        Reject
+                                      </button>
+                                    </>
+                                  )}
+
+                                  {order.status === 'CONFIRMED' && order.addOnStatus === 'PENDING' && (
+                                    <>
+                                      <button
+                                        onClick={() => {
+                                          updateStatusMutation.mutate({ id: order.id, addOnStatus: 'CONFIRMED' });
+                                          printKitchenOrderTicket({ order: { ...order, isAddon: true }, restaurantName, isAddonOnly: true });
+                                        }}
+                                        disabled={updateStatusMutation.isPending}
+                                        className="flex-1 py-2 px-3 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer animate-pulse"
+                                      >
+                                        <Printer className="w-3.5 h-3.5" />
+                                        Accept & Print Add-on KOT
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          setSelectedRejectReason(PREDEFINED_REJECTION_REASONS[0]);
+                                          setCustomRejectReason('');
+                                          setRejectOrderTarget({ orderId: order.id, isAddon: true });
+                                        }}
+                                        disabled={updateStatusMutation.isPending}
+                                        className="py-2 px-3 text-xs font-semibold rounded-xl bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 transition-all cursor-pointer"
+                                      >
+                                        Reject
+                                      </button>
+                                    </>
+                                  )}
+
+                                  {order.status !== 'PENDING' && order.addOnStatus !== 'PENDING' && (
+                                    <button
+                                      onClick={() => printKitchenOrderTicket({ order, restaurantName })}
+                                      className="w-full py-2 px-3 text-xs font-bold rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                                    >
+                                      <Printer className="w-3.5 h-3.5" />
+                                      Re-Print KOT
+                                    </button>
+                                  )}
+                                </div>
+
                               </div>
-
-                              {/* Visual Progress Timeline */}
-                              <div className="bg-card border border-border p-4 rounded-xl space-y-4">
-                                <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                                  <Clock className="w-3.5 h-3.5" /> Lifecycle Timeline
-                                </p>
-
-                                {isPrintKotMode ? (
-                                  <div className="relative pl-3 space-y-4 before:absolute before:left-[5px] before:top-2 before:bottom-2 before:w-[2px] before:bg-border">
-                                    {/* Placed Step */}
-                                    <div className="relative pl-5">
-                                      <span className="absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full bg-primary ring-4 ring-primary/20" />
-                                      <div className="text-xs">
-                                        <p className="font-semibold text-foreground">Placed</p>
-                                        <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.createdAt)}</p>
-                                      </div>
-                                    </div>
-
-                                    {/* Sent to Kitchen (Physical KOT Printed) */}
-                                    <div className="relative pl-5">
-                                      <span className={`absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full transition-all ${order.confirmedAt ? 'bg-primary ring-4 ring-primary/20' : 'bg-card border-2 border-muted-foreground/35'}`} />
-                                      <div className="text-xs">
-                                        <p className={`font-semibold ${order.confirmedAt ? 'text-foreground' : 'text-muted-foreground'}`}>Sent to Kitchen (KOT Printed)</p>
-                                        <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.confirmedAt)}</p>
-                                      </div>
-                                    </div>
-
-                                    {/* Served to Table */}
-                                    {order.status !== 'CANCELLED' ? (
-                                      <div className="relative pl-5">
-                                        <span className={`absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full transition-all ${order.deliveredAt ? 'bg-green-500 ring-4 ring-green-500/20' : 'bg-card border-2 border-muted-foreground/35'}`} />
-                                        <div className="text-xs">
-                                          <p className={`font-semibold ${order.deliveredAt ? 'text-foreground' : 'text-muted-foreground'}`}>
-                                            {order.addressId || order.address ? 'Delivered' : 'Served to Table'}
-                                          </p>
-                                          <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.deliveredAt)}</p>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <div className="relative pl-5">
-                                        <span className="absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full bg-red-500 ring-4 ring-red-500/20" />
-                                        <div className="text-xs">
-                                          <p className="font-semibold text-red-500">Cancelled</p>
-                                          <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.cancelledAt)}</p>
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <div className="relative pl-3 space-y-4 before:absolute before:left-[5px] before:top-2 before:bottom-2 before:w-[2px] before:bg-border">
-
-                                    {/* Placed Step */}
-                                    <div className="relative pl-5">
-                                      <span className="absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full bg-primary ring-4 ring-primary/20" />
-                                      <div className="text-xs">
-                                        <p className="font-semibold text-foreground">Placed</p>
-                                        <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.createdAt)}</p>
-                                      </div>
-                                    </div>
-
-                                    {/* Confirmed Step */}
-                                    <div className="relative pl-5">
-                                      <span className={`absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full transition-all ${order.confirmedAt ? 'bg-primary ring-4 ring-primary/20' : 'bg-card border-2 border-muted-foreground/35'
-                                        }`} />
-                                      <div className="text-xs">
-                                        <p className={`font-semibold ${order.confirmedAt ? 'text-foreground' : 'text-muted-foreground'}`}>Confirmed</p>
-                                        <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.confirmedAt)}</p>
-                                      </div>
-                                    </div>
-
-                                    {/* Kitchen (Preparing / Baking) Step */}
-                                    <div className="relative pl-5">
-                                      <span className={`absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full transition-all ${(order.preparingAt || order.bakingAt) ? 'bg-primary ring-4 ring-primary/20' : 'bg-card border-2 border-muted-foreground/35'
-                                        }`} />
-                                      <div className="text-xs">
-                                        <p className={`font-semibold ${(order.preparingAt || order.bakingAt) ? 'text-foreground' : 'text-muted-foreground'}`}>Preparing</p>
-                                        <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.preparingAt || order.bakingAt)}</p>
-                                      </div>
-                                    </div>
-
-                                    {/* Ready Step */}
-                                    <div className="relative pl-5">
-                                      <span className={`absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full transition-all ${order.readyAt ? 'bg-primary ring-4 ring-primary/20' : 'bg-card border-2 border-muted-foreground/35'
-                                        }`} />
-                                      <div className="text-xs">
-                                        <p className={`font-semibold ${order.readyAt ? 'text-foreground' : 'text-muted-foreground'}`}>Ready</p>
-                                        <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.readyAt)}</p>
-                                      </div>
-                                    </div>
-
-                                    {/* Delivered / Served Step */}
-                                    {order.status !== 'CANCELLED' ? (
-                                      <div className="relative pl-5">
-                                        <span className={`absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full transition-all ${order.deliveredAt ? 'bg-green-500 ring-4 ring-green-500/20' : 'bg-card border-2 border-muted-foreground/35'
-                                          }`} />
-                                        <div className="text-xs">
-                                          <p className={`font-semibold ${order.deliveredAt ? 'text-foreground' : 'text-muted-foreground'}`}>
-                                            {order.addressId || order.address ? 'Delivered' : 'Served'}
-                                          </p>
-                                          <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.deliveredAt)}</p>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <div className="relative pl-5">
-                                        <span className="absolute left-0 top-1.5 w-2.5 h-2.5 rounded-full bg-red-500 ring-4 ring-red-500/20" />
-                                        <div className="text-xs">
-                                          <p className="font-semibold text-red-500">Cancelled</p>
-                                          <p className="text-muted-foreground text-[10px] mt-0.5">{formatTime(order.cancelledAt)}</p>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                  </div>
-                                )}
-                              </div>
-
                             </div>
 
                           </div>
