@@ -35,6 +35,7 @@ import { InvoiceDownload } from './InvoiceDownload';
 import { QuickServiceModal, QuickServiceType } from './QuickServiceModal';
 import { playNewOrderSound, processRealTimeEvent } from '@/utils/audio';
 import { applyThemeColor } from '@/utils/theme';
+import { printCustomerBill } from '@/utils/billPrint';
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
 
@@ -677,9 +678,29 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
                 </p>
               </div>
 
-              {order.paymentStatus === 'PAID' && (
-                <InvoiceDownload order={order as any} themeColor={order.restaurant?.themeColor || '#E85D04'} />
-              )}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => printCustomerBill({
+                    order,
+                    restaurant: {
+                      name: order.restaurant?.name || 'Restaurant',
+                      address: order.restaurant?.address,
+                      city: order.restaurant?.city,
+                      phone: order.restaurant?.phone,
+                      gstin: (order.restaurant as any)?.gstin,
+                      themeColor: order.restaurant?.themeColor,
+                    },
+                  })}
+                  className="flex-1 py-3 px-4 rounded-xl border border-primary/20 bg-primary/10 text-primary text-center text-xs font-bold hover:bg-primary/20 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Receipt className="w-4 h-4" />
+                  Print / View Tax Invoice
+                </button>
+                {order.paymentStatus === 'PAID' && (
+                  <InvoiceDownload order={order as any} themeColor={order.restaurant?.themeColor || '#E85D04'} />
+                )}
+              </div>
 
               <button
                 type="button"

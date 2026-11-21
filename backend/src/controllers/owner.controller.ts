@@ -394,6 +394,19 @@ export async function getRestaurant(req: AuthenticatedRequest, res: Response, ne
       restaurant.upiEnabled = true;
       restaurant.paymentEnabled = true;
     }
+    if (restaurant) {
+      const onboarding = await prisma.merchantOnboardingRecord.findFirst({
+        where: { restaurantId: restaurant.id },
+        select: { gstin: true, legalBusinessName: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (onboarding?.gstin) {
+        (restaurant as any).gstin = onboarding.gstin;
+      }
+      if (onboarding?.legalBusinessName) {
+        (restaurant as any).legalBusinessName = onboarding.legalBusinessName;
+      }
+    }
     res.json({ success: true, data: { restaurant } });
   } catch (error) { next(error); }
 }
@@ -1090,7 +1103,7 @@ export async function getOrders(req: AuthenticatedRequest, res: Response, next: 
       }),
     };
 
-    const [orders, total] = await Promise.all([
+    const [orders, total, onboarding] = await Promise.all([
       prisma.order.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -1103,7 +1116,14 @@ export async function getOrders(req: AuthenticatedRequest, res: Response, next: 
         },
       }),
       prisma.order.count({ where }),
+      prisma.merchantOnboardingRecord.findFirst({
+        where: { restaurantId: restaurant.id },
+        select: { gstin: true, legalBusinessName: true },
+        orderBy: { createdAt: 'desc' },
+      }),
     ]);
+
+    const gstin = onboarding?.gstin || (restaurant.customFields as any)?.gstin || null;
 
     res.json({
       success: true,
@@ -1112,6 +1132,11 @@ export async function getOrders(req: AuthenticatedRequest, res: Response, next: 
         restaurant: {
           id: restaurant.id,
           name: restaurant.name,
+          legalBusinessName: onboarding?.legalBusinessName || restaurant.merchantName || restaurant.name,
+          address: restaurant.address,
+          city: restaurant.city,
+          phone: restaurant.phone,
+          gstin,
           featureFlags: restaurant.featureFlags,
         },
       },

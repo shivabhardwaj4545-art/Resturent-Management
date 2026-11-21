@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import {
   ShoppingBag, UtensilsCrossed, LayoutDashboard, Tag, BarChart3, Settings, LogOut,
   Menu, Search, Clock, ChevronDown, RefreshCw, User, MapPin, Palette,
-  Mail, Phone, CreditCard, Receipt, Check, Wallet, Banknote, Sparkles, Star, AlertTriangle, ChefHat, Trash2, Utensils, Printer
+  Mail, Phone, CreditCard, Receipt, Check, Wallet, Banknote, Sparkles, Star, AlertTriangle, ChefHat, Trash2, Utensils, Printer, Download
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api, { getSocketUrl } from '@/services/api';
@@ -19,6 +19,7 @@ import { OwnerSidebar } from '@/components/owner/OwnerSidebar';
 import { isItemAddon } from '@/utils/orderAddon';
 import { CounterOrderVerification } from '@/components/owner/CounterOrderVerification';
 import { printKitchenOrderTicket } from '@/utils/kotPrint';
+import { printCustomerBill, exportGstOrdersCsv } from '@/utils/billPrint';
 import { ManualKotModal } from '@/components/owner/ManualKotModal';
 import { PREDEFINED_REJECTION_REASONS } from '@/utils/orderRejection';
 
@@ -145,6 +146,11 @@ export function OwnerOrdersPage() {
       return res.data.data.restaurant as {
         id: string;
         name?: string;
+        legalBusinessName?: string;
+        address?: string;
+        city?: string;
+        phone?: string;
+        gstin?: string;
         featureFlags?: {
           kotMode?: 'DIGITAL_KDS' | 'PRINT_KOT';
           [key: string]: any;
@@ -155,6 +161,15 @@ export function OwnerOrdersPage() {
 
   const isPrintKotMode = (restaurantData?.featureFlags?.kotMode === 'PRINT_KOT') || ((data as any)?.data?.restaurant?.featureFlags?.kotMode === 'PRINT_KOT');
   const restaurantName = restaurantData?.name || (data as any)?.data?.restaurant?.name || 'Restaurant';
+
+  const currentRestaurantInfo = {
+    name: restaurantName,
+    legalBusinessName: restaurantData?.legalBusinessName || (data as any)?.data?.restaurant?.legalBusinessName,
+    address: restaurantData?.address || (data as any)?.data?.restaurant?.address,
+    city: restaurantData?.city || (data as any)?.data?.restaurant?.city,
+    phone: restaurantData?.phone || (data as any)?.data?.restaurant?.phone,
+    gstin: restaurantData?.gstin || (data as any)?.data?.restaurant?.gstin,
+  };
 
   const restId = restaurantData?.id || (data as any)?.data?.restaurant?.id;
 
@@ -366,6 +381,22 @@ export function OwnerOrdersPage() {
                     <Trash2 className="w-3.5 h-3.5" />
                     <span>Clear History</span>
                   </button>
+                  <button
+                    onClick={() => {
+                      if (!data?.data.orders.length) {
+                        toast.error('No orders available to export.');
+                        return;
+                      }
+                      exportGstOrdersCsv(data.data.orders, restaurantName);
+                      toast.success('GST Sales Report downloaded successfully!');
+                    }}
+                    disabled={!data?.data.orders.length}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-colors disabled:opacity-50 cursor-pointer shadow-2xs"
+                    title="Export GST sales report for accountant & tax filing"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Export GST (CSV)</span>
+                  </button>
                 </div>
               </div>
 
@@ -441,6 +472,20 @@ export function OwnerOrdersPage() {
                         >
                           <Printer className="w-3.5 h-3.5" />
                           <span className="hidden sm:inline">Print KOT</span>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            printCustomerBill({
+                              order,
+                              restaurant: currentRestaurantInfo,
+                            });
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 shadow-2xs"
+                          title="Print Customer Tax Invoice / Bill (GST)"
+                        >
+                          <Receipt className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Print Bill</span>
                         </button>
                         <button
                           onClick={(e) => {
@@ -704,6 +749,20 @@ export function OwnerOrdersPage() {
                                       )}
                                     </div>
                                   )}
+                                </div>
+
+                                {/* Customer GST Tax Invoice / Bill Print */}
+                                <div className="pt-2">
+                                  <button
+                                    onClick={() => printCustomerBill({
+                                      order,
+                                      restaurant: currentRestaurantInfo,
+                                    })}
+                                    className="w-full py-2.5 px-3 text-xs font-bold rounded-xl bg-card border border-border hover:bg-muted text-foreground transition-all flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
+                                  >
+                                    <Receipt className="w-4 h-4 text-primary" />
+                                    <span>Print Customer Tax Invoice / Bill (GST)</span>
+                                  </button>
                                 </div>
 
                                 {/* Kitchen Print Actions */}
