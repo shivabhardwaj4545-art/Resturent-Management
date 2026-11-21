@@ -1106,7 +1106,7 @@ export async function getOrders(req: AuthenticatedRequest, res: Response, next: 
       }),
     };
 
-    const [orders, total, onboarding] = await Promise.all([
+    const [orders, total, onboarding, paymentAggregates] = await Promise.all([
       prisma.order.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -1124,7 +1124,68 @@ export async function getOrders(req: AuthenticatedRequest, res: Response, next: 
         select: { gstin: true, legalBusinessName: true },
         orderBy: { createdAt: 'desc' },
       }),
+      prisma.order.findMany({
+        where: {
+          restaurantId: restaurant.id,
+          deletedAt: null,
+          status: { not: 'CANCELLED' },
+        },
+        select: {
+          total: true,
+          paymentStatus: true,
+          paymentMethod: true,
+          counterPaymentMethod: true,
+        },
+      }),
     ]);
+
+    let totalPaid = 0;
+    let cashTotal = 0;
+    let cashCount = 0;
+    let upiTotal = 0;
+    let upiCount = 0;
+    let cardTotal = 0;
+    let cardCount = 0;
+    let onlineTotal = 0;
+    let onlineCount = 0;
+    let pendingTotal = 0;
+    let pendingCount = 0;
+
+    for (const o of paymentAggregates) {
+      const tot = Number(o.total || 0);
+      if (o.paymentStatus === 'PAID') {
+        totalPaid += tot;
+        const cMethod = (o.counterPaymentMethod || '').toUpperCase();
+        const pMethod = (o.paymentMethod || '').toUpperCase();
+
+        if (cMethod === 'UPI' || cMethod === 'COUNTER_UPI' || pMethod === 'UPI_INTENT') {
+          upiTotal += tot;
+          upiCount++;
+        } else if (cMethod === 'CARD') {
+          cardTotal += tot;
+          cardCount++;
+        } else if (pMethod === 'RAZORPAY') {
+          onlineTotal += tot;
+          onlineCount++;
+        } else {
+          cashTotal += tot;
+          cashCount++;
+        }
+      } else {
+        pendingTotal += tot;
+        pendingCount++;
+      }
+    }
+
+    const paymentSummary = {
+      totalPaid,
+      paidCount: cashCount + upiCount + cardCount + onlineCount,
+      cash: { total: cashTotal, count: cashCount },
+      upi: { total: upiTotal, count: upiCount },
+      card: { total: cardTotal, count: cardCount },
+      online: { total: onlineTotal, count: onlineCount },
+      pending: { total: pendingTotal, count: pendingCount },
+    };
 
     const gstin = onboarding?.gstin || (restaurant.customFields as any)?.gstin || null;
 
@@ -1145,6 +1206,7 @@ export async function getOrders(req: AuthenticatedRequest, res: Response, next: 
           fssaiNumber: (restaurant.customFields as any)?.fssaiNumber || (restaurant.customFields as any)?.fssai || null,
           featureFlags: restaurant.featureFlags,
         },
+        paymentSummary,
       },
       pagination: {
         total,
@@ -1542,7 +1604,30 @@ export async function confirmPayment(req: AuthenticatedRequest, res: Response, n
     });
 
     if (!order) throw new AppError('Order not found.', 404, 'ORDER_NOT_FOUND');
+    const rawInstrument = (req.body?.instrument || req.body?.paymentMethod || 'CASH').toUpperCase();
+    const instrument = rawInstrument === 'CARD' ? 'CARD' : rawInstrument.includes('UPI') ? 'UPI' : 'CASH';
+    const now = new Date();
+
     if (order.paymentStatus === 'PAID') {
+      if (req.body?.instrument || req.body?.paymentMethod) {
+        await prisma.order.update({
+          where: { id },
+          data: {
+            counterPaymentMethod: instrument,
+            paymentConfirmedBy: req.user?.email || req.user?.name || 'Owner',
+            paymentConfirmedAt: now,
+          },
+        });
+        emitOrderStatusUpdate(id, restaurant.id, {
+          orderId: id,
+          paymentStatus: 'PAID',
+          counterPaymentMethod: instrument,
+          isPaymentEvent: true,
+          updatedAt: now.toISOString(),
+        });
+        res.json({ success: true, message: `Payment mode updated to ${instrument}` });
+        return;
+      }
       throw new AppError('Payment is already marked as paid.', 400, 'ALREADY_PAID');
     }
 
@@ -1554,13 +1639,16 @@ export async function confirmPayment(req: AuthenticatedRequest, res: Response, n
     const pointsPerSpendRupees = Number(loyaltyVal.pointsPerSpendRupees) || 10;
 
     const pointsEarned = loyaltyEnabled ? Math.floor(Number(order.total) / pointsPerSpendRupees) : 0;
-    const instrument = (req.body?.instrument || 'CASH').toUpperCase();
-    const now = new Date();
 
     await prisma.$transaction(async (tx) => {
       await tx.order.update({
         where: { id },
-        data: { paymentStatus: 'PAID' },
+        data: {
+          paymentStatus: 'PAID',
+          counterPaymentMethod: instrument,
+          paymentConfirmedBy: req.user?.email || req.user?.name || 'Owner',
+          paymentConfirmedAt: now,
+        },
       });
 
       await tx.payment.updateMany({
@@ -1618,6 +1706,7 @@ export async function confirmPayment(req: AuthenticatedRequest, res: Response, n
     emitOrderStatusUpdate(id, restaurant.id, {
       orderId: id,
       paymentStatus: 'PAID',
+      counterPaymentMethod: instrument,
       isPaymentEvent: true,
       updatedAt: new Date().toISOString(),
     });

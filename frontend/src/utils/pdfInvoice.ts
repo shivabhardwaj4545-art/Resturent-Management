@@ -235,8 +235,18 @@ export function buildInvoicePdfBinary(order: InvoiceOrderData, restaurantInput?:
   text(`Dining Mode: ${cleanTable}${verCodeStr}`, col2X, metaBoxY + 23, '/F2', 9, 'left', 0.1, 0.1, 0.1);
 
   const isPaid = order.paymentStatus === 'PAID';
-  const payMethod = (order.paymentMethod || 'COUNTER_CASH').replace('COUNTER_', '');
-  const payStatusDesc = `${isPaid ? 'PAID' : 'PAYMENT PENDING'} via ${payMethod}`;
+  const cMethod = (order.counterPaymentMethod || '').toUpperCase();
+  const pMethod = (order.paymentMethod || '').toUpperCase();
+  let modeName = 'CASH';
+  if (cMethod === 'UPI' || cMethod === 'COUNTER_UPI' || pMethod === 'UPI_INTENT') modeName = 'UPI';
+  else if (cMethod === 'CARD') modeName = 'CARD';
+  else if (cMethod === 'CASH') modeName = 'CASH';
+  else if (pMethod === 'RAZORPAY') modeName = 'ONLINE (RAZORPAY)';
+  else if (pMethod === 'WALLET') modeName = 'WALLET';
+  else if (pMethod === 'PAY_TO_WAITER') modeName = 'PAY TO WAITER';
+  else modeName = cMethod || 'CASH';
+
+  const payStatusDesc = `${isPaid ? 'PAID' : 'PAYMENT PENDING'} via ${modeName}`;
   text(payStatusDesc, col2X, metaBoxY + 10, '/F2', 8.5, 'left', isPaid ? 0.1 : 0.8, isPaid ? 0.55 : 0.2, 0.15);
 
   // 4. Itemized Dish Breakdown Table Header
@@ -627,10 +637,19 @@ export function buildGstRegisterPdfBinary(orders: InvoiceOrderData[], restaurant
       const taxVal = Math.max(0, sub - disc);
       const tot = Number(o.total || 0);
 
+      const cMethod = (o.counterPaymentMethod || '').toUpperCase();
+      const pMethod = (o.paymentMethod || '').toUpperCase();
+      let modeTag = 'CASH';
+      if (cMethod === 'UPI' || cMethod === 'COUNTER_UPI' || pMethod === 'UPI_INTENT') modeTag = 'UPI';
+      else if (cMethod === 'CARD') modeTag = 'CARD';
+      else if (pMethod === 'RAZORPAY') modeTag = 'ONLINE';
+      else if (pMethod === 'WALLET') modeTag = 'WALLET';
+      else modeTag = cMethod || 'CASH';
+
       const statusStr =
         (o.paymentStatus === 'PAID' ? 'PAID' : 'PENDING') +
         ' • ' +
-        (o.paymentMethod || 'CASH').replace('COUNTER_', '').slice(0, 4);
+        modeTag;
 
       const globalIdx = (pageNum === 1 ? 0 : rowsPerPageFirst + (pageNum - 2) * rowsPerPageSubsequent) + rowIdx + 1;
 

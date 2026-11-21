@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
@@ -114,6 +114,18 @@ const formatAmount = (val: number | null | undefined) => {
   });
 };
 
+export function getOrderPaymentMode(order: Order): 'CASH' | 'UPI' | 'CARD' | 'ONLINE' | 'WALLET' | 'PENDING' {
+  if (order.paymentStatus !== 'PAID') return 'PENDING';
+  const cMethod = (order.counterPaymentMethod || '').toUpperCase();
+  const pMethod = (order.paymentMethod || '').toUpperCase();
+
+  if (cMethod === 'UPI' || cMethod === 'COUNTER_UPI' || pMethod === 'UPI_INTENT') return 'UPI';
+  if (cMethod === 'CARD') return 'CARD';
+  if (pMethod === 'RAZORPAY') return 'ONLINE';
+  if (pMethod === 'WALLET') return 'WALLET';
+  return 'CASH';
+}
+
 export function OwnerOrdersPage() {
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
@@ -122,6 +134,8 @@ export function OwnerOrdersPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'orders' | 'counter'>('orders');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [paymentModeFilter, setPaymentModeFilter] = useState<'ALL' | 'CASH' | 'UPI' | 'CARD' | 'ONLINE' | 'PENDING'>('ALL');
+  const [editingPaymentOrderId, setEditingPaymentOrderId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
@@ -133,12 +147,87 @@ export function OwnerOrdersPage() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['owner-orders', statusFilter, search, page],
     queryFn: async () => {
-      const params = new URLSearchParams({ page: String(page), limit: '15', ...(statusFilter !== 'ALL' && { status: statusFilter }), ...(search && { search }) });
+      const params = new URLSearchParams({ page: String(page), limit: '25', ...(statusFilter !== 'ALL' && { status: statusFilter }), ...(search && { search }) });
       const res = await api.get(`/owner/orders?${params}`);
-      return res.data as { data: { orders: Order[] }; pagination: { total: number; totalPages: number } };
+      return res.data as {
+        data: {
+          orders: Order[];
+          paymentSummary?: {
+            totalPaid: number;
+            paidCount: number;
+            cash: { total: number; count: number };
+            upi: { total: number; count: number };
+            card: { total: number; count: number };
+            online: { total: number; count: number };
+            pending: { total: number; count: number };
+          };
+          restaurant?: any;
+        };
+        pagination: { total: number; totalPages: number };
+      };
     },
     refetchInterval: 15000,
   });
+
+  const rawOrders = data?.data.orders || [];
+
+  const paymentSummary = useMemo(() => {
+    if (data?.data.paymentSummary) return data.data.paymentSummary;
+    let totalPaid = 0;
+    let cashTotal = 0;
+    let cashCount = 0;
+    let upiTotal = 0;
+    let upiCount = 0;
+    let cardTotal = 0;
+    let cardCount = 0;
+    let onlineTotal = 0;
+    let onlineCount = 0;
+    let pendingTotal = 0;
+    let pendingCount = 0;
+
+    for (const o of rawOrders) {
+      const tot = Number(o.total || 0);
+      if (o.paymentStatus === 'PAID') {
+        totalPaid += tot;
+        const mode = getOrderPaymentMode(o);
+        if (mode === 'UPI') {
+          upiTotal += tot;
+          upiCount++;
+        } else if (mode === 'CARD') {
+          cardTotal += tot;
+          cardCount++;
+        } else if (mode === 'ONLINE') {
+          onlineTotal += tot;
+          onlineCount++;
+        } else {
+          cashTotal += tot;
+          cashCount++;
+        }
+      } else {
+        pendingTotal += tot;
+        pendingCount++;
+      }
+    }
+
+    return {
+      totalPaid,
+      paidCount: cashCount + upiCount + cardCount + onlineCount,
+      cash: { total: cashTotal, count: cashCount },
+      upi: { total: upiTotal, count: upiCount },
+      card: { total: cardTotal, count: cardCount },
+      online: { total: onlineTotal, count: onlineCount },
+      pending: { total: pendingTotal, count: pendingCount },
+    };
+  }, [data?.data.paymentSummary, rawOrders]);
+
+  const displayedOrders = useMemo(() => {
+    if (paymentModeFilter === 'ALL') return rawOrders;
+    return rawOrders.filter((o) => {
+      const mode = getOrderPaymentMode(o);
+      if (paymentModeFilter === 'PENDING') return o.paymentStatus !== 'PAID';
+      return mode === paymentModeFilter;
+    });
+  }, [rawOrders, paymentModeFilter]);
 
   const { data: restaurantData } = useQuery({
     queryKey: ['owner-restaurant-layout'],
@@ -232,11 +321,12 @@ export function OwnerOrdersPage() {
   });
 
   const confirmPaymentMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await api.patch(`/owner/orders/${id}/payment`);
+    mutationFn: async ({ id, instrument }: { id: string; instrument?: string }) => {
+      await api.patch(`/owner/orders/${id}/payment`, { instrument: instrument || 'CASH' });
     },
-    onSuccess: () => {
-      toast.success('Payment marked as PAID');
+    onSuccess: (_, vars) => {
+      toast.success(`Payment confirmed via ${vars.instrument || 'Cash'}!`);
+      setEditingPaymentOrderId(null);
       qc.invalidateQueries({ queryKey: ['owner-orders'] });
       qc.invalidateQueries({ queryKey: ['owner-dashboard'] });
       qc.invalidateQueries({ queryKey: ['owner-recent-orders'] });
@@ -353,6 +443,134 @@ export function OwnerOrdersPage() {
             <CounterOrderVerification />
           ) : (
             <>
+              {/* ── Payment Collections by Mode Section ── */}
+              <div className="bg-card border border-border rounded-2xl p-3.5 sm:p-4 space-y-2.5 shadow-2xs">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
+                      <Banknote className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h2 className="text-xs sm:text-sm font-bold text-foreground">Payment Collections by Mode</h2>
+                      <p className="text-[11px] text-muted-foreground">Click any mode to filter the orders below</p>
+                    </div>
+                  </div>
+                  {paymentModeFilter !== 'ALL' && (
+                    <button
+                      onClick={() => setPaymentModeFilter('ALL')}
+                      className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>Filtered: {paymentModeFilter}</span>
+                      <span className="px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px]">✕ Clear Filter</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-2.5">
+                  {/* Total Paid */}
+                  <button
+                    onClick={() => setPaymentModeFilter('ALL')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      paymentModeFilter === 'ALL'
+                        ? 'bg-primary/5 border-primary ring-2 ring-primary/20 shadow-2xs'
+                        : 'bg-background hover:bg-muted/40 border-border'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-muted-foreground mb-1">
+                      <span className="text-[10px] font-bold tracking-wider uppercase">Total Collected</span>
+                      <span className="text-xs">💰</span>
+                    </div>
+                    <p className="font-extrabold text-sm sm:text-base text-foreground">₹{formatAmount(paymentSummary.totalPaid)}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{paymentSummary.paidCount} paid orders</p>
+                  </button>
+
+                  {/* Cash */}
+                  <button
+                    onClick={() => setPaymentModeFilter(paymentModeFilter === 'CASH' ? 'ALL' : 'CASH')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      paymentModeFilter === 'CASH'
+                        ? 'bg-emerald-500/10 border-emerald-500 ring-2 ring-emerald-500/20 shadow-2xs'
+                        : 'bg-background hover:bg-muted/40 border-border'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-emerald-700 dark:text-emerald-300 mb-1">
+                      <span className="text-[10px] font-bold tracking-wider uppercase">Cash</span>
+                      <span className="text-xs">💵</span>
+                    </div>
+                    <p className="font-extrabold text-sm sm:text-base text-emerald-600 dark:text-emerald-400">₹{formatAmount(paymentSummary.cash.total)}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{paymentSummary.cash.count} orders</p>
+                  </button>
+
+                  {/* UPI */}
+                  <button
+                    onClick={() => setPaymentModeFilter(paymentModeFilter === 'UPI' ? 'ALL' : 'UPI')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      paymentModeFilter === 'UPI'
+                        ? 'bg-teal-500/10 border-teal-500 ring-2 ring-teal-500/20 shadow-2xs'
+                        : 'bg-background hover:bg-muted/40 border-border'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-teal-700 dark:text-teal-300 mb-1">
+                      <span className="text-[10px] font-bold tracking-wider uppercase">UPI / QR</span>
+                      <span className="text-xs">📱</span>
+                    </div>
+                    <p className="font-extrabold text-sm sm:text-base text-teal-600 dark:text-teal-400">₹{formatAmount(paymentSummary.upi.total)}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{paymentSummary.upi.count} orders</p>
+                  </button>
+
+                  {/* Card */}
+                  <button
+                    onClick={() => setPaymentModeFilter(paymentModeFilter === 'CARD' ? 'ALL' : 'CARD')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      paymentModeFilter === 'CARD'
+                        ? 'bg-blue-500/10 border-blue-500 ring-2 ring-blue-500/20 shadow-2xs'
+                        : 'bg-background hover:bg-muted/40 border-border'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-blue-700 dark:text-blue-300 mb-1">
+                      <span className="text-[10px] font-bold tracking-wider uppercase">Card</span>
+                      <span className="text-xs">💳</span>
+                    </div>
+                    <p className="font-extrabold text-sm sm:text-base text-blue-600 dark:text-blue-400">₹{formatAmount(paymentSummary.card.total)}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{paymentSummary.card.count} orders</p>
+                  </button>
+
+                  {/* Online */}
+                  <button
+                    onClick={() => setPaymentModeFilter(paymentModeFilter === 'ONLINE' ? 'ALL' : 'ONLINE')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      paymentModeFilter === 'ONLINE'
+                        ? 'bg-purple-500/10 border-purple-500 ring-2 ring-purple-500/20 shadow-2xs'
+                        : 'bg-background hover:bg-muted/40 border-border'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-purple-700 dark:text-purple-300 mb-1">
+                      <span className="text-[10px] font-bold tracking-wider uppercase">Online</span>
+                      <span className="text-xs">🌐</span>
+                    </div>
+                    <p className="font-extrabold text-sm sm:text-base text-purple-600 dark:text-purple-400">₹{formatAmount(paymentSummary.online.total)}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{paymentSummary.online.count} orders</p>
+                  </button>
+
+                  {/* Unpaid */}
+                  <button
+                    onClick={() => setPaymentModeFilter(paymentModeFilter === 'PENDING' ? 'ALL' : 'PENDING')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      paymentModeFilter === 'PENDING'
+                        ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20 shadow-2xs'
+                        : 'bg-background hover:bg-muted/40 border-border'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-amber-700 dark:text-amber-400 mb-1">
+                      <span className="text-[10px] font-bold tracking-wider uppercase">Unpaid</span>
+                      <span className="text-xs">⏳</span>
+                    </div>
+                    <p className="font-extrabold text-sm sm:text-base text-amber-600 dark:text-amber-400">₹{formatAmount(paymentSummary.pending.total)}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{paymentSummary.pending.count} orders</p>
+                  </button>
+                </div>
+              </div>
+
               {/* Filters */}
               <div className="flex flex-col sm:flex-row gap-3">
                 <div className="relative flex-1 min-w-0">
@@ -412,67 +630,130 @@ export function OwnerOrdersPage() {
                 <div className="space-y-3">{[1, 2, 3, 4].map(i => <div key={i} className="h-24 skeleton rounded-2xl" />)}</div>
               ) : (
                 <div className="space-y-3">
-                  {data?.data.orders.map((order) => (
+                  {displayedOrders.map((order) => (
                     <motion.div key={order.id} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
-                      className="bg-card border border-border rounded-2xl overflow-hidden">
-                      <div className="flex items-center gap-4 p-4 cursor-pointer hover:bg-muted/30 transition-colors"
+                      className="bg-card border border-border rounded-2xl overflow-hidden shadow-2xs">
+                      <div className="flex items-center gap-3 sm:gap-4 p-3.5 sm:p-4 cursor-pointer hover:bg-muted/30 transition-colors flex-wrap sm:flex-nowrap"
                         onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-3 flex-wrap">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-mono font-bold text-sm">#{order.id.slice(-8).toUpperCase()}</span>
                             {order.verificationCode && (
-                              <span className="text-xs px-2.5 py-0.5 rounded-full font-mono font-black bg-primary/10 text-primary border border-primary/20">
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-black bg-primary/10 text-primary border border-primary/20">
                                 CODE #{order.verificationCode}
                               </span>
                             )}
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[order.status] ?? ''}`}>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${STATUS_COLORS[order.status] ?? ''}`}>
                               {isPrintKotMode
                                 ? (order.status === 'CONFIRMED' ? 'SENT TO KITCHEN' : order.status === 'DELIVERED' ? 'COMPLETED' : order.status)
                                 : order.status}
                             </span>
                             {order.tableNumber && (
-                              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                <MapPin className="w-3 h-3" />
+                              <span className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
+                                <MapPin className="w-3 h-3 text-primary" />
                                 {order.tableNumber.toLowerCase().includes('room') || order.tableNumber.toLowerCase().includes('suite')
                                   ? (order.tableNumber.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`)
                                   : (order.tableNumber.toLowerCase().startsWith('table') ? order.tableNumber : `Table ${order.tableNumber}`)}
                               </span>
                             )}
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${order.paymentMethod === 'RAZORPAY' ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-400 dark:border-purple-900/30' :
-                              order.paymentMethod === 'WALLET' ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-900/30' :
-                                order.paymentMethod === 'PAY_TO_WAITER' ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400 dark:border-blue-900/30' :
-                                  'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-900/30'
-                              }`}>
-                              {order.paymentMethod === 'RAZORPAY' ? 'Online' : order.paymentMethod === 'WALLET' ? 'Wallet' : order.paymentMethod === 'PAY_TO_WAITER' ? 'Pay to Waiter' : 'Pay on Counter'}
-                            </span>
-                            {order.addOnStatus && (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
-                                <Sparkles className="w-2.5 h-2.5 animate-pulse text-amber-500" />
-                                Add-on: {order.addOnStatus}
-                              </span>
-                            )}
+
+                            {/* Mode of Payment Badge */}
+                            {(() => {
+                              const mode = getOrderPaymentMode(order);
+                              if (order.paymentStatus === 'PAID') {
+                                if (mode === 'UPI') {
+                                  return (
+                                    <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-teal-500/10 text-teal-700 dark:text-teal-300 border border-teal-500/30 flex items-center gap-1">
+                                      <span>📱</span> Paid via UPI
+                                    </span>
+                                  );
+                                }
+                                if (mode === 'CARD') {
+                                  return (
+                                    <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/30 flex items-center gap-1">
+                                      <span>💳</span> Paid via Card
+                                    </span>
+                                  );
+                                }
+                                if (mode === 'ONLINE') {
+                                  return (
+                                    <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                                      <span>🌐</span> Paid Online
+                                    </span>
+                                  );
+                                }
+                                if (mode === 'WALLET') {
+                                  return (
+                                    <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                                      <span>👛</span> Paid via Wallet
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                                    <span>💵</span> Paid via Cash
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                                  <Clock className="w-3 h-3" /> Unpaid
+                                </span>
+                              );
+                            })()}
                           </div>
-                          <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                            <User className="w-3 h-3" />
-                            {order.guestName ?? order.user?.name ?? 'Guest'} •
-                            {' '}{order.items.slice(0, 2).map(i => i.menuItem.name).join(', ')}
-                            {order.items.length > 2 && ` +${order.items.length - 2} more`}
+
+                          <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5 truncate">
+                            <User className="w-3 h-3 shrink-0" />
+                            <span className="font-semibold text-foreground/80">{order.guestName ?? order.user?.name ?? 'Guest'}</span>
+                            <span>•</span>
+                            <span className="truncate">{order.items.map((i) => `${i.menuItem?.name || 'Item'} (x${i.quantity})`).join(', ')}</span>
                           </p>
                         </div>
+
                         <div className="text-right flex-shrink-0">
-                          <p className="font-bold">₹{formatAmount(order.total)}</p>
-                          <p className="text-xs text-muted-foreground flex items-center gap-1 justify-end">
+                          <p className="font-extrabold text-base text-foreground">₹{formatAmount(order.total)}</p>
+                          <p className="text-[11px] text-muted-foreground flex items-center gap-1 justify-end">
                             <Clock className="w-3 h-3" />
                             {formatTime(order.createdAt)}
                           </p>
                         </div>
+
+                        {/* Quick 1-Click Pay Mode Buttons for Unpaid Orders */}
+                        {order.paymentStatus !== 'PAID' && (
+                          <div className="flex items-center gap-1 bg-muted/80 p-1 rounded-xl border border-border shrink-0" onClick={(e) => e.stopPropagation()}>
+                            <span className="text-[10px] font-extrabold text-muted-foreground uppercase px-1 hidden md:inline">Mark Paid:</span>
+                            <button
+                              onClick={() => confirmPaymentMutation.mutate({ id: order.id, instrument: 'CASH' })}
+                              disabled={confirmPaymentMutation.isPending}
+                              className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-2xs flex items-center gap-1 cursor-pointer"
+                              title="Mark Paid via Cash"
+                            >
+                              <span>💵 Cash</span>
+                            </button>
+                            <button
+                              onClick={() => confirmPaymentMutation.mutate({ id: order.id, instrument: 'UPI' })}
+                              disabled={confirmPaymentMutation.isPending}
+                              className="px-2 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold transition-all shadow-2xs flex items-center gap-1 cursor-pointer"
+                              title="Mark Paid via UPI (GPay/PhonePe/QR)"
+                            >
+                              <span>📱 UPI</span>
+                            </button>
+                            <button
+                              onClick={() => confirmPaymentMutation.mutate({ id: order.id, instrument: 'CARD' })}
+                              disabled={confirmPaymentMutation.isPending}
+                              className="px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-2xs flex items-center gap-1 cursor-pointer"
+                              title="Mark Paid via Card"
+                            >
+                              <span>💳 Card</span>
+                            </button>
+                          </div>
+                        )}
+
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            printKitchenOrderTicket({
-                              order,
-                              restaurantName,
-                            });
+                            printKitchenOrderTicket({ order, restaurantName });
                           }}
                           className="px-2.5 py-1.5 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 shadow-2xs"
                           title="Print Kitchen Order Ticket (KOT)"
@@ -483,10 +764,7 @@ export function OwnerOrdersPage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            printCustomerBill({
-                              order,
-                              restaurant: currentRestaurantInfo,
-                            });
+                            printCustomerBill({ order, restaurant: currentRestaurantInfo });
                           }}
                           className="px-2.5 py-1.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 shadow-2xs"
                           title="Print Customer Tax Invoice / Bill (GST)"
@@ -527,7 +805,7 @@ export function OwnerOrdersPage() {
                         <div className="px-5 pb-5 border-t border-border pt-4 bg-muted/10">
                           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
 
-                            {/* Left Column: Dishes Ordered & Customer Details (7 of 12 cols on desktop) */}
+                            {/* Left Column: Dishes Ordered & Compact Info */}
                             <div className="lg:col-span-7 space-y-4">
                               {/* Order Items List */}
                               {(() => {
@@ -631,45 +909,33 @@ export function OwnerOrdersPage() {
                                 );
                               })()}
 
-                              {/* Customer & Dining Location Details */}
-                              <div className="bg-card border border-border p-4 rounded-xl space-y-3">
-                                <div className="flex items-center justify-between">
-                                  <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                                    <User className="w-3.5 h-3.5" /> Customer & Dining Info
-                                  </p>
-                                  <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                    <Clock className="w-3.5 h-3.5" /> {formatTime(order.createdAt)}
-                                  </span>
+                              {/* Compact Customer & Dining Info Bar */}
+                              <div className="bg-card border border-border px-3.5 py-2.5 rounded-xl flex items-center justify-between text-xs text-muted-foreground flex-wrap gap-2">
+                                <div className="flex items-center gap-2">
+                                  <User className="w-3.5 h-3.5 text-primary shrink-0" />
+                                  <span className="font-bold text-foreground">{order.guestName ?? order.user?.name ?? 'Walk-in Guest'}</span>
+                                  {(order.guestPhone || order.user?.phone) && (
+                                    <a href={`tel:${order.guestPhone ?? order.user?.phone}`} className="hover:text-primary transition-colors font-medium">
+                                      • {order.guestPhone ?? order.user?.phone}
+                                    </a>
+                                  )}
                                 </div>
-                                <div className="flex items-center justify-between flex-wrap gap-2 text-sm pt-0.5">
-                                  <div>
-                                    <p className="font-bold text-foreground">
-                                      {order.guestName ?? order.user?.name ?? 'Guest Customer'}
-                                    </p>
-                                    {(order.guestPhone || order.user?.phone) && (
-                                      <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                                        <Phone className="w-3.5 h-3.5 text-muted-foreground" />
-                                        <a href={`tel:${order.guestPhone ?? order.user?.phone}`} className="hover:text-primary transition-colors font-medium">
-                                          {order.guestPhone ?? order.user?.phone}
-                                        </a>
-                                      </p>
-                                    )}
-                                  </div>
-                                  <div className="text-right">
-                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                                      <MapPin className="w-3.5 h-3.5" />
-                                      {order.tableNumber
-                                        ? (order.tableNumber.toLowerCase().includes('room') ? order.tableNumber : `Table ${order.tableNumber}`)
-                                        : 'Dine-In'}
-                                    </span>
-                                  </div>
+                                <div className="flex items-center gap-3">
+                                  <span className="font-bold text-foreground flex items-center gap-1">
+                                    <MapPin className="w-3.5 h-3.5 text-primary" />
+                                    {order.tableNumber
+                                      ? (order.tableNumber.toLowerCase().includes('room') ? order.tableNumber : `Table ${order.tableNumber}`)
+                                      : 'Dine-In'}
+                                  </span>
+                                  <span className="text-[11px] flex items-center gap-1">
+                                    <Clock className="w-3 h-3" /> {formatTime(order.createdAt)}
+                                  </span>
                                 </div>
                               </div>
                             </div>
 
-                            {/* Right Column: Receipt Summary & Payment / Action Hub (5 of 12 cols on desktop) */}
+                            {/* Right Column: Receipt Summary & Payment & Settlement Hub */}
                             <div className="lg:col-span-5 space-y-4">
-
                               {/* Receipt Summary */}
                               <div className="bg-card border border-border p-4 rounded-xl space-y-3">
                                 <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
@@ -709,11 +975,11 @@ export function OwnerOrdersPage() {
                                 </div>
                               </div>
 
-                              {/* Payment Details & Kitchen Actions */}
-                              <div className="bg-card border border-border p-4 rounded-xl space-y-3.5">
+                              {/* Payment & Settlement Status */}
+                              <div className="bg-card border border-border p-4 rounded-xl space-y-3">
                                 <div className="flex items-center justify-between">
                                   <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                                    <CreditCard className="w-3.5 h-3.5" /> Payment & Actions
+                                    <CreditCard className="w-3.5 h-3.5" /> Payment Status
                                   </p>
                                   <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${
                                     order.paymentStatus === 'PAID'
@@ -724,146 +990,151 @@ export function OwnerOrdersPage() {
                                   </span>
                                 </div>
 
-                                <div className="flex items-center gap-2 flex-wrap text-xs">
-                                  <span className="px-2.5 py-1 rounded-lg bg-muted text-foreground font-medium flex items-center gap-1.5">
-                                    {order.paymentMethod === 'RAZORPAY' ? <CreditCard className="w-3.5 h-3.5 text-muted-foreground" /> :
-                                     order.paymentMethod === 'WALLET' ? <Wallet className="w-3.5 h-3.5 text-muted-foreground" /> :
-                                     order.paymentMethod === 'PAY_TO_WAITER' ? <User className="w-3.5 h-3.5 text-muted-foreground" /> :
-                                     <Banknote className="w-3.5 h-3.5 text-muted-foreground" />}
-                                    {order.paymentMethod === 'RAZORPAY' ? 'Online' : order.paymentMethod === 'WALLET' ? 'Wallet' : order.paymentMethod === 'PAY_TO_WAITER' ? 'Pay to Waiter' : 'Pay at Counter'}
-                                  </span>
-                                </div>
-
-                                {/* Payment Action Buttons */}
-                                <div>
-                                  {order.paymentStatus === 'PAID' ? (
-                                    <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-semibold flex items-center gap-2">
-                                      <Check className="w-4 h-4 text-emerald-500" />
-                                      {order.paymentMethod === 'RAZORPAY' ? 'Paid Direct Online' : order.paymentMethod === 'PAY_TO_WAITER' ? 'Paid to Waiter' : 'Paid at Counter / Cash Received'}
-                                    </div>
-                                  ) : (
-                                    <div className="space-y-2">
-                                      <button
-                                        onClick={() => confirmPaymentMutation.mutate(order.id)}
-                                        disabled={confirmPaymentMutation.isPending}
-                                        className="w-full py-2.5 px-3 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
-                                      >
-                                        <Check className="w-4 h-4" />
-                                        {confirmPaymentMutation.isPending
-                                          ? 'Confirming...'
-                                          : order.paymentMethod === 'RAZORPAY'
-                                            ? 'Confirm Online Payment Received'
-                                            : order.paymentMethod === 'PAY_TO_WAITER'
-                                              ? 'Confirm Paid to Waiter'
-                                              : 'Mark as Paid (Received Cash)'}
-                                      </button>
-                                      {order.paymentMethod === 'RAZORPAY' && (
+                                {order.paymentStatus === 'PAID' ? (
+                                  <div className="space-y-2">
+                                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs space-y-1">
+                                      <div className="flex items-center justify-between">
+                                        <span className="font-bold flex items-center gap-1.5 text-sm">
+                                          <Check className="w-4 h-4 text-emerald-500" />
+                                          Paid via {getOrderPaymentMode(order)}
+                                        </span>
                                         <button
-                                          onClick={() => rejectPaymentMutation.mutate(order.id)}
-                                          disabled={rejectPaymentMutation.isPending}
-                                          className="w-full py-2 px-3 text-xs font-semibold rounded-xl bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-950/60 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                                          onClick={() => setEditingPaymentOrderId(editingPaymentOrderId === order.id ? null : order.id)}
+                                          className="text-[11px] font-bold text-primary hover:underline cursor-pointer"
                                         >
-                                          <AlertTriangle className="w-3.5 h-3.5" />
-                                          {rejectPaymentMutation.isPending ? 'Notifying Customer...' : 'Payment Not Received — Notify Customer'}
+                                          {editingPaymentOrderId === order.id ? 'Cancel' : 'Change Mode'}
                                         </button>
-                                      )}
+                                      </div>
+                                      <p className="text-[11px] text-muted-foreground">
+                                        Amount: ₹{formatAmount(order.total)} • Fully Settled
+                                      </p>
                                     </div>
-                                  )}
-                                </div>
 
-                                {/* Customer GST Tax Invoice / Bill Print & PDF Download */}
-                                <div className="pt-2 flex gap-2">
-                                  <button
-                                    onClick={() => printCustomerBill({
-                                      order,
-                                      restaurant: currentRestaurantInfo,
-                                    })}
-                                    className="flex-1 py-2.5 px-3 text-xs font-bold rounded-xl bg-card border border-border hover:bg-muted text-foreground transition-all flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
-                                    title="Print Thermal / POS GST Tax Bill"
-                                  >
-                                    <Receipt className="w-4 h-4 text-primary" />
-                                    <span>Print Tax Bill</span>
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      downloadInvoicePdf(order, currentRestaurantInfo);
-                                      toast.success(`GST Tax Invoice PDF for #${order.id.slice(-8).toUpperCase()} downloaded!`);
-                                    }}
-                                    className="flex-1 py-2.5 px-3 text-xs font-bold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
-                                    title="Download Official GST Tax Invoice in PDF format"
-                                  >
-                                    <FileText className="w-4 h-4" />
-                                    <span>Download GST Bill (PDF)</span>
-                                  </button>
-                                </div>
-
-                                {/* Kitchen Print Actions */}
-                                <div className="pt-2.5 border-t border-border flex gap-2 flex-wrap">
-                                  {order.status === 'PENDING' && (
-                                    <>
+                                    {editingPaymentOrderId === order.id && (
+                                      <div className="p-2.5 bg-muted/70 rounded-xl border border-border space-y-2">
+                                        <p className="text-[11px] font-bold text-foreground">Switch Payment Mode to:</p>
+                                        <div className="grid grid-cols-3 gap-1.5">
+                                          <button
+                                            onClick={() => confirmPaymentMutation.mutate({ id: order.id, instrument: 'CASH' })}
+                                            disabled={confirmPaymentMutation.isPending}
+                                            className="py-1.5 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer text-center"
+                                          >
+                                            💵 Cash
+                                          </button>
+                                          <button
+                                            onClick={() => confirmPaymentMutation.mutate({ id: order.id, instrument: 'UPI' })}
+                                            disabled={confirmPaymentMutation.isPending}
+                                            className="py-1.5 px-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs cursor-pointer text-center"
+                                          >
+                                            📱 UPI
+                                          </button>
+                                          <button
+                                            onClick={() => confirmPaymentMutation.mutate({ id: order.id, instrument: 'CARD' })}
+                                            disabled={confirmPaymentMutation.isPending}
+                                            className="py-1.5 px-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs cursor-pointer text-center"
+                                          >
+                                            💳 Card
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="space-y-2">
+                                    <p className="text-xs font-bold text-foreground">Mark as Paid — Select Mode:</p>
+                                    <div className="grid grid-cols-3 gap-2">
                                       <button
-                                        onClick={() => {
-                                          updateStatusMutation.mutate({ id: order.id, status: 'CONFIRMED' });
-                                          printKitchenOrderTicket({ order, restaurantName });
-                                        }}
-                                        disabled={updateStatusMutation.isPending}
-                                        className="flex-1 py-2 px-3 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                                        onClick={() => confirmPaymentMutation.mutate({ id: order.id, instrument: 'CASH' })}
+                                        disabled={confirmPaymentMutation.isPending}
+                                        className="py-2.5 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex flex-col items-center justify-center gap-1 shadow-sm transition-all cursor-pointer"
                                       >
-                                        <Printer className="w-3.5 h-3.5" />
-                                        Accept & Print KOT
+                                        <span className="text-base">💵</span>
+                                        <span>Cash</span>
                                       </button>
                                       <button
-                                        onClick={() => {
-                                          setSelectedRejectReason(PREDEFINED_REJECTION_REASONS[0]);
-                                          setCustomRejectReason('');
-                                          setRejectOrderTarget({ orderId: order.id, isAddon: false });
-                                        }}
-                                        disabled={updateStatusMutation.isPending}
-                                        className="py-2 px-3 text-xs font-semibold rounded-xl bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 transition-all cursor-pointer"
+                                        onClick={() => confirmPaymentMutation.mutate({ id: order.id, instrument: 'UPI' })}
+                                        disabled={confirmPaymentMutation.isPending}
+                                        className="py-2.5 px-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex flex-col items-center justify-center gap-1 shadow-sm transition-all cursor-pointer"
                                       >
-                                        Reject
-                                      </button>
-                                    </>
-                                  )}
-
-                                  {order.status === 'CONFIRMED' && order.addOnStatus === 'PENDING' && (
-                                    <>
-                                      <button
-                                        onClick={() => {
-                                          updateStatusMutation.mutate({ id: order.id, addOnStatus: 'CONFIRMED' });
-                                          printKitchenOrderTicket({ order: { ...order, isAddon: true }, restaurantName, isAddonOnly: true });
-                                        }}
-                                        disabled={updateStatusMutation.isPending}
-                                        className="flex-1 py-2 px-3 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer animate-pulse"
-                                      >
-                                        <Printer className="w-3.5 h-3.5" />
-                                        Accept & Print Add-on KOT
+                                        <span className="text-base">📱</span>
+                                        <span>UPI / QR</span>
                                       </button>
                                       <button
-                                        onClick={() => {
-                                          setSelectedRejectReason(PREDEFINED_REJECTION_REASONS[0]);
-                                          setCustomRejectReason('');
-                                          setRejectOrderTarget({ orderId: order.id, isAddon: true });
-                                        }}
-                                        disabled={updateStatusMutation.isPending}
-                                        className="py-2 px-3 text-xs font-semibold rounded-xl bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 transition-all cursor-pointer"
+                                        onClick={() => confirmPaymentMutation.mutate({ id: order.id, instrument: 'CARD' })}
+                                        disabled={confirmPaymentMutation.isPending}
+                                        className="py-2.5 px-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex flex-col items-center justify-center gap-1 shadow-sm transition-all cursor-pointer"
                                       >
-                                        Reject
+                                        <span className="text-base">💳</span>
+                                        <span>Card</span>
                                       </button>
-                                    </>
-                                  )}
+                                    </div>
+                                    {order.paymentMethod === 'RAZORPAY' && (
+                                      <button
+                                        onClick={() => rejectPaymentMutation.mutate(order.id)}
+                                        disabled={rejectPaymentMutation.isPending}
+                                        className="w-full py-2 px-3 text-xs font-semibold rounded-xl bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-950/60 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                                      >
+                                        <AlertTriangle className="w-3.5 h-3.5" />
+                                        {rejectPaymentMutation.isPending ? 'Notifying Customer...' : 'Payment Not Received — Notify Customer'}
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
 
-                                  {order.status !== 'PENDING' && order.addOnStatus !== 'PENDING' && (
+                                {/* Kitchen Actions if order is PENDING */}
+                                {order.status === 'PENDING' && (
+                                  <div className="pt-2.5 border-t border-border flex gap-2">
                                     <button
-                                      onClick={() => printKitchenOrderTicket({ order, restaurantName })}
-                                      className="w-full py-2 px-3 text-xs font-bold rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                                      onClick={() => {
+                                        updateStatusMutation.mutate({ id: order.id, status: 'CONFIRMED' });
+                                        printKitchenOrderTicket({ order, restaurantName });
+                                      }}
+                                      disabled={updateStatusMutation.isPending}
+                                      className="flex-1 py-2 px-3 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
                                     >
                                       <Printer className="w-3.5 h-3.5" />
-                                      Re-Print KOT
+                                      Accept & Print KOT
                                     </button>
-                                  )}
-                                </div>
+                                    <button
+                                      onClick={() => {
+                                        setSelectedRejectReason(PREDEFINED_REJECTION_REASONS[0]);
+                                        setCustomRejectReason('');
+                                        setRejectOrderTarget({ orderId: order.id, isAddon: false });
+                                      }}
+                                      disabled={updateStatusMutation.isPending}
+                                      className="py-2 px-3 text-xs font-semibold rounded-xl bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 transition-all cursor-pointer"
+                                    >
+                                      Reject
+                                    </button>
+                                  </div>
+                                )}
 
+                                {order.status === 'CONFIRMED' && order.addOnStatus === 'PENDING' && (
+                                  <div className="pt-2.5 border-t border-border flex gap-2">
+                                    <button
+                                      onClick={() => {
+                                        updateStatusMutation.mutate({ id: order.id, addOnStatus: 'CONFIRMED' });
+                                        printKitchenOrderTicket({ order: { ...order, isAddon: true }, restaurantName, isAddonOnly: true });
+                                      }}
+                                      disabled={updateStatusMutation.isPending}
+                                      className="flex-1 py-2 px-3 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer animate-pulse"
+                                    >
+                                      <Printer className="w-3.5 h-3.5" />
+                                      Accept & Print Add-on KOT
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setSelectedRejectReason(PREDEFINED_REJECTION_REASONS[0]);
+                                        setCustomRejectReason('');
+                                        setRejectOrderTarget({ orderId: order.id, isAddon: true });
+                                      }}
+                                      disabled={updateStatusMutation.isPending}
+                                      className="py-2 px-3 text-xs font-semibold rounded-xl bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 transition-all cursor-pointer"
+                                    >
+                                      Reject
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             </div>
 
@@ -872,10 +1143,10 @@ export function OwnerOrdersPage() {
                       )}
                     </motion.div>
                   ))}
-                  {data?.data.orders.length === 0 && (
+                  {displayedOrders.length === 0 && (
                     <div className="text-center py-20 text-muted-foreground">
                       <ShoppingBag className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                      <p>No orders found</p>
+                      <p>No orders found for the selected filter</p>
                     </div>
                   )}
                 </div>
