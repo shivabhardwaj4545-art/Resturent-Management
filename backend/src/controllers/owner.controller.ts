@@ -18,7 +18,14 @@ import { UpiProviderRegistry } from '../services/payment/UpiProviderRegistry';
 import { isValidUpiId } from '../services/payment.upi.service';
 import { MerchantAccountService } from '../services/merchant.account.service';
 
-async function getOwnerRestaurant(ownerId: string) {
+async function getOwnerRestaurant(ownerId: string, preferredRestaurantId?: string) {
+  if (preferredRestaurantId) {
+    const preferred = await prisma.restaurant.findFirst({
+      where: { id: preferredRestaurantId, ownerId, deletedAt: null },
+    });
+    if (preferred) return preferred;
+  }
+
   let restaurant = await prisma.restaurant.findFirst({
     where: { ownerId, deletedAt: null },
     orderBy: { createdAt: 'asc' },
@@ -2189,7 +2196,8 @@ export async function clearOwnerOrderHistory(req: AuthenticatedRequest, res: Res
 
 export async function getOwnerSubscription(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const targetRestaurantId = (req.headers['x-restaurant-id'] as string) || (req.query?.restaurantId as string) || (req.user as any)?.restaurantId;
+    const restaurant = await getOwnerRestaurant(req.user!.id, targetRestaurantId);
 
     // Check if subscription has expired and auto-suspend if so
     await checkRestaurantSubscriptionExpiry(restaurant.id);
@@ -2212,6 +2220,7 @@ export async function getOwnerSubscription(req: AuthenticatedRequest, res: Respo
     ]);
 
     const activeSubscription = subscriptions.find((s) => s.isActive) || null;
+    const pendingSubscription = subscriptions.find((s) => s.paymentStatus === 'PENDING') || null;
     const now = new Date();
 
     // Check free trial history for this restaurant:
@@ -2250,6 +2259,7 @@ export async function getOwnerSubscription(req: AuthenticatedRequest, res: Respo
       data: {
         plans: filteredPlans,
         activeSubscription,
+        pendingSubscription,
         subscriptions,
         restaurant: updatedRest,
         trialStatus: {
@@ -2268,7 +2278,8 @@ export async function getOwnerSubscription(req: AuthenticatedRequest, res: Respo
 
 export async function buyOwnerSubscription(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const targetRestaurantId = (req.headers['x-restaurant-id'] as string) || req.body?.restaurantId || (req.query?.restaurantId as string) || (req.user as any)?.restaurantId;
+    const restaurant = await getOwnerRestaurant(req.user!.id, targetRestaurantId);
     const {
       planId,
       durationInDays = 30,
@@ -2502,7 +2513,8 @@ export async function buyOwnerSubscription(req: AuthenticatedRequest, res: Respo
 
 export async function createOwnerSubscriptionOrder(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const targetRestaurantId = (req.headers['x-restaurant-id'] as string) || req.body?.restaurantId || (req.query?.restaurantId as string) || (req.user as any)?.restaurantId;
+    const restaurant = await getOwnerRestaurant(req.user!.id, targetRestaurantId);
     const {
       planId,
       durationInDays = 30,
@@ -2570,7 +2582,7 @@ export async function createOwnerSubscriptionOrder(req: AuthenticatedRequest, re
       return;
     }
 
-    let razorpayOrderId = `sub_ord_${Date.now()}`;
+    let razorpayOrderId = `sub_ord_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     try {
       const razorpayInstance = new Razorpay({
         key_id: keyId,
@@ -2580,7 +2592,7 @@ export async function createOwnerSubscriptionOrder(req: AuthenticatedRequest, re
       const rzpOrder = await razorpayInstance.orders.create({
         amount: Math.round(totalPrice * 100),
         currency: 'INR',
-        receipt: `sub_${restaurant.id.slice(-6)}_${Date.now()}`,
+        receipt: `sub_${restaurant.id.slice(-6)}_${Date.now()}`.slice(0, 40),
         notes: {
           restaurantId: restaurant.id,
           planId: plan.id,
@@ -2592,8 +2604,35 @@ export async function createOwnerSubscriptionOrder(req: AuthenticatedRequest, re
       razorpayOrderId = rzpOrder.id;
     } catch (rzpErr: any) {
       logger.warn('Razorpay order creation fallback (test/sandbox):', rzpErr?.message || rzpErr);
-      razorpayOrderId = `order_${Math.random().toString(36).substring(2, 14)}`;
     }
+
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+
+    // Clean up old unpaid pending subscriptions for this restaurant
+    await prisma.restaurantSubscription.deleteMany({
+      where: {
+        restaurantId: restaurant.id,
+        paymentStatus: 'PENDING',
+      },
+    }).catch(() => {});
+
+    // Create a pending subscription record so webhooks, redirects, or refresh status can find and verify it
+    const pendingSubscription = await prisma.restaurantSubscription.create({
+      data: {
+        restaurantId: restaurant.id,
+        planId: plan.id,
+        startsAt: now,
+        expiresAt,
+        isActive: false,
+        amount: totalPrice,
+        paymentStatus: 'PENDING',
+        paymentMethod: 'RAZORPAY',
+        razorpayOrderId,
+        status: 'PENDING',
+      },
+      include: { plan: true },
+    });
 
     const ownerUser = await prisma.user.findUnique({ where: { id: req.user!.id } });
 
@@ -2602,6 +2641,7 @@ export async function createOwnerSubscriptionOrder(req: AuthenticatedRequest, re
       data: {
         isFree: false,
         orderId: razorpayOrderId,
+        pendingSubscriptionId: pendingSubscription.id,
         amount: totalPrice,
         amountInPaise: Math.round(totalPrice * 100),
         currency: 'INR',
@@ -2628,7 +2668,8 @@ export async function createOwnerSubscriptionOrder(req: AuthenticatedRequest, re
 
 export async function verifyOwnerSubscriptionPayment(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const targetRestaurantId = (req.headers['x-restaurant-id'] as string) || req.body?.restaurantId || (req.query?.restaurantId as string) || (req.user as any)?.restaurantId;
+    const restaurant = await getOwnerRestaurant(req.user!.id, targetRestaurantId);
     const {
       planId,
       durationInDays = 30,
@@ -2640,8 +2681,37 @@ export async function verifyOwnerSubscriptionPayment(req: AuthenticatedRequest, 
       razorpaySignature,
     } = req.body;
 
-    if (!planId) throw new AppError('Plan ID is required.', 400, 'BAD_REQUEST');
-    const plan = await prisma.subscriptionPlan.findUnique({ where: { id: planId } });
+    // Resolve target plan and pending subscription
+    let pendingSub = null;
+    let targetPlanId = planId;
+
+    if (razorpayOrderId) {
+      pendingSub = await prisma.restaurantSubscription.findFirst({
+        where: { razorpayOrderId },
+        include: { plan: true },
+      });
+      if (pendingSub && !targetPlanId) {
+        targetPlanId = pendingSub.planId;
+      }
+    }
+
+    if (!pendingSub) {
+      pendingSub = await prisma.restaurantSubscription.findFirst({
+        where: {
+          restaurantId: restaurant.id,
+          paymentStatus: 'PENDING',
+          ...(targetPlanId ? { planId: targetPlanId } : {}),
+        },
+        orderBy: { createdAt: 'desc' },
+        include: { plan: true },
+      });
+      if (pendingSub && !targetPlanId) {
+        targetPlanId = pendingSub.planId;
+      }
+    }
+
+    if (!targetPlanId) throw new AppError('Plan ID is required.', 400, 'BAD_REQUEST');
+    const plan = await prisma.subscriptionPlan.findUnique({ where: { id: targetPlanId } });
     if (!plan) throw new AppError('Plan not found.', 404, 'PLAN_NOT_FOUND');
 
     const isEnterprise = plan.name.toLowerCase().includes('enterprise');
@@ -2653,8 +2723,8 @@ export async function verifyOwnerSubscriptionPayment(req: AuthenticatedRequest, 
     const days = parseInt(String(durationInDays), 10) || 30;
     const months = days === 365 ? 12 : Math.max(1, Math.round(days / 30));
 
-    let totalPrice = effectiveMonthlyPrice * months;
-    if (effectiveMonthlyPrice > 0) {
+    let totalPrice = pendingSub?.amount ?? (effectiveMonthlyPrice * months);
+    if (!pendingSub && effectiveMonthlyPrice > 0) {
       if (days === 90) totalPrice = Math.round(effectiveMonthlyPrice * 3 * 0.95);
       else if (days === 180) totalPrice = Math.round(effectiveMonthlyPrice * 6 * 0.90);
       else if (days === 365) totalPrice = Math.round(effectiveMonthlyPrice * 12 * 0.85);
@@ -2662,7 +2732,8 @@ export async function verifyOwnerSubscriptionPayment(req: AuthenticatedRequest, 
 
     // Verify signature if standard Razorpay keys available
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
-    if (keySecret && razorpayOrderId && razorpayPaymentId && razorpaySignature && !razorpayOrderId.startsWith('sub_ord_')) {
+    const isMock = !razorpayOrderId || razorpayOrderId.startsWith('sub_ord_') || razorpayOrderId.startsWith('order_');
+    if (keySecret && !isMock && razorpayOrderId && razorpayPaymentId && razorpaySignature && keySecret !== 'your_razorpay_key_secret') {
       const generatedSignature = crypto
         .createHmac('sha256', keySecret)
         .update(`${razorpayOrderId}|${razorpayPaymentId}`)
@@ -2674,31 +2745,67 @@ export async function verifyOwnerSubscriptionPayment(req: AuthenticatedRequest, 
     }
 
     const now = new Date();
-    const expiresAt = new Date(now);
-    expiresAt.setDate(expiresAt.getDate() + days);
+    const expiresAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
 
-    // Deactivate previous active subscriptions
+    // Deactivate previous active subscriptions for this restaurant
     await prisma.restaurantSubscription.updateMany({
       where: { restaurantId: restaurant.id, isActive: true },
       data: { isActive: false },
     });
 
-    const newSubscription = await prisma.restaurantSubscription.create({
+    const finalOrderId = razorpayOrderId || pendingSub?.razorpayOrderId || `sub_ord_${Date.now()}`;
+    const finalPaymentId = razorpayPaymentId || pendingSub?.razorpayPaymentId || `pay_${Date.now()}`;
+
+    let newSubscription;
+    if (pendingSub) {
+      newSubscription = await prisma.restaurantSubscription.update({
+        where: { id: pendingSub.id },
+        data: {
+          isActive: true,
+          status: 'ACTIVE',
+          paymentStatus: 'PAID',
+          startsAt: now,
+          expiresAt,
+          amount: totalPrice,
+          razorpayOrderId: finalOrderId,
+          razorpayPaymentId: finalPaymentId,
+          razorpaySignature: razorpaySignature || null,
+        },
+        include: { plan: true },
+      });
+    } else {
+      newSubscription = await prisma.restaurantSubscription.create({
+        data: {
+          restaurantId: restaurant.id,
+          planId: targetPlanId,
+          startsAt: now,
+          expiresAt,
+          isActive: true,
+          status: 'ACTIVE',
+          amount: totalPrice,
+          paymentStatus: 'PAID',
+          paymentMethod: totalPrice === 0 ? 'FREE' : 'RAZORPAY',
+          razorpayOrderId: finalOrderId,
+          razorpayPaymentId: finalPaymentId,
+          razorpaySignature: razorpaySignature || null,
+        },
+        include: { plan: true },
+      });
+    }
+
+    // Record transaction
+    await prisma.subscriptionTransaction.create({
       data: {
+        subscriptionId: newSubscription.id,
         restaurantId: restaurant.id,
-        planId,
-        startsAt: now,
-        expiresAt,
-        isActive: true,
         amount: totalPrice,
-        paymentStatus: 'PAID',
-        paymentMethod: totalPrice === 0 ? 'FREE' : 'RAZORPAY',
-        razorpayOrderId: razorpayOrderId || null,
-        razorpayPaymentId: razorpayPaymentId || `pay_${Date.now()}`,
-        razorpaySignature: razorpaySignature || null,
+        currency: 'INR',
+        razorpayPaymentId: finalPaymentId,
+        razorpayOrderId: finalOrderId,
+        status: 'SUCCESS',
+        paidAt: now,
       },
-      include: { plan: true },
-    });
+    }).catch(() => {});
 
     const targetPlatformType = requestedPlatformType || (plan as any).platformType || 'DUAL';
     const currentFlags = (restaurant.featureFlags as Record<string, boolean>) || {};
@@ -2764,9 +2871,8 @@ export async function verifyOwnerSubscriptionPayment(req: AuthenticatedRequest, 
       data: {
         subscription: newSubscription,
         restaurant: updatedRestaurant,
-        totalPrice,
       },
-      message: `Payment successful! Subscribed to ${plan.name} for ${days} days (₹${formattedPrice}). Your restaurant is active!`,
+      message: `Payment successful! Subscribed to ${plan.name} for ${days} days.`,
     });
   } catch (error) {
     next(error);

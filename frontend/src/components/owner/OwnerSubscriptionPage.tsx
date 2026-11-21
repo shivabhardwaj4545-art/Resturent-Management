@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -121,6 +121,12 @@ export function OwnerSubscriptionPage() {
   const [subscribingPlanId, setSubscribingPlanId] = useState<string | null>(null);
   const [selectedPlatformFilter, setSelectedPlatformFilter] = useState<'ALL' | 'FREE' | 'PAID' | 'ENTERPRISE'>('ALL');
   const [showEnterpriseModal, setShowEnterpriseModal] = useState<Plan | null>(null);
+  const [recentInitiatedOrder, setRecentInitiatedOrder] = useState<{
+    orderId: string;
+    planId: string;
+    planName: string;
+    amount: number;
+  } | null>(null);
   const [enterpriseConfig, setEnterpriseConfig] = useState<{
     platformType: 'RESTAURANT' | 'HOTEL' | 'DUAL';
     tables: number;
@@ -198,6 +204,7 @@ export function OwnerSubscriptionPage() {
       return res.data.data as {
         plans: Plan[];
         activeSubscription: Subscription | null;
+        pendingSubscription?: (Subscription & { razorpayOrderId?: string | null }) | null;
         subscriptions: Subscription[];
         restaurant: {
           id: string;
@@ -217,6 +224,86 @@ export function OwnerSubscriptionPage() {
       };
     },
   });
+
+  const verifyPaymentMutation = useMutation({
+    mutationFn: async ({
+      planId,
+      durationInDays,
+      customMonthlyPrice,
+      customQuotas,
+      platformType,
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+    }: {
+      planId?: string;
+      durationInDays?: number;
+      customMonthlyPrice?: number;
+      customQuotas?: any;
+      platformType?: string;
+      razorpayOrderId?: string;
+      razorpayPaymentId?: string;
+      razorpaySignature?: string;
+    }) => {
+      const res = await api.post('/owner/subscription/verify-payment', {
+        planId,
+        durationInDays,
+        customMonthlyPrice,
+        customQuotas,
+        platformType,
+        razorpayOrderId,
+        razorpayPaymentId,
+        razorpaySignature,
+      });
+      return res.data;
+    },
+    onSuccess: (res) => {
+      toast.success(res.message || 'Subscription Verified & Activated! 🎉', {
+        description: 'Your restaurant has been automatically reactivated and is ready for orders.',
+        duration: 5000,
+      });
+      setRecentInitiatedOrder(null);
+      setSubscribingPlanId(null);
+      qc.invalidateQueries({ queryKey: ['owner-subscription'] });
+      qc.invalidateQueries({ queryKey: ['owner-dashboard'] });
+      qc.invalidateQueries({ queryKey: ['owner-restaurant-sidebar'] });
+      qc.invalidateQueries({ queryKey: ['owner-restaurant-layout'] });
+      qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
+      refetch();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Payment verification failed. Please check with your payment provider or contact support.');
+      setSubscribingPlanId(null);
+    },
+  });
+
+  // Handle return callbacks from Razorpay redirects or UPI payments
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const searchParams = new URLSearchParams(window.location.search);
+    const razorpayPaymentId = searchParams.get('razorpay_payment_id');
+    const razorpayOrderId = searchParams.get('razorpay_order_id') || searchParams.get('order_id');
+    const razorpaySignature = searchParams.get('razorpay_signature');
+    const planId = searchParams.get('plan_id');
+
+    if (razorpayPaymentId || razorpayOrderId) {
+      toast.loading('Verifying payment from Razorpay...', { id: 'verify-redirect' });
+      verifyPaymentMutation.mutate(
+        {
+          planId: planId || undefined,
+          razorpayOrderId: razorpayOrderId || undefined,
+          razorpayPaymentId: razorpayPaymentId || undefined,
+          razorpaySignature: razorpaySignature || undefined,
+        },
+        {
+          onSettled: () => {
+            toast.dismiss('verify-redirect');
+            window.history.replaceState({}, '', window.location.pathname);
+          },
+        }
+      );
+    }
+  }, []);
 
   const buySubscriptionMutation = useMutation({
     mutationFn: async ({
@@ -355,13 +442,19 @@ export function OwnerSubscriptionPage() {
       }
 
       // 3. Launch Razorpay Checkout Modal
+      const callbackUrl = typeof window !== 'undefined'
+        ? `${window.location.origin}/owner/subscription?callback=true&plan_id=${plan.id}&order_id=${orderData.orderId}`
+        : undefined;
+
       const options = {
-        key: orderData.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        key: orderData.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_TAVv5bDEV3HwgB',
         amount: orderData.amountInPaise,
         currency: orderData.currency || 'INR',
         name: 'EZ- Restaurant',
         description: `${plan.name} Tier Subscription (${duration} days)`,
         order_id: orderData.orderId,
+        callback_url: callbackUrl,
+        redirect: false,
         prefill: {
           name: orderData.user?.name || orderData.restaurant?.name,
           email: orderData.user?.email || '',
@@ -371,39 +464,30 @@ export function OwnerSubscriptionPage() {
           color: '#f97316',
         },
         handler: async (response: any) => {
-          try {
-            const verifyRes = await api.post('/owner/subscription/verify-payment', {
-              planId: plan.id,
-              durationInDays: duration,
-              customMonthlyPrice: enterprisePricing ? enterprisePricing.monthlyTotal : undefined,
-              customQuotas: isEnterprise ? enterpriseConfig : undefined,
-              platformType: isEnterprise ? enterpriseConfig.platformType : undefined,
-              razorpayOrderId: response.razorpay_order_id || orderData.orderId,
-              razorpayPaymentId: response.razorpay_payment_id,
-              razorpaySignature: response.razorpay_signature,
-            });
-
-            toast.success('Payment Successful! 🎉', {
-              description: verifyRes.data.message || `Your restaurant is now active under the ${plan.name} plan.`,
-              duration: 5000,
-            });
-
-            qc.invalidateQueries({ queryKey: ['owner-subscription'] });
-            qc.invalidateQueries({ queryKey: ['owner-dashboard'] });
-            qc.invalidateQueries({ queryKey: ['owner-restaurant-sidebar'] });
-            qc.invalidateQueries({ queryKey: ['owner-restaurant-layout'] });
-            qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
-            refetch();
-          } catch (verifyErr: any) {
-            toast.error(verifyErr.response?.data?.message || 'Payment verification failed. Please contact support.');
-          } finally {
-            setSubscribingPlanId(null);
-          }
+          verifyPaymentMutation.mutate({
+            planId: plan.id,
+            durationInDays: duration,
+            customMonthlyPrice: enterprisePricing ? enterprisePricing.monthlyTotal : undefined,
+            customQuotas: isEnterprise ? enterpriseConfig : undefined,
+            platformType: isEnterprise ? enterpriseConfig.platformType : undefined,
+            razorpayOrderId: response.razorpay_order_id || orderData.orderId,
+            razorpayPaymentId: response.razorpay_payment_id,
+            razorpaySignature: response.razorpay_signature,
+          });
         },
         modal: {
           ondismiss: () => {
             setSubscribingPlanId(null);
-            toast.info('Payment checkout closed.');
+            setRecentInitiatedOrder({
+              orderId: orderData.orderId,
+              planId: plan.id,
+              planName: plan.name,
+              amount: totalPrice,
+            });
+            toast.info('Payment window closed.', {
+              description: 'If you paid via UPI QR on your phone, click "Verify & Activate Now" below.',
+              duration: 8000,
+            });
           },
         },
       };
@@ -471,6 +555,69 @@ export function OwnerSubscriptionPage() {
                 <p className="mt-1 leading-relaxed opacity-90">
                   Your restaurant is currently suspended and customers cannot place orders. Please select and subscribe to any of the plans below to instantly reactivate your restaurant and reopen your digital ordering portal.
                 </p>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Pending Payment Alert Banner */}
+          {(data?.pendingSubscription || recentInitiatedOrder) && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-4 sm:p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-500 flex items-center justify-center font-bold shrink-0">
+                  <Clock className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
+                    Pending Subscription Payment
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-600 border border-amber-500/30">
+                      Awaiting Confirmation
+                    </span>
+                  </h4>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                    {recentInitiatedOrder
+                      ? `Initiated payment of ₹${recentInitiatedOrder.amount.toLocaleString('en-IN')} for ${recentInitiatedOrder.planName}. If you scanned the QR code and paid on your phone, click verify to activate immediately.`
+                      : `A payment for ${data?.pendingSubscription?.plan?.name || 'your plan'} (₹${(data?.pendingSubscription?.amount || 0).toLocaleString('en-IN')}) was detected. Click below to verify and complete activation.`}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => {
+                    const ordId = recentInitiatedOrder?.orderId || (data?.pendingSubscription as any)?.razorpayOrderId;
+                    const pId = recentInitiatedOrder?.planId || data?.pendingSubscription?.planId;
+                    verifyPaymentMutation.mutate({
+                      planId: pId,
+                      razorpayOrderId: ordId || undefined,
+                    });
+                  }}
+                  disabled={verifyPaymentMutation.isPending}
+                  className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs flex items-center gap-1.5 transition-all shadow-md active:scale-95 disabled:opacity-50"
+                >
+                  {verifyPaymentMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Verifying...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Verify & Activate Now
+                    </>
+                  )}
+                </button>
+                {recentInitiatedOrder && (
+                  <button
+                    onClick={() => setRecentInitiatedOrder(null)}
+                    className="p-2 text-muted-foreground hover:text-foreground rounded-lg transition-colors"
+                    title="Dismiss"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </motion.div>
           )}

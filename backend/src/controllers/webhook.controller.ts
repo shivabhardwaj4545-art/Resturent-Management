@@ -171,9 +171,17 @@ export async function handleRazorpayWebhook(
       }
 
       // Check if this is a SaaS subscription order
-      const subOrder = await prisma.restaurantSubscription.findFirst({
+      let subOrder = await prisma.restaurantSubscription.findFirst({
         where: { razorpayOrderId },
       });
+
+      if (!subOrder && (payload.order?.entity?.notes?.restaurantId || payload.payment?.entity?.notes?.restaurantId)) {
+        const restId = payload.order?.entity?.notes?.restaurantId || payload.payment?.entity?.notes?.restaurantId;
+        subOrder = await prisma.restaurantSubscription.findFirst({
+          where: { restaurantId: restId, paymentStatus: 'PENDING' },
+          orderBy: { createdAt: 'desc' },
+        });
+      }
 
       if (subOrder) {
         await prisma.$transaction(async (tx) => {
