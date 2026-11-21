@@ -100,17 +100,21 @@ export default function OwnerTableSessionsPage() {
     }
   }, [isAuthenticated, user, router]);
 
-  // Fetch active sessions
+  // Fetch active sessions & configured tables
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['table-sessions-active'],
     queryFn: async () => {
       const res = await api.get('/table-sessions');
-      return res.data.data.sessions as TableSessionSummary[];
+      return {
+        sessions: (res.data.data.sessions || []) as TableSessionSummary[],
+        allTables: (res.data.data.allTables || []) as string[],
+      };
     },
     refetchInterval: 5000,
   });
 
-  const sessions = data || [];
+  const sessions = data?.sessions || [];
+  const allTables = data?.allTables || [];
 
   // Fetch full details of selected session
   const { data: sessionDetailData, isLoading: detailLoading } = useQuery({
@@ -397,6 +401,57 @@ export default function OwnerTableSessionsPage() {
             </div>
           </div>
 
+          {/* All Tables Overview Status Bar (Shows all 16+ tables dynamically) */}
+          {allTables.length > 0 && (
+            <div className="bg-card p-4 rounded-2xl border border-border shadow-xs space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-foreground flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  All Restaurant Tables &amp; Rooms ({allTables.length} Total)
+                </span>
+                <span className="text-[11px] text-muted-foreground">
+                  Green = Available • Coloured = Seated Active Session
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {allTables.map((t) => {
+                  const activeSession = sessions.find(
+                    (s) => s.tableNumber.toLowerCase() === t.toLowerCase()
+                  );
+                  const isSeated = !!activeSession;
+
+                  return (
+                    <button
+                      key={t}
+                      onClick={() => {
+                        if (activeSession) {
+                          setSelectedSessionId(activeSession.id);
+                        } else {
+                          setNewTableNum(t);
+                          setNewSessionModal(true);
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 shadow-xs ${
+                        isSeated
+                          ? 'bg-primary/10 border-primary text-primary hover:bg-primary/20 ring-1 ring-primary/30'
+                          : 'bg-muted/40 border-border text-foreground hover:bg-muted/80'
+                      }`}
+                      title={isSeated ? `Active session #${activeSession.sessionCode} - Click to view` : `Available - Click to seat table`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${isSeated ? 'bg-primary' : 'bg-emerald-500'}`} />
+                      <span>{t}</span>
+                      {isSeated && (
+                        <span className="font-mono text-[10px] bg-primary text-primary-foreground px-1.5 py-0.5 rounded-md font-bold">
+                          #{activeSession.sessionCode}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Active Sessions Grid */}
           {isLoading ? (
             <div className="py-24 text-center text-muted-foreground flex items-center justify-center gap-2 font-medium">
@@ -607,6 +662,24 @@ export default function OwnerTableSessionsPage() {
                     onChange={(e) => setNewTableNum(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-muted/40 border border-border rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground"
                   />
+                  {allTables.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2 max-h-28 overflow-y-auto pt-1">
+                      {allTables.map((tbl) => (
+                        <button
+                          key={tbl}
+                          type="button"
+                          onClick={() => setNewTableNum(tbl)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${
+                            newTableNum.toLowerCase() === tbl.toLowerCase()
+                              ? 'bg-primary border-primary text-primary-foreground shadow-xs'
+                              : 'bg-muted/50 border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }`}
+                        >
+                          {tbl}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div>

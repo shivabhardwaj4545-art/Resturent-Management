@@ -124,14 +124,17 @@ export async function getTableClearanceDashboard(
     const reqRestId = (req.headers['x-restaurant-id'] as string) || (req.query.restaurantId as string);
     const restaurant = await getAuthenticatedUserRestaurant(req.user!, reqRestId);
 
-    // 1. Gather all tables configured for this restaurant
-    const defaultTables = restaurant.platformType === 'HOTEL'
-      ? ['Room 101', 'Room 102', 'Room 103', 'Room 104', 'Room 201', 'Room 202']
-      : ['Table 1', 'Table 2', 'Table 3', 'Table 4', 'Table 5', 'Table 6', 'Table 7', 'Table 8', 'Table 9', 'Table 10'];
-
     const qrSettings = (restaurant.qrSettings as any) || {};
     const customLocations: string[] = Array.isArray(qrSettings.customLocations) ? qrSettings.customLocations : [];
     const disabledLocations: string[] = Array.isArray(qrSettings.disabledLocations) ? qrSettings.disabledLocations : [];
+    const deletedLocations: string[] = Array.isArray(qrSettings.deletedLocations)
+      ? qrSettings.deletedLocations.map((d: string) => normalizeTableNumber(d).toLowerCase())
+      : [];
+
+    // 1. Gather all tables configured for this restaurant
+    const defaultTables = restaurant.platformType === 'HOTEL'
+      ? ['Room 101', 'Room 102', 'Room 103', 'Room 104', 'Room 201', 'Room 202']
+      : Array.from({ length: Math.max(16, customLocations.length) }, (_, i) => `Table ${i + 1}`);
 
     // 2. Fetch all ACTIVE sessions for this restaurant
     const activeSessions = await prisma.tableSession.findMany({
@@ -170,11 +173,14 @@ export async function getTableClearanceDashboard(
       sessionByTable.set(normalizeTableNumber(session.tableNumber).toLowerCase(), session);
     }
 
-    const sortedTableList = Array.from(tableSet).sort((a, b) => {
-      const numA = parseInt(a.replace(/\D/g, ''), 10) || 0;
-      const numB = parseInt(b.replace(/\D/g, ''), 10) || 0;
-      return numA - numB;
-    });
+    const sortedTableList = Array.from(tableSet)
+      .filter((t) => !deletedLocations.includes(t.toLowerCase()))
+      .sort((a, b) => {
+        const numA = parseInt(a.replace(/\D/g, ''), 10) || 0;
+        const numB = parseInt(b.replace(/\D/g, ''), 10) || 0;
+        if (numA !== numB) return numA - numB;
+        return a.localeCompare(b);
+      });
 
     let awaitingClearanceCount = 0;
     let occupiedCount = 0;

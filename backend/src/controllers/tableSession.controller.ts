@@ -1927,10 +1927,41 @@ export async function getSessionBill(
         });
       });
 
+      // Gather all configured tables for restaurant so sessions dashboard shows all tables
+      const restData = await prisma.restaurant.findUnique({
+        where: { id: restaurantId },
+        select: { qrSettings: true, platformType: true },
+      });
+
+      const qrSettings = (restData?.qrSettings as any) || {};
+      const customLocations: string[] = Array.isArray(qrSettings.customLocations) ? qrSettings.customLocations : [];
+      const deletedLocations: string[] = Array.isArray(qrSettings.deletedLocations)
+        ? qrSettings.deletedLocations.map((d: string) => normalizeTableNumber(d).toLowerCase())
+        : [];
+
+      const defaultTables = restData?.platformType === 'HOTEL'
+        ? ['Room 101', 'Room 102', 'Room 103', 'Room 104', 'Room 201', 'Room 202']
+        : Array.from({ length: Math.max(16, customLocations.length) }, (_, i) => `Table ${i + 1}`);
+
+      const allTableSet = new Set<string>();
+      defaultTables.forEach((t) => allTableSet.add(normalizeTableNumber(t)));
+      customLocations.forEach((t) => allTableSet.add(normalizeTableNumber(t)));
+      formatted.forEach((s: any) => allTableSet.add(normalizeTableNumber(s.tableNumber)));
+
+      const sortedAllTables = Array.from(allTableSet)
+        .filter((t) => !deletedLocations.includes(t.toLowerCase()))
+        .sort((a, b) => {
+          const numA = parseInt(a.replace(/\D/g, ''), 10) || 0;
+          const numB = parseInt(b.replace(/\D/g, ''), 10) || 0;
+          if (numA !== numB) return numA - numB;
+          return a.localeCompare(b);
+        });
+
       res.json({
         success: true,
         data: {
           sessions: formatted,
+          allTables: sortedAllTables,
         },
       });
     } catch (error) {

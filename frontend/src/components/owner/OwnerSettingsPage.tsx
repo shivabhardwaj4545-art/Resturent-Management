@@ -214,16 +214,13 @@ export function OwnerSettingsPage() {
     const formattedName = val.toLowerCase().startsWith('table') ? val : `Table ${val}`;
     const cleanNumber = val.replace(/^(table)\s+/i, '').trim();
 
-    const isAlreadyInDefaults = ['Table 1', 'Table 2', 'Table 3', 'Table 4', 'Table 5', 'Table 10']
-      .some((d) => d.toLowerCase() === formattedName.toLowerCase());
-
     const currentCustoms = qrSettings.customLocations || [];
     const existsInCustoms = currentCustoms.some(
       (loc) => loc.trim().toLowerCase() === formattedName.toLowerCase()
     );
 
     let updatedCustoms = currentCustoms;
-    if (!isAlreadyInDefaults && !existsInCustoms) {
+    if (!existsInCustoms) {
       updatedCustoms = [...currentCustoms, formattedName];
     }
 
@@ -620,12 +617,7 @@ export function OwnerSettingsPage() {
         bankAccountHolder: form.bankAccountHolder ?? null,
         qrSettings: {
           ...activeQrSettings,
-          customLocations: (activeQrSettings.customLocations || []).filter(
-            (loc) => ![
-              'table 1', 'table 2', 'table 3', 'table 4', 'table 5', 'table 10',
-              'room 101', 'room 102', 'room 103', 'room 104', 'room 201', 'room 202'
-            ].includes(loc.trim().toLowerCase())
-          ),
+          customLocations: activeQrSettings.customLocations || [],
           deletedLocations: activeQrSettings.deletedLocations || [],
         },
       };
@@ -829,14 +821,10 @@ export function OwnerSettingsPage() {
   // Unique, non-predictable, restaurant-isolated, permanent table/room code
   // Dynamically compute all table and room locations including custom and active tables
   const allTableLocations = useMemo(() => {
+    const defaultTableCount = 16;
     const defaults = data?.platformType === 'HOTEL'
       ? ['Room 101', 'Room 102', 'Room 103', 'Room 104', 'Room 201', 'Room 202']
-      : data?.platformType === 'RESTAURANT'
-        ? ['Table 1', 'Table 2', 'Table 3', 'Table 4', 'Table 5', 'Table 10']
-        : [
-          'Table 1', 'Table 2', 'Table 3', 'Table 4', 'Table 5', 'Table 10',
-          'Room 101', 'Room 102', 'Room 103', 'Room 104', 'Room 201', 'Room 202'
-        ];
+      : Array.from({ length: defaultTableCount }, (_, i) => `Table ${i + 1}`);
 
     const customs = qrSettings.customLocations || [];
     const activeFormatted = activeLocationStr
@@ -846,7 +834,13 @@ export function OwnerSettingsPage() {
       : '';
 
     const deleted = (qrSettings.deletedLocations || []).map((d) => d.trim().toLowerCase());
-    const list = [...defaults, ...customs];
+    const list = customs.length > 0 ? [...customs] : [...defaults];
+    defaults.forEach((def) => {
+      if (!list.some((l) => l.toLowerCase() === def.toLowerCase())) {
+        list.push(def);
+      }
+    });
+
     if (activeFormatted && !list.some((l) => l.toLowerCase() === activeFormatted.toLowerCase())) {
       list.push(activeFormatted);
     }
@@ -860,7 +854,12 @@ export function OwnerSettingsPage() {
         uniqueList.push(item);
       }
     }
-    return uniqueList;
+    return uniqueList.sort((a, b) => {
+      const numA = parseInt(a.replace(/\D/g, ''), 10) || 0;
+      const numB = parseInt(b.replace(/\D/g, ''), 10) || 0;
+      if (numA !== numB) return numA - numB;
+      return a.localeCompare(b);
+    });
   }, [data?.platformType, qrSettings.customLocations, qrSettings.deletedLocations, activeLocationStr, qrMode]);
 
   const uniqueTableCode = data?.slug && activeLocationStr
@@ -1796,32 +1795,24 @@ export function OwnerSettingsPage() {
                               >
                                 General Menu
                               </button>
-                              {['1', '2', '3', '4', '5', '10'].map((num) => (
-                                <button
-                                  key={num}
-                                  onClick={() => setTableNumber(num)}
-                                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${tableNumber === num
-                                      ? 'bg-primary border-primary text-primary-foreground shadow-sm'
-                                      : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
-                                    }`}
-                                >
-                                  Table {num}
-                                </button>
-                              ))}
                               {allTableLocations
-                                .filter((loc) => !loc.toLowerCase().startsWith('room') && !loc.toLowerCase().includes('suite') && !['table 1', 'table 2', 'table 3', 'table 4', 'table 5', 'table 10'].includes(loc.toLowerCase()))
-                                .map((loc) => (
-                                  <button
-                                    key={loc}
-                                    onClick={() => setTableNumber(loc)}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${tableNumber === loc
-                                        ? 'bg-primary border-primary text-primary-foreground shadow-sm'
-                                        : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
-                                      }`}
-                                  >
-                                    {loc}
-                                  </button>
-                                ))}
+                                .filter((loc) => !loc.toLowerCase().startsWith('room') && !loc.toLowerCase().includes('suite'))
+                                .map((loc) => {
+                                  const cleanNum = loc.replace(/^table\s+/i, '').trim();
+                                  const isSelected = tableNumber === cleanNum || tableNumber.toLowerCase() === loc.toLowerCase();
+                                  return (
+                                    <button
+                                      key={loc}
+                                      onClick={() => setTableNumber(cleanNum)}
+                                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${isSelected
+                                          ? 'bg-primary border-primary text-primary-foreground shadow-sm'
+                                          : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
+                                        }`}
+                                    >
+                                      {loc.toLowerCase().startsWith('table') ? loc : `Table ${loc}`}
+                                    </button>
+                                  );
+                                })}
                             </div>
                           </div>
                         </>

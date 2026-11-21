@@ -338,7 +338,8 @@ async function syncRestaurantPlatformWithPlan(restaurant: any) {
 
 export async function getRestaurant(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    let restaurant = await getOwnerRestaurant(req.user!.id);
+    const targetRestaurantId = (req.headers['x-restaurant-id'] as string) || (req.query?.restaurantId as string) || (req.user as any)?.restaurantId;
+    let restaurant = await getOwnerRestaurant(req.user!.id, targetRestaurantId);
     const wasSuspendedNow = await checkRestaurantSubscriptionExpiry(restaurant.id);
     if (wasSuspendedNow) {
       const refreshed = await prisma.restaurant.findUnique({ where: { id: restaurant.id } });
@@ -381,7 +382,8 @@ export async function getRestaurant(req: AuthenticatedRequest, res: Response, ne
 
 export async function updateRestaurant(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const targetRestaurantId = (req.headers['x-restaurant-id'] as string) || req.body?.restaurantId || (req.query?.restaurantId as string) || (req.user as any)?.restaurantId;
+    const restaurant = await getOwnerRestaurant(req.user!.id, targetRestaurantId);
     const rawBody = { ...req.body } as Record<string, any>;
 
     const allowedKeys = [
