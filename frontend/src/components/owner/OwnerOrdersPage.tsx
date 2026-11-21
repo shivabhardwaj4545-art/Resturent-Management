@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import {
   ShoppingBag, UtensilsCrossed, LayoutDashboard, Tag, BarChart3, Settings, LogOut,
   Menu, Search, Clock, ChevronDown, RefreshCw, User, MapPin, Palette,
-  Mail, Phone, CreditCard, Receipt, Check, Wallet, Banknote, Sparkles, Star, AlertTriangle, ChefHat, Trash2, Utensils, Printer, Download, FileText
+  Mail, Phone, CreditCard, Receipt, Check, Wallet, Banknote, Sparkles, Star, AlertTriangle, ChefHat, Trash2, Utensils, Printer, FileText
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api, { getSocketUrl } from '@/services/api';
@@ -19,7 +19,7 @@ import { OwnerSidebar } from '@/components/owner/OwnerSidebar';
 import { isItemAddon } from '@/utils/orderAddon';
 import { CounterOrderVerification } from '@/components/owner/CounterOrderVerification';
 import { printKitchenOrderTicket } from '@/utils/kotPrint';
-import { printCustomerBill, exportGstOrdersCsv } from '@/utils/billPrint';
+import { printCustomerBill } from '@/utils/billPrint';
 import { downloadInvoicePdf, downloadGstRegisterPdf, type InvoiceRestaurantInfo } from '@/utils/pdfInvoice';
 import { ManualKotModal } from '@/components/owner/ManualKotModal';
 import { PREDEFINED_REJECTION_REASONS } from '@/utils/orderRejection';
@@ -403,22 +403,6 @@ export function OwnerOrdersPage() {
                   >
                     <FileText className="w-3.5 h-3.5" />
                     <span>Download GST Bills (PDF)</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (!data?.data.orders.length) {
-                        toast.error('No orders available to export.');
-                        return;
-                      }
-                      exportGstOrdersCsv(data.data.orders, restaurantName);
-                      toast.success('GST Sales CSV downloaded successfully!');
-                    }}
-                    disabled={!data?.data.orders.length}
-                    className="flex items-center gap-1 px-2.5 py-2 bg-card hover:bg-muted text-muted-foreground hover:text-foreground border border-border rounded-xl text-xs font-medium whitespace-nowrap shrink-0 transition-colors disabled:opacity-50 cursor-pointer"
-                    title="Export raw CSV data for spreadsheet"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Export CSV</span>
                   </button>
                 </div>
               </div>
