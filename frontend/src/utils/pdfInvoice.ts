@@ -1,7 +1,7 @@
 /**
- * Pure TypeScript GST Tax Invoice PDF Generator
+ * Pure TypeScript GST Tax Invoice & Sales Register PDF Generator
  * Generates standards-compliant PDF 1.4 documents directly in the browser or Node.js.
- * Zero external runtime dependencies.
+ * Zero external runtime dependencies. 100% browser-safe (no Node Buffer required).
  *
  * Mandatory GST & Restaurant details included:
  * - Restaurant Trade Name & Legal Entity Name
@@ -65,7 +65,40 @@ export interface InvoiceOrderData {
 }
 
 /**
- * Builds standard PDF 1.4 document string containing a full GST Tax Invoice.
+ * Browser-safe UTF-8 byte length calculator. Does not depend on Node.js Buffer.
+ */
+function getByteLength(str: string): number {
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(str).length;
+  }
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.byteLength(str, 'utf-8');
+  }
+  let count = 0;
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    if (code <= 0x7f) count += 1;
+    else if (code <= 0x7ff) count += 2;
+    else if (code >= 0xd800 && code <= 0xdbff) {
+      count += 4;
+      i++;
+    } else count += 3;
+  }
+  return count;
+}
+
+/**
+ * Escapes characters for PDF string literals.
+ */
+function esc(s: string | number | null | undefined): string {
+  return String(s ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)');
+}
+
+/**
+ * Builds standard PDF 1.4 document string containing a full GST Tax Invoice for a single order.
  */
 export function buildInvoicePdfBinary(order: InvoiceOrderData, restaurantInput?: InvoiceRestaurantInfo | null): string {
   const restaurant = restaurantInput || order.restaurant || { name: 'Restaurant' };
@@ -76,12 +109,6 @@ export function buildInvoicePdfBinary(order: InvoiceOrderData, restaurantInput?:
   const contentWidth = width - margin * 2;
 
   let stream = '';
-
-  const esc = (s: string | number | null | undefined) =>
-    String(s ?? '')
-      .replace(/\\/g, '\\\\')
-      .replace(/\(/g, '\\(')
-      .replace(/\)/g, '\\)');
 
   const setFont = (font: string, size: number) => {
     stream += `${font} ${size} Tf\n`;
@@ -363,7 +390,7 @@ export function buildInvoicePdfBinary(order: InvoiceOrderData, restaurantInput?:
   );
 
   // Assemble PDF Document
-  const streamLen = Buffer.byteLength(stream, 'utf-8');
+  const streamLen = getByteLength(stream);
   const body = [
     '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
     '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
@@ -379,7 +406,7 @@ export function buildInvoicePdfBinary(order: InvoiceOrderData, restaurantInput?:
 
   for (let i = 0; i < body.length; i++) {
     offsets.push(offset);
-    offset += Buffer.byteLength(body[i], 'utf-8');
+    offset += getByteLength(body[i]);
     pdf += body[i];
   }
 
@@ -394,10 +421,364 @@ export function buildInvoicePdfBinary(order: InvoiceOrderData, restaurantInput?:
 }
 
 /**
- * Returns a Blob with MIME type 'application/pdf'.
+ * Builds standard PDF 1.4 document containing a multi-order GST Sales & Tax Invoice Register.
+ * Formatted in A4 Landscape for clear tabular visibility with full GST breakdown.
+ * Automatically paginates across multiple pages if order count exceeds 1 page.
+ */
+export function buildGstRegisterPdfBinary(orders: InvoiceOrderData[], restaurantInput?: InvoiceRestaurantInfo | null): string {
+  const restaurant = restaurantInput || { name: 'Restaurant' };
+  const width = 841.89; // Landscape A4 width
+  const height = 595.28; // Landscape A4 height
+  const margin = 36;
+  const contentWidth = width - margin * 2;
+
+  // Calculate totals
+  let totalGross = 0;
+  let totalTaxable = 0;
+  let totalGst = 0;
+  let totalCgst = 0;
+  let totalSgst = 0;
+
+  const validOrders = Array.isArray(orders) ? orders : [];
+  validOrders.forEach((o) => {
+    const tot = Number(o.total || 0);
+    const sub = Number(o.subtotal || 0);
+    const disc = Number(o.discount || 0);
+    const gst = Number(o.gstAmount || 0);
+    const taxVal = Math.max(0, sub - disc);
+
+    totalGross += tot;
+    totalTaxable += taxVal;
+    totalGst += gst;
+    totalCgst += gst / 2;
+    totalSgst += gst / 2;
+  });
+
+  const pages: string[] = [];
+  const rowsPerPageFirst = 15;
+  const rowsPerPageSubsequent = 22;
+
+  let currentOrderIdx = 0;
+  let pageNum = 1;
+
+  while (currentOrderIdx < validOrders.length || pageNum === 1) {
+    const isFirstPage = pageNum === 1;
+    const capacity = isFirstPage ? rowsPerPageFirst : rowsPerPageSubsequent;
+    const pageOrders = validOrders.slice(currentOrderIdx, currentOrderIdx + capacity);
+    currentOrderIdx += capacity;
+    const isLastPage = currentOrderIdx >= validOrders.length;
+
+    let stream = '';
+
+    const setFont = (font: string, size: number) => {
+      stream += `${font} ${size} Tf\n`;
+    };
+    const setColor = (r: number, g: number, b: number) => {
+      stream += `${r.toFixed(3)} ${g.toFixed(3)} ${b.toFixed(3)} rg\n`;
+    };
+    const setStrokeColor = (r: number, g: number, b: number) => {
+      stream += `${r.toFixed(3)} ${g.toFixed(3)} ${b.toFixed(3)} RG\n`;
+    };
+    const rect = (x: number, y: number, w: number, h: number, fill = true, stroke = false) => {
+      stream += `${x.toFixed(2)} ${y.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re ${
+        fill && stroke ? 'B' : fill ? 'f' : 'S'
+      }\n`;
+    };
+    const line = (x1: number, y1: number, x2: number, y2: number, lw = 1) => {
+      stream += `${lw} w ${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S\n`;
+    };
+    const text = (str: string, x: number, y: number, font = '/F1', size = 9, align: 'left' | 'right' | 'center' = 'left', r = 0, g = 0, b = 0) => {
+      setColor(r, g, b);
+      setFont(font, size);
+      let drawX = x;
+      const charWidth = font === '/F2' ? size * 0.58 : size * 0.52;
+      if (align === 'right') {
+        drawX = x - str.length * charWidth;
+      } else if (align === 'center') {
+        drawX = x - (str.length * charWidth) / 2;
+      }
+      stream += `BT ${drawX.toFixed(2)} ${y.toFixed(2)} Td (${esc(str)}) Tj ET\n`;
+    };
+
+    // Header top brand bar
+    setColor(0.91, 0.36, 0.02);
+    rect(margin, height - 24, contentWidth, 4, true, false);
+
+    let startY = height - 34;
+
+    if (isFirstPage) {
+      // Restaurant Header Box
+      setColor(0.98, 0.98, 0.99);
+      rect(margin, startY - 70, contentWidth, 70, true, false);
+      setStrokeColor(0.88, 0.90, 0.93);
+      rect(margin, startY - 70, contentWidth, 70, false, true);
+
+      // Left Column: Restaurant Info
+      text(restaurant.name || 'Restaurant', margin + 14, startY - 20, '/F2', 15, 'left', 0.1, 0.1, 0.1);
+      let rY = startY - 34;
+      if (restaurant.legalBusinessName && restaurant.legalBusinessName !== restaurant.name) {
+        text(`Legal Name: ${restaurant.legalBusinessName}`, margin + 14, rY, '/F1', 8, 'left', 0.4, 0.4, 0.4);
+        rY -= 11;
+      }
+      const addr = [restaurant.address, restaurant.city, restaurant.state, restaurant.pincode].filter(Boolean).join(', ');
+      if (addr) {
+        text(addr.slice(0, 75), margin + 14, rY, '/F1', 8, 'left', 0.35, 0.35, 0.35);
+        rY -= 11;
+      }
+      const tags = [];
+      if (restaurant.gstin) tags.push(`GSTIN: ${restaurant.gstin}`);
+      if (restaurant.fssaiNumber) tags.push(`FSSAI: ${restaurant.fssaiNumber}`);
+      if (restaurant.phone) tags.push(`Ph: ${restaurant.phone}`);
+      text(tags.join('   |   ') || 'Official GST Sales Record', margin + 14, rY, '/F2', 8, 'left', 0.15, 0.2, 0.25);
+
+      // Right Column: Title & Generation Date
+      text('GST SALES & TAX INVOICE REGISTER', margin + contentWidth - 14, startY - 20, '/F2', 14, 'right', 0.91, 0.36, 0.02);
+      text('Summary of Invoices under Section 31 of CGST Act, 2017', margin + contentWidth - 14, startY - 34, '/F1', 8, 'right', 0.45, 0.45, 0.45);
+      text(`Generated: ${new Date().toLocaleString('en-IN')}`, margin + contentWidth - 14, startY - 46, '/F1', 8, 'right', 0.4, 0.4, 0.4);
+      text(`Total Invoices: ${validOrders.length} Order(s)`, margin + contentWidth - 14, startY - 58, '/F2', 8.5, 'right', 0.1, 0.1, 0.1);
+
+      // 4 Metric Highlight Cards
+      const cardY = startY - 114;
+      const cardWidth = (contentWidth - 30) / 4;
+      const cards = [
+        { label: 'TOTAL INVOICES', val: String(validOrders.length), sub: 'Recorded Orders' },
+        { label: 'TAXABLE TURNOVER', val: `Rs. ${totalTaxable.toFixed(2)}`, sub: 'Net of Discounts' },
+        { label: 'TOTAL GST COLLECTED', val: `Rs. ${totalGst.toFixed(2)}`, sub: `CGST ${totalCgst.toFixed(2)} + SGST ${totalSgst.toFixed(2)}` },
+        { label: 'GROSS GRAND TOTAL', val: `Rs. ${totalGross.toFixed(2)}`, sub: 'Net Realized Value' },
+      ];
+
+      cards.forEach((c, idx) => {
+        const cx = margin + idx * (cardWidth + 10);
+        setColor(0.985, 0.985, 0.985);
+        rect(cx, cardY, cardWidth, 36, true, false);
+        setStrokeColor(0.88, 0.90, 0.93);
+        rect(cx, cardY, cardWidth, 36, false, true);
+
+        text(c.label, cx + 8, cardY + 24, '/F2', 7.5, 'left', 0.45, 0.5, 0.55);
+        text(c.val, cx + 8, cardY + 11, '/F2', 10, 'left', idx === 3 ? 0.91 : 0.1, idx === 3 ? 0.36 : 0.1, idx === 3 ? 0.02 : 0.1);
+        text(c.sub, cx + 8, cardY + 2, '/F1', 6.5, 'left', 0.5, 0.5, 0.5);
+      });
+
+      startY = cardY - 14;
+    } else {
+      text(`${restaurant.name || 'Restaurant'} - GST Tax Invoices Register (Page ${pageNum})`, margin, startY - 12, '/F2', 10, 'left', 0.2, 0.2, 0.2);
+      text(`Generated: ${new Date().toLocaleDateString('en-IN')}`, margin + contentWidth, startY - 12, '/F1', 8, 'right', 0.4, 0.4, 0.4);
+      startY -= 24;
+    }
+
+    // Table Header
+    const colDefs = [
+      { id: 'num', label: '#', w: 25, align: 'left' as const },
+      { id: 'date', label: 'DATE & TIME', w: 85, align: 'left' as const },
+      { id: 'inv', label: 'INVOICE NO', w: 80, align: 'left' as const },
+      { id: 'table', label: 'TABLE / ROOM', w: 65, align: 'left' as const },
+      { id: 'cust', label: 'CUSTOMER / PHONE', w: 105, align: 'left' as const },
+      { id: 'taxable', label: 'TAXABLE (Rs.)', w: 80, align: 'right' as const },
+      { id: 'cgst', label: 'CGST 2.5%', w: 60, align: 'right' as const },
+      { id: 'sgst', label: 'SGST 2.5%', w: 60, align: 'right' as const },
+      { id: 'gst', label: 'GST (Rs.)', w: 60, align: 'right' as const },
+      { id: 'total', label: 'TOTAL (Rs.)', w: 75, align: 'right' as const },
+      { id: 'status', label: 'STATUS', w: 70, align: 'center' as const },
+    ];
+
+    setColor(0.12, 0.15, 0.20);
+    rect(margin, startY - 16, contentWidth, 18, true, false);
+
+    let curColX = margin + 6;
+    colDefs.forEach((col) => {
+      const tx = col.align === 'right' ? curColX + col.w - 10 : col.align === 'center' ? curColX + col.w / 2 : curColX;
+      text(col.label, tx, startY - 12, '/F2', 7.5, col.align, 1, 1, 1);
+      curColX += col.w;
+    });
+
+    let rowY = startY - 32;
+
+    pageOrders.forEach((o, rowIdx) => {
+      const isEven = rowIdx % 2 === 0;
+      if (isEven) {
+        setColor(0.985, 0.985, 0.99);
+        rect(margin, rowY - 5, contentWidth, 16, true, false);
+      }
+      setStrokeColor(0.92, 0.93, 0.95);
+      line(margin, rowY - 5, margin + contentWidth, rowY - 5, 0.5);
+
+      const d = o.createdAt ? new Date(o.createdAt) : new Date();
+      const dateStr =
+        d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) +
+        ' ' +
+        d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+      const invNo = `INV-${(o.id || '').slice(-8).toUpperCase()}`;
+      const tableStr = o.tableNumber
+        ? String(o.tableNumber).toLowerCase().includes('room')
+          ? String(o.tableNumber)
+          : `Table ${o.tableNumber}`
+        : 'Dine-In';
+
+      const custName = (o.guestName || o.user?.name || 'Guest').slice(0, 14);
+      const custPhone = o.guestPhone || o.user?.phone || '';
+      const custCombined = custPhone ? `${custName} (${custPhone.slice(-4)})` : custName;
+
+      const sub = Number(o.subtotal || 0);
+      const disc = Number(o.discount || 0);
+      const gst = Number(o.gstAmount || 0);
+      const cgst = gst / 2;
+      const sgst = gst / 2;
+      const taxVal = Math.max(0, sub - disc);
+      const tot = Number(o.total || 0);
+
+      const statusStr =
+        (o.paymentStatus === 'PAID' ? 'PAID' : 'PENDING') +
+        ' • ' +
+        (o.paymentMethod || 'CASH').replace('COUNTER_', '').slice(0, 4);
+
+      const globalIdx = (pageNum === 1 ? 0 : rowsPerPageFirst + (pageNum - 2) * rowsPerPageSubsequent) + rowIdx + 1;
+
+      const values = [
+        { val: String(globalIdx), w: 25, align: 'left' as const, font: '/F1', bold: false },
+        { val: dateStr, w: 85, align: 'left' as const, font: '/F1', bold: false },
+        { val: invNo, w: 80, align: 'left' as const, font: '/F2', bold: true },
+        { val: tableStr, w: 65, align: 'left' as const, font: '/F1', bold: false },
+        { val: custCombined, w: 105, align: 'left' as const, font: '/F1', bold: false },
+        { val: taxVal.toFixed(2), w: 80, align: 'right' as const, font: '/F1', bold: false },
+        { val: cgst.toFixed(2), w: 60, align: 'right' as const, font: '/F1', bold: false },
+        { val: sgst.toFixed(2), w: 60, align: 'right' as const, font: '/F1', bold: false },
+        { val: gst.toFixed(2), w: 60, align: 'right' as const, font: '/F2', bold: true },
+        { val: tot.toFixed(2), w: 75, align: 'right' as const, font: '/F2', bold: true, r: 0.91, g: 0.36, b: 0.02 },
+        {
+          val: statusStr,
+          w: 70,
+          align: 'center' as const,
+          font: '/F1',
+          bold: false,
+          r: o.paymentStatus === 'PAID' ? 0.1 : 0.7,
+          g: o.paymentStatus === 'PAID' ? 0.5 : 0.2,
+          b: 0.1,
+        },
+      ];
+
+      let cellX = margin + 6;
+      values.forEach((v) => {
+        const tx = v.align === 'right' ? cellX + v.w - 10 : v.align === 'center' ? cellX + v.w / 2 : cellX;
+        text(v.val, tx, rowY, v.font, 7.5, v.align, v.r || 0.15, v.g || 0.15, v.b || 0.15);
+        cellX += v.w;
+      });
+
+      rowY -= 16;
+    });
+
+    if (isLastPage) {
+      setColor(0.94, 0.96, 0.98);
+      rect(margin, rowY - 6, contentWidth, 18, true, false);
+      setStrokeColor(0.75, 0.8, 0.85);
+      line(margin, rowY - 6, margin + contentWidth, rowY - 6, 1);
+      line(margin, rowY + 12, margin + contentWidth, rowY + 12, 1);
+
+      text('TOTALS (ALL ORDERS):', margin + 35, rowY - 1, '/F2', 8, 'left', 0.1, 0.1, 0.1);
+
+      text(`Rs. ${totalTaxable.toFixed(2)}`, margin + 6 + 25 + 85 + 80 + 65 + 105 + 80 - 10, rowY - 1, '/F2', 8, 'right', 0.1, 0.1, 0.1);
+      text(`Rs. ${totalCgst.toFixed(2)}`, margin + 6 + 25 + 85 + 80 + 65 + 105 + 80 + 60 - 10, rowY - 1, '/F2', 8, 'right', 0.1, 0.1, 0.1);
+      text(`Rs. ${totalSgst.toFixed(2)}`, margin + 6 + 25 + 85 + 80 + 65 + 105 + 80 + 60 + 60 - 10, rowY - 1, '/F2', 8, 'right', 0.1, 0.1, 0.1);
+      text(`Rs. ${totalGst.toFixed(2)}`, margin + 6 + 25 + 85 + 80 + 65 + 105 + 80 + 60 + 60 + 60 - 10, rowY - 1, '/F2', 8, 'right', 0.1, 0.1, 0.1);
+      text(
+        `Rs. ${totalGross.toFixed(2)}`,
+        margin + 6 + 25 + 85 + 80 + 65 + 105 + 80 + 60 + 60 + 60 + 75 - 10,
+        rowY - 1,
+        '/F2',
+        8.5,
+        'right',
+        0.91,
+        0.36,
+        0.02
+      );
+
+      rowY -= 26;
+
+      setColor(0.985, 0.985, 0.985);
+      rect(margin, rowY - 26, contentWidth, 26, true, false);
+      setStrokeColor(0.85, 0.88, 0.92);
+      rect(margin, rowY - 26, contentWidth, 26, false, true);
+
+      text('STATUTORY DECLARATION & GST COMPLIANCE NOTICE:', margin + 10, rowY - 8, '/F2', 7, 'left', 0.3, 0.3, 0.3);
+      text('1. Invoices recorded herein are issued in accordance with Rule 46 of Central Goods and Services Tax Rules, 2017.', margin + 10, rowY - 17, '/F1', 6.5, 'left', 0.45, 0.45, 0.45);
+      text('2. Restaurant services are taxed under SAC Code 9963 at composite 5% GST (CGST 2.5% + SGST 2.5%). Certified authentic sales register.', margin + 10, rowY - 24, '/F1', 6.5, 'left', 0.45, 0.45, 0.45);
+    }
+
+    const footerY = 16;
+    setStrokeColor(0.9, 0.92, 0.94);
+    line(margin, footerY + 12, margin + contentWidth, footerY + 12, 0.8);
+    text(`GST Sales Register • Generated on ${new Date().toLocaleString('en-IN')}`, margin, footerY + 2, '/F1', 7, 'left', 0.5, 0.5, 0.5);
+    text(`Page ${pageNum}`, margin + contentWidth, footerY + 2, '/F1', 7, 'right', 0.5, 0.5, 0.5);
+
+    pages.push(stream);
+    pageNum++;
+  }
+
+  const pageCount = pages.length;
+  const kids: string[] = [];
+  const body: string[] = [];
+
+  body.push('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
+
+  for (let i = 0; i < pageCount; i++) {
+    kids.push(`${5 + i * 2} 0 R`);
+  }
+
+  body.push(`2 0 obj\n<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${pageCount} >>\nendobj\n`);
+  body.push('3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n');
+  body.push('4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n');
+
+  for (let i = 0; i < pageCount; i++) {
+    const pageObjId = 5 + i * 2;
+    const contentObjId = 6 + i * 2;
+    const stream = pages[i];
+    const streamLen = getByteLength(stream);
+
+    body.push(
+      `${pageObjId} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${width} ${height}] /Contents ${contentObjId} 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>\nendobj\n`
+    );
+    body.push(`${contentObjId} 0 obj\n<< /Length ${streamLen} >>\nstream\n${stream}endstream\nendobj\n`);
+  }
+
+  const totalObjs = 4 + pageCount * 2;
+  let offset = 15;
+  const offsets: number[] = [];
+  let pdf = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
+
+  for (let i = 0; i < body.length; i++) {
+    offsets.push(offset);
+    offset += getByteLength(body[i]);
+    pdf += body[i];
+  }
+
+  const startxref = offset;
+  pdf += `xref\n0 ${totalObjs + 1}\n0000000000 65535 f \n`;
+  for (let i = 0; i < offsets.length; i++) {
+    pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${totalObjs + 1} /Root 1 0 R >>\nstartxref\n${startxref}\n%%EOF`;
+
+  return pdf;
+}
+
+/**
+ * Returns a Blob with MIME type 'application/pdf' for single order invoice.
  */
 export function generateInvoicePdfBlob(order: InvoiceOrderData, restaurant?: InvoiceRestaurantInfo | null): Blob {
   const binaryString = buildInvoicePdfBinary(order, restaurant);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i) & 0xff;
+  }
+  return new Blob([bytes], { type: 'application/pdf' });
+}
+
+/**
+ * Returns a Blob with MIME type 'application/pdf' for GST register report.
+ */
+export function generateGstRegisterPdfBlob(orders: InvoiceOrderData[], restaurant?: InvoiceRestaurantInfo | null): Blob {
+  const binaryString = buildGstRegisterPdfBinary(orders, restaurant);
   const len = binaryString.length;
   const bytes = new Uint8Array(len);
   for (let i = 0; i < len; i++) {
@@ -425,12 +806,42 @@ export function downloadInvoicePdf(order: InvoiceOrderData, restaurant?: Invoice
 }
 
 /**
+ * Directly downloads the GST Sales Register as a genuine .pdf file.
+ */
+export function downloadGstRegisterPdf(orders: InvoiceOrderData[], restaurant?: InvoiceRestaurantInfo | null): void {
+  if (typeof window === 'undefined') return;
+
+  const blob = generateGstRegisterPdfBlob(orders, restaurant);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  const cleanName = (restaurant?.name || 'Restaurant').replace(/[^a-zA-Z0-9]/g, '_');
+  const dateStr = new Date().toISOString().split('T')[0];
+  link.download = `GST_Tax_Invoices_${cleanName}_${dateStr}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+/**
  * Opens the GST Tax Invoice PDF in a new browser tab for direct viewing or printing.
  */
 export function openInvoicePdf(order: InvoiceOrderData, restaurant?: InvoiceRestaurantInfo | null): void {
   if (typeof window === 'undefined') return;
 
   const blob = generateInvoicePdfBlob(order, restaurant);
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+}
+
+/**
+ * Opens the GST Sales Register PDF in a new browser tab.
+ */
+export function openGstRegisterPdf(orders: InvoiceOrderData[], restaurant?: InvoiceRestaurantInfo | null): void {
+  if (typeof window === 'undefined') return;
+
+  const blob = generateGstRegisterPdfBlob(orders, restaurant);
   const url = URL.createObjectURL(blob);
   window.open(url, '_blank');
 }

@@ -402,10 +402,13 @@ export async function getRestaurant(req: AuthenticatedRequest, res: Response, ne
       });
       if (onboarding?.gstin) {
         (restaurant as any).gstin = onboarding.gstin;
+      } else if ((restaurant.customFields as any)?.gstin) {
+        (restaurant as any).gstin = (restaurant.customFields as any).gstin;
       }
       if (onboarding?.legalBusinessName) {
         (restaurant as any).legalBusinessName = onboarding.legalBusinessName;
       }
+      (restaurant as any).fssaiNumber = (restaurant.customFields as any)?.fssaiNumber || (restaurant.customFields as any)?.fssai || null;
     }
     res.json({ success: true, data: { restaurant } });
   } catch (error) { next(error); }
@@ -1135,8 +1138,11 @@ export async function getOrders(req: AuthenticatedRequest, res: Response, next: 
           legalBusinessName: onboarding?.legalBusinessName || restaurant.merchantName || restaurant.name,
           address: restaurant.address,
           city: restaurant.city,
+          state: restaurant.state,
+          pincode: restaurant.pincode,
           phone: restaurant.phone,
           gstin,
+          fssaiNumber: (restaurant.customFields as any)?.fssaiNumber || (restaurant.customFields as any)?.fssai || null,
           featureFlags: restaurant.featureFlags,
         },
       },

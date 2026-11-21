@@ -20,7 +20,7 @@ import { isItemAddon } from '@/utils/orderAddon';
 import { CounterOrderVerification } from '@/components/owner/CounterOrderVerification';
 import { printKitchenOrderTicket } from '@/utils/kotPrint';
 import { printCustomerBill, exportGstOrdersCsv } from '@/utils/billPrint';
-import { downloadInvoicePdf } from '@/utils/pdfInvoice';
+import { downloadInvoicePdf, downloadGstRegisterPdf, type InvoiceRestaurantInfo } from '@/utils/pdfInvoice';
 import { ManualKotModal } from '@/components/owner/ManualKotModal';
 import { PREDEFINED_REJECTION_REASONS } from '@/utils/orderRejection';
 
@@ -150,8 +150,11 @@ export function OwnerOrdersPage() {
         legalBusinessName?: string;
         address?: string;
         city?: string;
+        state?: string;
+        pincode?: string;
         phone?: string;
         gstin?: string;
+        fssaiNumber?: string;
         featureFlags?: {
           kotMode?: 'DIGITAL_KDS' | 'PRINT_KOT';
           [key: string]: any;
@@ -163,13 +166,16 @@ export function OwnerOrdersPage() {
   const isPrintKotMode = (restaurantData?.featureFlags?.kotMode === 'PRINT_KOT') || ((data as any)?.data?.restaurant?.featureFlags?.kotMode === 'PRINT_KOT');
   const restaurantName = restaurantData?.name || (data as any)?.data?.restaurant?.name || 'Restaurant';
 
-  const currentRestaurantInfo = {
+  const currentRestaurantInfo: InvoiceRestaurantInfo = {
     name: restaurantName,
     legalBusinessName: restaurantData?.legalBusinessName || (data as any)?.data?.restaurant?.legalBusinessName,
     address: restaurantData?.address || (data as any)?.data?.restaurant?.address,
     city: restaurantData?.city || (data as any)?.data?.restaurant?.city,
+    state: restaurantData?.state || (data as any)?.data?.restaurant?.state,
+    pincode: restaurantData?.pincode || (data as any)?.data?.restaurant?.pincode,
     phone: restaurantData?.phone || (data as any)?.data?.restaurant?.phone,
     gstin: restaurantData?.gstin || (data as any)?.data?.restaurant?.gstin,
+    fssaiNumber: restaurantData?.fssaiNumber || (data as any)?.data?.restaurant?.fssaiNumber,
   };
 
   const restId = restaurantData?.id || (data as any)?.data?.restaurant?.id;
@@ -385,18 +391,34 @@ export function OwnerOrdersPage() {
                   <button
                     onClick={() => {
                       if (!data?.data.orders.length) {
+                        toast.error('No orders available to download.');
+                        return;
+                      }
+                      downloadGstRegisterPdf(data.data.orders, currentRestaurantInfo);
+                      toast.success(`Downloaded GST Bills PDF (${data.data.orders.length} orders)!`);
+                    }}
+                    disabled={!data?.data.orders.length}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-all disabled:opacity-50 cursor-pointer shadow-sm"
+                    title="Download official GST Tax Invoices & Sales Register in PDF format"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Download GST Bills (PDF)</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!data?.data.orders.length) {
                         toast.error('No orders available to export.');
                         return;
                       }
                       exportGstOrdersCsv(data.data.orders, restaurantName);
-                      toast.success('GST Sales Report downloaded successfully!');
+                      toast.success('GST Sales CSV downloaded successfully!');
                     }}
                     disabled={!data?.data.orders.length}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-colors disabled:opacity-50 cursor-pointer shadow-2xs"
-                    title="Export GST sales report for accountant & tax filing"
+                    className="flex items-center gap-1 px-2.5 py-2 bg-card hover:bg-muted text-muted-foreground hover:text-foreground border border-border rounded-xl text-xs font-medium whitespace-nowrap shrink-0 transition-colors disabled:opacity-50 cursor-pointer"
+                    title="Export raw CSV data for spreadsheet"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span>Export GST (CSV)</span>
+                    <span>Export CSV</span>
                   </button>
                 </div>
               </div>
@@ -487,6 +509,19 @@ export function OwnerOrdersPage() {
                         >
                           <Receipt className="w-3.5 h-3.5" />
                           <span className="hidden sm:inline">Print Bill</span>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            downloadInvoicePdf(order, currentRestaurantInfo);
+                            toast.success(`GST Tax Invoice PDF for #${order.id.slice(-8).toUpperCase()} downloaded!`);
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 shadow-2xs"
+                          title="Download Official GST Tax Invoice in PDF format"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Download Bill (PDF)</span>
+                          <span className="sm:hidden">PDF</span>
                         </button>
                         <button
                           onClick={(e) => {
@@ -768,13 +803,13 @@ export function OwnerOrdersPage() {
                                   <button
                                     onClick={() => {
                                       downloadInvoicePdf(order, currentRestaurantInfo);
-                                      toast.success('GST Tax Invoice PDF downloaded!');
+                                      toast.success(`GST Tax Invoice PDF for #${order.id.slice(-8).toUpperCase()} downloaded!`);
                                     }}
-                                    className="flex-1 py-2.5 px-3 text-xs font-bold rounded-xl bg-primary/10 border border-primary/20 hover:bg-primary/20 text-primary transition-all flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
+                                    className="flex-1 py-2.5 px-3 text-xs font-bold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
                                     title="Download Official GST Tax Invoice in PDF format"
                                   >
                                     <FileText className="w-4 h-4" />
-                                    <span>Download PDF</span>
+                                    <span>Download GST Bill (PDF)</span>
                                   </button>
                                 </div>
 
