@@ -181,7 +181,10 @@ export function OwnerDashboard() {
     if (!data) return;
     try {
       setIsTogglingQr(true);
-      const res = await api.patch('/owner/restaurant/toggle-qr', { enabled: !isQrEnabled });
+      const res = await api.patch('/owner/restaurant/toggle-qr', {
+        enabled: !isQrEnabled,
+        restaurantId: data.restaurant.id,
+      });
       if (res.data?.success) {
         const nextState = res.data.data?.qrEnabled;
         if (nextState) {
