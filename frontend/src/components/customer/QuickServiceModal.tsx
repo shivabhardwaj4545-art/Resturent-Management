@@ -24,6 +24,7 @@ interface QuickServiceModalProps {
   tableNumber: string;
   restaurantSlug: string;
   restaurantId?: string;
+  themeColor?: string | null;
 }
 
 const SERVICE_CONFIG: Record<
@@ -41,7 +42,7 @@ const SERVICE_CONFIG: Record<
     subtitle: 'General Assistance at your table',
     icon: Bell,
     placeholder: 'Optional: e.g. Need extra napkins, spoons, or recommendations...',
-    badgeColor: 'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 border-purple-200 dark:border-purple-800',
+    badgeColor: 'bg-primary/10 text-primary border-primary/20',
   },
   WATER: {
     title: 'Request Water',
@@ -124,7 +125,7 @@ export function QuickServiceModal({
         {/* Header */}
         <div className="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-neutral-800">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center shadow-xs">
+            <div className="w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shadow-xs">
               <Icon className="w-5 h-5" />
             </div>
             <div>
@@ -165,7 +166,7 @@ export function QuickServiceModal({
             placeholder={config.placeholder}
             rows={3}
             maxLength={250}
-            className="w-full p-3 text-xs rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-purple-500/40 resize-none font-medium"
+            className="w-full p-3 text-xs rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none font-medium"
           />
         </div>
 
@@ -183,7 +184,7 @@ export function QuickServiceModal({
             type="button"
             onClick={handleSubmit}
             disabled={isSubmitting}
-            className="flex-1 py-3 text-xs font-extrabold rounded-2xl bg-purple-600 hover:bg-purple-700 active:scale-98 text-white transition flex items-center justify-center gap-2 shadow-md shadow-purple-600/25 cursor-pointer disabled:opacity-60"
+            className="flex-1 py-3 text-xs font-extrabold rounded-2xl bg-primary hover:bg-primary/90 active:scale-98 text-primary-foreground transition flex items-center justify-center gap-2 shadow-md shadow-primary/25 cursor-pointer disabled:opacity-60"
           >
             {isSubmitting ? (
               <Loader2 className="w-4 h-4 animate-spin" />

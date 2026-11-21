@@ -18,6 +18,7 @@ import { getImageUrl } from '@/lib/image';
 import { generateUniqueTableCode } from '@/utils/tableCode';
 import QRCode from 'qrcode';
 import { buildAppUpiUrl, triggerUpiLaunch } from '@/utils/upiIntent';
+import { applyThemeColor } from '@/utils/theme';
 
 declare global {
   interface Window {
@@ -105,6 +106,22 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
   });
 
   const restaurant = menuData?.restaurant;
+
+  // ── Synchronize dynamic restaurant theme color across UI ────────────────
+  const themeColor = restaurant?.themeColor;
+  useEffect(() => {
+    if (themeColor) {
+      applyThemeColor(themeColor);
+      if (typeof window !== 'undefined' && restaurantSlug) {
+        localStorage.setItem(`restaurant_theme_${restaurantSlug}`, themeColor);
+      }
+    } else if (typeof window !== 'undefined' && restaurantSlug) {
+      const cached = localStorage.getItem(`restaurant_theme_${restaurantSlug}`);
+      if (cached) {
+        applyThemeColor(cached);
+      }
+    }
+  }, [themeColor, restaurantSlug]);
 
 
   const [manualTableNumber, setManualTableNumber] = useState(tableNumber || '');

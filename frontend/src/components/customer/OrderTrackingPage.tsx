@@ -34,6 +34,7 @@ import { toast } from 'sonner';
 import { InvoiceDownload } from './InvoiceDownload';
 import { QuickServiceModal, QuickServiceType } from './QuickServiceModal';
 import { playNewOrderSound, processRealTimeEvent } from '@/utils/audio';
+import { applyThemeColor } from '@/utils/theme';
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
 
@@ -121,6 +122,22 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
     enabled: mounted && !!orderId,
     refetchInterval: 12000,
   });
+
+  // ── Synchronize dynamic restaurant theme color across UI ────────────────
+  const themeColor = order?.restaurant?.themeColor;
+  useEffect(() => {
+    if (themeColor) {
+      applyThemeColor(themeColor);
+      if (typeof window !== 'undefined' && restaurantSlug) {
+        localStorage.setItem(`restaurant_theme_${restaurantSlug}`, themeColor);
+      }
+    } else if (typeof window !== 'undefined' && restaurantSlug) {
+      const cached = localStorage.getItem(`restaurant_theme_${restaurantSlug}`);
+      if (cached) {
+        applyThemeColor(cached);
+      }
+    }
+  }, [themeColor, restaurantSlug]);
 
   // Keep local status synchronized
   const lastNotifiedStatusRef = useRef<string | null>(null);
@@ -288,7 +305,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
         <p className="text-sm text-neutral-500 mb-6">We could not locate this order. Please scan the table QR code again.</p>
         <Link
           href={`/r/${restaurantSlug}`}
-          className="px-6 py-3 rounded-2xl bg-purple-600 text-white font-bold text-sm shadow-md"
+          className="px-6 py-3 rounded-2xl bg-primary text-primary-foreground hover:bg-primary/90 font-bold text-sm shadow-md transition-all"
         >
           Back to Menu
         </Link>
@@ -303,7 +320,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
   const isDelivered = !isAddonPending && currentStatus === 'DELIVERED';
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] dark:bg-neutral-950 flex flex-col justify-between max-w-md mx-auto relative pb-28 selection:bg-purple-200">
+    <div className="min-h-screen bg-[#F8F9FA] dark:bg-neutral-950 flex flex-col justify-between max-w-md mx-auto relative pb-28 selection:bg-primary/20">
       {/* ── 1. HEADER (Logo, Restaurant Name, Table Badge) ───────────────────── */}
       <header className="px-5 pt-4 pb-3 flex items-center justify-between sticky top-0 z-30 bg-[#F8F9FA]/90 dark:bg-neutral-950/90 backdrop-blur-md">
         <div className="flex items-center gap-3 min-w-0">
@@ -315,7 +332,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
                 className="w-full h-full object-cover"
               />
             ) : (
-              <UtensilsCrossed className="w-5 h-5 text-purple-600" />
+              <UtensilsCrossed className="w-5 h-5 text-primary" />
             )}
           </div>
           <div className="min-w-0">
@@ -330,7 +347,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
 
         {/* Rounded Table Number Badge */}
         <div className="shrink-0 px-3 py-1.5 rounded-full bg-white dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-800 shadow-2xs">
-          <span className="text-xs font-black text-purple-600 dark:text-purple-400 uppercase tracking-wide">
+          <span className="text-xs font-black text-primary uppercase tracking-wide">
             {cleanTableNumber}
           </span>
         </div>
@@ -398,9 +415,9 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
 
           {/* Verification Code pill if counter verification is active */}
           {order.verificationCode && (
-            <div className="mt-3.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/80 dark:bg-neutral-900/80 border border-blue-200/70 dark:border-blue-800 text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
+            <div className="mt-3.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/80 dark:bg-neutral-900/80 border border-primary/20 text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
               <span>Code:</span>
-              <span className="font-mono text-blue-600 dark:text-blue-400 font-black">
+              <span className="font-mono text-primary font-black">
                 #{order.verificationCode}
               </span>
             </div>
@@ -445,7 +462,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
                       <p className="font-bold text-xs text-neutral-900 dark:text-white truncate">
                         {itemName} {variantName}
                         {item.isAddon && (
-                          <span className="ml-1.5 text-[9px] font-black px-1.5 py-0.5 rounded-md bg-purple-50 text-purple-600 border border-purple-200">
+                          <span className="ml-1.5 text-[9px] font-black px-1.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20">
                             Add-on
                           </span>
                         )}
@@ -475,13 +492,13 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
           </div>
         </div>
 
-        {/* ── 4. ADD MORE ITEMS BUTTON (Purple outline, plus icon, full width) ─ */}
+        {/* ── 4. ADD MORE ITEMS BUTTON (Theme outline, plus icon, full width) ── */}
         <button
           type="button"
           onClick={handleAddMoreItems}
-          className="w-full py-3.5 px-4 rounded-2xl border-2 border-purple-600 dark:border-purple-500 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/30 active:scale-98 font-extrabold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs"
+          className="w-full py-3.5 px-4 rounded-2xl border-2 border-primary text-primary hover:bg-primary/10 active:scale-98 font-extrabold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs"
         >
-          <Plus className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+          <Plus className="w-4 h-4 text-primary" />
           <span>+ Add More Items</span>
         </button>
 
@@ -491,9 +508,9 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
           <button
             type="button"
             onClick={() => setActiveServiceModal('GENERAL_ASSISTANCE')}
-            className="flex flex-col items-center justify-center p-2.5 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200/70 dark:border-neutral-800 shadow-2xs hover:border-purple-500 transition-all cursor-pointer active:scale-95 group text-center"
+            className="flex flex-col items-center justify-center p-2.5 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200/70 dark:border-neutral-800 shadow-2xs hover:border-primary transition-all cursor-pointer active:scale-95 group text-center"
           >
-            <div className="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
               <Bell className="w-4 h-4" />
             </div>
             <span className="text-[10.5px] font-bold text-neutral-800 dark:text-neutral-200 leading-tight">
@@ -505,9 +522,9 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
           <button
             type="button"
             onClick={() => setActiveServiceModal('WATER')}
-            className="flex flex-col items-center justify-center p-2.5 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200/70 dark:border-neutral-800 shadow-2xs hover:border-purple-500 transition-all cursor-pointer active:scale-95 group text-center"
+            className="flex flex-col items-center justify-center p-2.5 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200/70 dark:border-neutral-800 shadow-2xs hover:border-primary transition-all cursor-pointer active:scale-95 group text-center"
           >
-            <div className="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
               <Droplets className="w-4 h-4" />
             </div>
             <span className="text-[10.5px] font-bold text-neutral-800 dark:text-neutral-200 leading-tight">
@@ -519,9 +536,9 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
           <button
             type="button"
             onClick={() => setActiveServiceModal('BILL')}
-            className="flex flex-col items-center justify-center p-2.5 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200/70 dark:border-neutral-800 shadow-2xs hover:border-purple-500 transition-all cursor-pointer active:scale-95 group text-center"
+            className="flex flex-col items-center justify-center p-2.5 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200/70 dark:border-neutral-800 shadow-2xs hover:border-primary transition-all cursor-pointer active:scale-95 group text-center"
           >
-            <div className="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
               <Receipt className="w-4 h-4" />
             </div>
             <span className="text-[10.5px] font-bold text-neutral-800 dark:text-neutral-200 leading-tight">
@@ -533,9 +550,9 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
           <button
             type="button"
             onClick={() => setActiveServiceModal('CLEANING')}
-            className="flex flex-col items-center justify-center p-2.5 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200/70 dark:border-neutral-800 shadow-2xs hover:border-purple-500 transition-all cursor-pointer active:scale-95 group text-center"
+            className="flex flex-col items-center justify-center p-2.5 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200/70 dark:border-neutral-800 shadow-2xs hover:border-primary transition-all cursor-pointer active:scale-95 group text-center"
           >
-            <div className="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
               <Sparkles className="w-4 h-4" />
             </div>
             <span className="text-[10.5px] font-bold text-neutral-800 dark:text-neutral-200 leading-tight">
@@ -551,25 +568,25 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
           {/* 1. Menu */}
           <Link
             href={`/r/${restaurantSlug}`}
-            className="flex flex-col items-center justify-center gap-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
+            className="flex flex-col items-center justify-center gap-1 text-neutral-400 hover:text-primary transition-colors"
           >
             <UtensilsCrossed className="w-5 h-5" />
             <span className="text-[11px] font-semibold">Menu</span>
           </Link>
 
-          {/* 2. Order (Selected Tab with Purple Indicator) */}
-          <div className="flex flex-col items-center justify-center gap-1 text-purple-600 dark:text-purple-400 relative">
+          {/* 2. Order (Selected Tab with Theme Indicator) */}
+          <div className="flex flex-col items-center justify-center gap-1 text-primary relative">
             <ShoppingBag className="w-5 h-5" />
             <span className="text-[11px] font-bold">Order</span>
-            {/* Selected purple indicator dot */}
-            <span className="w-1.5 h-1.5 rounded-full bg-purple-600 dark:bg-purple-400 absolute -top-1" />
+            {/* Selected theme indicator dot */}
+            <span className="w-1.5 h-1.5 rounded-full bg-primary absolute -top-1" />
           </div>
 
           {/* 3. Bill */}
           <button
             type="button"
             onClick={() => setShowBillModal(true)}
-            className="flex flex-col items-center justify-center gap-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors cursor-pointer"
+            className="flex flex-col items-center justify-center gap-1 text-neutral-400 hover:text-primary transition-colors cursor-pointer"
           >
             <Receipt className="w-5 h-5" />
             <span className="text-[11px] font-semibold">Bill</span>
@@ -579,7 +596,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
           <button
             type="button"
             onClick={() => setShowMoreModal(true)}
-            className="flex flex-col items-center justify-center gap-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors cursor-pointer"
+            className="flex flex-col items-center justify-center gap-1 text-neutral-400 hover:text-primary transition-colors cursor-pointer"
           >
             <MoreHorizontal className="w-5 h-5" />
             <span className="text-[11px] font-semibold">More</span>
@@ -595,6 +612,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
         tableNumber={order.tableNumber || '1'}
         restaurantSlug={restaurantSlug}
         restaurantId={order.restaurantId}
+        themeColor={order.restaurant?.themeColor}
       />
 
       {/* ── BILL MODAL / RUNNING BILL OVERVIEW ──────────────────────────────── */}
@@ -609,7 +627,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
             >
               <div className="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-neutral-800">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center">
+                  <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
                     <Receipt className="w-5 h-5" />
                   </div>
                   <div>
@@ -644,23 +662,23 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
                 )}
                 <div className="flex justify-between text-sm font-extrabold pt-2 border-t border-neutral-200 dark:border-neutral-700">
                   <span>Payable Total:</span>
-                  <span className="text-purple-600 dark:text-purple-400 font-black">
+                  <span className="text-primary font-black">
                     ₹{order.total.toFixed(2)}
                   </span>
                 </div>
               </div>
 
-              <div className="p-3 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/40 rounded-2xl text-center">
-                <p className="text-xs font-bold text-purple-800 dark:text-purple-300">
+              <div className="p-3 bg-primary/10 border border-primary/20 rounded-2xl text-center">
+                <p className="text-xs font-bold text-neutral-900 dark:text-white">
                   Please settle your bill at the restaurant counter.
                 </p>
-                <p className="text-[11px] text-purple-600 dark:text-purple-400 mt-0.5">
+                <p className="text-[11px] text-primary mt-0.5 font-medium">
                   Counter accepts Cash, UPI, and Cards.
                 </p>
               </div>
 
               {order.paymentStatus === 'PAID' && (
-                <InvoiceDownload order={order as any} />
+                <InvoiceDownload order={order as any} themeColor={order.restaurant?.themeColor || '#E85D04'} />
               )}
 
               <button
@@ -703,13 +721,13 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
                 </p>
                 {order.restaurant?.address && (
                   <p className="text-neutral-500 flex items-center gap-1.5">
-                    <MapPin className="w-4 h-4 text-purple-600 shrink-0" />
+                    <MapPin className="w-4 h-4 text-primary shrink-0" />
                     <span>{order.restaurant.address}</span>
                   </p>
                 )}
                 {order.restaurant?.phone && (
                   <p className="text-neutral-500 flex items-center gap-1.5">
-                    <Phone className="w-4 h-4 text-purple-600 shrink-0" />
+                    <Phone className="w-4 h-4 text-primary shrink-0" />
                     <span>{order.restaurant.phone}</span>
                   </p>
                 )}
@@ -718,7 +736,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
               {order.tableSession?.sessionCode && (
                 <div className="p-3 bg-neutral-50 dark:bg-neutral-800/60 rounded-2xl border border-neutral-200/80 dark:border-neutral-700 text-center">
                   <p className="text-[11px] text-neutral-500 font-medium">Shared Dining Session Code:</p>
-                  <p className="text-lg font-mono font-black text-purple-600 dark:text-purple-400">
+                  <p className="text-lg font-mono font-black text-primary">
                     #{order.tableSession.sessionCode}
                   </p>
                   <p className="text-[10px] text-neutral-400">Share with friends to join this table session.</p>

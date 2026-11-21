@@ -766,8 +766,16 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
   useEffect(() => {
     if (currentThemeColor) {
       applyThemeColor(currentThemeColor);
+      if (typeof window !== 'undefined' && slug) {
+        localStorage.setItem(`restaurant_theme_${slug}`, currentThemeColor);
+      }
+    } else if (typeof window !== 'undefined' && slug) {
+      const cached = localStorage.getItem(`restaurant_theme_${slug}`);
+      if (cached) {
+        applyThemeColor(cached);
+      }
     }
-  }, [currentThemeColor]);
+  }, [currentThemeColor, slug]);
 
   useEffect(() => {
     if (isHotelRoom) {
