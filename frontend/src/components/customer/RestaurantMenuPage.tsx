@@ -1149,6 +1149,13 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
     socket.on('table-session:updated', handleTableSessionAddon);
 
     const handleQrServiceToggled = (payload: any) => {
+      // Guard: strictly ignore events intended for other restaurants
+      if (payload?.restaurantId && data?.restaurant?.id && payload.restaurantId !== data.restaurant.id) {
+        return;
+      }
+      if (payload?.restaurantSlug && slug && payload.restaurantSlug.toLowerCase() !== slug.toLowerCase()) {
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ['menu', slug] });
       if (payload?.enabled === false) {
         setIsMaintenanceFromApi(true);
@@ -1158,7 +1165,11 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
     };
     socket.on('restaurant:qr_service_toggled', handleQrServiceToggled);
 
-    const handleCouponsUpdated = () => {
+    const handleCouponsUpdated = (payload?: any) => {
+      // Guard: strictly ignore coupon updates intended for other restaurants
+      if (payload?.restaurantId && data?.restaurant?.id && payload.restaurantId !== data.restaurant.id) {
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ['coupon-suggestion'] });
       queryClient.invalidateQueries({ queryKey: ['public-coupons'] });
     };

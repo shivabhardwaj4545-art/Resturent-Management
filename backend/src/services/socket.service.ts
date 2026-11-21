@@ -443,8 +443,6 @@ export function emitCouponsUpdated(restaurantId: string, data?: any): void {
   };
   io.to(`restaurant:${restaurantId}`).emit('coupons:updated', payload);
   io.to(`restaurant:${restaurantId}`).emit('coupon:updated', payload);
-  io.emit('coupons:updated', payload);
-  io.emit('coupon:updated', payload);
 }
 
 export function getSocketIO(): SocketIOServer {

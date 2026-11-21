@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -19,12 +20,14 @@ import {
   Users,
   Sparkles,
   BellRing,
+  ChevronDown,
+  Check,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import api from '@/services/api';
 import { toast } from 'sonner';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getImageUrl } from '@/lib/image';
 
 export const OWNER_NAV_ITEMS = [
@@ -51,6 +54,9 @@ export function OwnerSidebar({ mobileOpen = false, onMobileClose }: OwnerSidebar
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const [showRestaurantSwitcher, setShowRestaurantSwitcher] = useState(false);
+  const switcherRef = useRef<HTMLDivElement>(null);
 
   const { data: restaurantData } = useQuery({
     queryKey: ['owner-restaurant-sidebar'],
@@ -72,6 +78,57 @@ export function OwnerSidebar({ mobileOpen = false, onMobileClose }: OwnerSidebar
     staleTime: 5 * 1000,
   });
 
+  const { data: allRestaurantsData } = useQuery({
+    queryKey: ['owner-restaurants-list'],
+    queryFn: async () => {
+      const res = await api.get('/owner/restaurants');
+      return (res.data.data.restaurants || []) as Array<{
+        id: string;
+        name: string;
+        slug: string;
+        logo: string | null;
+        isOpen: boolean;
+        platformType: string;
+      }>;
+    },
+    staleTime: 30 * 1000,
+  });
+
+  // Keep localStorage active restaurant id initialized
+  useEffect(() => {
+    if (restaurantData?.id && typeof window !== 'undefined') {
+      const current = localStorage.getItem('owner_active_restaurant_id');
+      if (!current) {
+        localStorage.setItem('owner_active_restaurant_id', restaurantData.id);
+      }
+    }
+  }, [restaurantData?.id]);
+
+  // Close switcher on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (switcherRef.current && !switcherRef.current.contains(e.target as Node)) {
+        setShowRestaurantSwitcher(false);
+      }
+    };
+    if (showRestaurantSwitcher) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showRestaurantSwitcher]);
+
+  const handleSwitchRestaurant = (targetId: string, targetName: string) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('owner_active_restaurant_id', targetId);
+    }
+    useAuthStore.getState().updateUser({ restaurantId: targetId });
+    setShowRestaurantSwitcher(false);
+    toast.success(`Switched active dashboard to "${targetName}"! 🏪`);
+    queryClient.invalidateQueries();
+  };
+
   const disabledTabs: string[] = Array.isArray(restaurantData?.disabledTabs) ? restaurantData.disabledTabs : [];
 
   const handleLogout = async () => {
@@ -90,8 +147,8 @@ export function OwnerSidebar({ mobileOpen = false, onMobileClose }: OwnerSidebar
     <div className="w-64 h-full bg-card border-r border-border flex flex-col justify-between shrink-0 overflow-hidden">
       {/* Top Header & Nav Container */}
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-        <div className="p-6 border-b border-border flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
+        <div className="p-4 border-b border-border flex items-center justify-between shrink-0 relative" ref={switcherRef}>
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className="w-10 h-10 rounded-2xl bg-primary text-primary-foreground flex items-center justify-center shadow-lg shadow-primary/25 shrink-0 overflow-hidden">
               {restaurantData?.logo ? (
                 <img
@@ -103,31 +160,90 @@ export function OwnerSidebar({ mobileOpen = false, onMobileClose }: OwnerSidebar
                 <UtensilsCrossed className="w-5 h-5 text-primary-foreground" />
               )}
             </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <p className="font-extrabold text-sm text-foreground tracking-tight truncate max-w-[110px]">
-                  {restaurantData?.name || 'Restaurant'}
-                </p>
-                {restaurantData?.platformType === 'DUAL' ? (
-                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-500 border border-amber-500/30 shrink-0">
-                    DUAL
-                  </span>
-                ) : null}
-              </div>
-              <p className="text-[11px] text-muted-foreground font-medium truncate">
-                {restaurantData?.platformType === 'DUAL'
-                  ? 'Restaurant & Hotel'
-                  : 'Owner Panel'}
-              </p>
+
+            <div className="min-w-0 flex-1">
+              {allRestaurantsData && allRestaurantsData.length > 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setShowRestaurantSwitcher((prev) => !prev)}
+                  className="w-full text-left group flex items-center justify-between gap-1 hover:opacity-85 transition-opacity"
+                  title="Click to switch between your restaurants"
+                >
+                  <div className="min-w-0">
+                    <p className="font-extrabold text-sm text-foreground tracking-tight truncate max-w-[105px] group-hover:text-primary transition-colors">
+                      {restaurantData?.name || 'Restaurant'}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1">
+                      <span>Switch Outlet</span>
+                    </p>
+                  </div>
+                  <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-transform ${showRestaurantSwitcher ? 'rotate-180' : ''}`} />
+                </button>
+              ) : (
+                <>
+                  <div className="flex items-center gap-1.5">
+                    <p className="font-extrabold text-sm text-foreground tracking-tight truncate max-w-[110px]">
+                      {restaurantData?.name || 'Restaurant'}
+                    </p>
+                    {restaurantData?.platformType === 'DUAL' ? (
+                      <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-500 border border-amber-500/30 shrink-0">
+                        DUAL
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground font-medium truncate">
+                    {restaurantData?.platformType === 'DUAL'
+                      ? 'Restaurant & Hotel'
+                      : 'Owner Panel'}
+                  </p>
+                </>
+              )}
             </div>
           </div>
+
           {onMobileClose && (
             <button
               onClick={onMobileClose}
-              className="lg:hidden p-2 rounded-xl text-muted-foreground hover:bg-muted"
+              className="lg:hidden p-2 rounded-xl text-muted-foreground hover:bg-muted ml-1"
             >
               <X className="w-5 h-5" />
             </button>
+          )}
+
+          {/* Restaurant Switcher Dropdown Menu */}
+          {showRestaurantSwitcher && allRestaurantsData && (
+            <div className="absolute top-full left-3 right-3 mt-1.5 bg-card border border-border rounded-2xl shadow-xl z-50 p-2 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+              <div className="px-2 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                Your Outlets ({allRestaurantsData.length})
+              </div>
+              {allRestaurantsData.map((rest) => {
+                const isSelected = rest.id === restaurantData?.id;
+                return (
+                  <button
+                    key={rest.id}
+                    type="button"
+                    onClick={() => handleSwitchRestaurant(rest.id, rest.name)}
+                    className={`w-full flex items-center justify-between p-2 rounded-xl text-left text-xs font-semibold transition-all ${
+                      isSelected
+                        ? 'bg-primary/10 text-primary font-bold'
+                        : 'text-foreground hover:bg-muted'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-6 h-6 rounded-lg bg-muted text-foreground flex items-center justify-center overflow-hidden shrink-0">
+                        {rest.logo ? (
+                          <img src={getImageUrl(rest.logo)} alt={rest.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <UtensilsCrossed className="w-3.5 h-3.5 opacity-60" />
+                        )}
+                      </div>
+                      <span className="truncate">{rest.name}</span>
+                    </div>
+                    {isSelected && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
           )}
         </div>
 

@@ -142,7 +142,10 @@ export function OwnerSettingsPage() {
       setIsTogglingQrMaster(true);
       const nextEnabled = !qrSettings.enabled;
       setQrSettings((prev) => ({ ...prev, enabled: nextEnabled }));
-      const res = await api.patch('/owner/restaurant/toggle-qr', { enabled: nextEnabled });
+      const res = await api.patch('/owner/restaurant/toggle-qr', {
+        enabled: nextEnabled,
+        restaurantId: data?.id,
+      });
       if (res.data?.success) {
         if (nextEnabled) {
           toast.success('🟢 QR Ordering Service is now ONLINE!');

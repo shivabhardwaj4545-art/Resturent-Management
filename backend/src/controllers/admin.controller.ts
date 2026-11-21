@@ -207,17 +207,11 @@ export async function updateRestaurant(req: AuthenticatedRequest, res: Response,
     if (slug !== existing.slug || featureFlags !== undefined || platformType !== undefined || isSuspended !== undefined) {
       await cacheDelPattern(`menu:${existing.slug}*`);
       await cacheDelPattern(`menu:${existing.slug.toLowerCase()}*`);
-      await cacheDelPattern(`menu:*`);
 
       if (isSuspended !== undefined) {
         try {
           const io = getSocketServer();
           io?.to(`restaurant:${existing.id}`).emit('restaurant:status_changed', {
-            isSuspended: updated.isSuspended,
-            isOpen: updated.isOpen,
-            restaurantId: existing.id,
-          });
-          io?.emit('restaurant:status_changed', {
             isSuspended: updated.isSuspended,
             isOpen: updated.isOpen,
             restaurantId: existing.id,
@@ -318,20 +312,14 @@ export async function suspendRestaurant(req: AuthenticatedRequest, res: Response
       data: { isSuspended, ...(isSuspended && { isOpen: false }) },
     });
 
-    // Invalidate all menu and restaurant caches
+    // Invalidate menu caches for this restaurant
     await cacheDelPattern(`menu:${restaurant.slug}*`);
     await cacheDelPattern(`menu:${restaurant.slug.toLowerCase()}*`);
-    await cacheDelPattern(`menu:*`);
 
-    // Emit real-time notification to owner dashboard and customer screens
+    // Emit real-time notification to owner dashboard and customer screens for this restaurant
     try {
       const io = getSocketServer();
       io?.to(`restaurant:${restaurant.id}`).emit('restaurant:status_changed', {
-        isSuspended: updated.isSuspended,
-        isOpen: updated.isOpen,
-        restaurantId: restaurant.id,
-      });
-      io?.emit('restaurant:status_changed', {
         isSuspended: updated.isSuspended,
         isOpen: updated.isOpen,
         restaurantId: restaurant.id,

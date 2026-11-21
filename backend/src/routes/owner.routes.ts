@@ -63,6 +63,7 @@ import {
   submitMerchantOnboarding,
   refreshMerchantStatus,
   createManualOrder,
+  getOwnerRestaurantsList,
 } from '../controllers/owner.controller';
 import { upload, uploadDocument } from '../services/cloudinary.service';
 import {
@@ -98,6 +99,7 @@ router.post('/kitchen-staff', createKitchenStaff);
 router.delete('/kitchen-staff/:id', deleteKitchenStaff);
 
 // Restaurant management
+router.get('/restaurants', getOwnerRestaurantsList);
 router.get('/restaurant', getRestaurant);
 router.put('/restaurant', validate(restaurantProfileSchema.partial()), updateRestaurant);
 router.patch('/restaurant/toggle', validate(restaurantToggleSchema), toggleRestaurant);

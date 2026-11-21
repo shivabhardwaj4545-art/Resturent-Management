@@ -18,10 +18,28 @@ import { UpiProviderRegistry } from '../services/payment/UpiProviderRegistry';
 import { isValidUpiId } from '../services/payment.upi.service';
 import { MerchantAccountService } from '../services/merchant.account.service';
 
-async function getOwnerRestaurant(ownerId: string, preferredRestaurantId?: string) {
-  if (preferredRestaurantId) {
+async function getOwnerRestaurant(
+  ownerIdOrReq: string | AuthenticatedRequest,
+  preferredRestaurantId?: string
+) {
+  let ownerId: string;
+  let targetId = preferredRestaurantId;
+
+  if (typeof ownerIdOrReq === 'object' && ownerIdOrReq !== null) {
+    ownerId = ownerIdOrReq.user!.id;
+    targetId =
+      targetId ||
+      (ownerIdOrReq.headers['x-restaurant-id'] as string) ||
+      (ownerIdOrReq.body?.restaurantId as string) ||
+      (ownerIdOrReq.query?.restaurantId as string) ||
+      (ownerIdOrReq.user as any)?.restaurantId;
+  } else {
+    ownerId = ownerIdOrReq;
+  }
+
+  if (targetId) {
     const preferred = await prisma.restaurant.findFirst({
-      where: { id: preferredRestaurantId, ownerId, deletedAt: null },
+      where: { id: targetId, ownerId, deletedAt: null },
     });
     if (preferred) return preferred;
   }
@@ -46,7 +64,7 @@ async function getOwnerRestaurant(ownerId: string, preferredRestaurantId?: strin
 
 export async function getDashboard(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    let restaurant = await getOwnerRestaurant(req.user!.id);
+    let restaurant = await getOwnerRestaurant(req);
 
     // Local start of today (00:00:00.000)
     const today = new Date();
@@ -339,7 +357,7 @@ async function syncRestaurantPlatformWithPlan(restaurant: any) {
 export async function getRestaurant(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const targetRestaurantId = (req.headers['x-restaurant-id'] as string) || (req.query?.restaurantId as string) || (req.user as any)?.restaurantId;
-    let restaurant = await getOwnerRestaurant(req.user!.id, targetRestaurantId);
+    let restaurant = await getOwnerRestaurant(req);
     const wasSuspendedNow = await checkRestaurantSubscriptionExpiry(restaurant.id);
     if (wasSuspendedNow) {
       const refreshed = await prisma.restaurant.findUnique({ where: { id: restaurant.id } });
@@ -383,7 +401,7 @@ export async function getRestaurant(req: AuthenticatedRequest, res: Response, ne
 export async function updateRestaurant(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const targetRestaurantId = (req.headers['x-restaurant-id'] as string) || req.body?.restaurantId || (req.query?.restaurantId as string) || (req.user as any)?.restaurantId;
-    const restaurant = await getOwnerRestaurant(req.user!.id, targetRestaurantId);
+    const restaurant = await getOwnerRestaurant(req);
     const rawBody = { ...req.body } as Record<string, any>;
 
     const allowedKeys = [
@@ -516,7 +534,7 @@ export async function updateRestaurant(req: AuthenticatedRequest, res: Response,
 
 export async function toggleRestaurant(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const { isOpen } = req.body as { isOpen: boolean };
     const updated = await prisma.restaurant.update({
       where: { id: restaurant.id },
@@ -533,7 +551,7 @@ export async function toggleRestaurant(req: AuthenticatedRequest, res: Response,
 
 export async function toggleQrService(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const { enabled } = req.body as { enabled?: boolean };
     const currentSettings = ((restaurant as any).qrSettings as Record<string, any>) || {};
     const nextEnabled = typeof enabled === 'boolean' ? enabled : currentSettings.enabled === false ? true : false;
@@ -550,18 +568,11 @@ export async function toggleQrService(req: AuthenticatedRequest, res: Response, 
 
     await cacheDelPattern(`menu:${restaurant.slug}*`);
     await cacheDelPattern(`menu:${restaurant.slug.toLowerCase()}*`);
-    await cacheDelPattern(`menu:*`);
 
-    // Emit real-time notification to all connected clients
+    // Emit real-time notification ONLY to clients connected to this specific restaurant room
     try {
       const io = getSocketServer();
       io?.to(`restaurant:${restaurant.id}`).emit('restaurant:qr_service_toggled', {
-        enabled: nextEnabled,
-        restaurantId: restaurant.id,
-        restaurantSlug: restaurant.slug,
-        message: 'Currently maintenance is going on kindly order normally!',
-      });
-      io?.emit('restaurant:qr_service_toggled', {
         enabled: nextEnabled,
         restaurantId: restaurant.id,
         restaurantSlug: restaurant.slug,
@@ -584,7 +595,7 @@ export async function toggleQrService(req: AuthenticatedRequest, res: Response, 
 
 export async function uploadLogo(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     if (!req.file) throw new AppError('No image file provided.', 400, 'NO_FILE');
     const url = await uploadRestaurantLogo(req.file.buffer, restaurant.slug);
     await prisma.restaurant.update({ where: { id: restaurant.id }, data: { logo: url } });
@@ -595,7 +606,7 @@ export async function uploadLogo(req: AuthenticatedRequest, res: Response, next:
 
 export async function uploadBanner(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     if (!req.file) throw new AppError('No image file provided.', 400, 'NO_FILE');
     const url = await uploadRestaurantBanner(req.file.buffer, restaurant.slug);
     await prisma.restaurant.update({ where: { id: restaurant.id }, data: { banner: url } });
@@ -606,7 +617,7 @@ export async function uploadBanner(req: AuthenticatedRequest, res: Response, nex
 
 export async function uploadPaymentQr(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     if (!req.file) throw new AppError('No image file provided.', 400, 'NO_FILE');
     const url = await uploadRestaurantPaymentQr(req.file.buffer, restaurant.slug);
     await prisma.restaurant.update({ where: { id: restaurant.id }, data: { paymentQrCode: url } });
@@ -619,7 +630,7 @@ export async function uploadPaymentQr(req: AuthenticatedRequest, res: Response, 
 
 export async function getCategories(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const categories = await prisma.menuCategory.findMany({
       where: { restaurantId: restaurant.id },
       orderBy: { sortOrder: 'asc' },
@@ -635,7 +646,7 @@ export async function getCategories(req: AuthenticatedRequest, res: Response, ne
 
 export async function createCategory(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const { name, parentId, sortOrder } = req.body as { name: string; parentId?: string | null; sortOrder?: number };
     const category = await prisma.menuCategory.create({
       data: { name, parentId: parentId || null, restaurantId: restaurant.id, sortOrder: sortOrder ?? 0 },
@@ -648,7 +659,7 @@ export async function createCategory(req: AuthenticatedRequest, res: Response, n
 
 export async function updateCategory(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const id = req.params.id as string;
     const existing = await prisma.menuCategory.findFirst({ where: { id, restaurantId: restaurant.id } });
     if (!existing) throw new AppError('Category not found.', 404, 'CATEGORY_NOT_FOUND');
@@ -669,7 +680,7 @@ export async function updateCategory(req: AuthenticatedRequest, res: Response, n
 
 export async function deleteCategory(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const id = req.params.id as string;
     const existing = await prisma.menuCategory.findFirst({ where: { id, restaurantId: restaurant.id } });
     if (!existing) throw new AppError('Category not found.', 404, 'CATEGORY_NOT_FOUND');
@@ -681,7 +692,7 @@ export async function deleteCategory(req: AuthenticatedRequest, res: Response, n
 
 export async function reorderCategories(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const { order } = req.body as { order: Array<{ id: string; sortOrder: number }> };
     if (!Array.isArray(order)) {
       throw new AppError('Order array is required', 400);
@@ -703,7 +714,7 @@ export async function reorderCategories(req: AuthenticatedRequest, res: Response
 
 export async function getMenuItems(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const items = await prisma.menuItem.findMany({
       where: { restaurantId: restaurant.id, deletedAt: null },
       include: { category: true, variants: true, addOns: true },
@@ -715,7 +726,7 @@ export async function getMenuItems(req: AuthenticatedRequest, res: Response, nex
 
 export async function createMenuItem(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const body = req.body as {
       name: string; description?: string; price: string; categoryId: string;
       isVeg?: string; isVegan?: string; isAvailable?: string; badges?: string;
@@ -760,7 +771,7 @@ export async function createMenuItem(req: AuthenticatedRequest, res: Response, n
 
 export async function updateMenuItem(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const id = req.params.id as string;
     const existing = await prisma.menuItem.findFirst({ where: { id, restaurantId: restaurant.id, deletedAt: null } });
     if (!existing) throw new AppError('Menu item not found.', 404, 'ITEM_NOT_FOUND');
@@ -822,7 +833,7 @@ export async function updateMenuItem(req: AuthenticatedRequest, res: Response, n
 
 export async function uploadAndParseMenu(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     if (!req.file) throw new AppError('No menu file provided.', 400, 'NO_FILE');
 
     const mimeType = req.file.mimetype;
@@ -853,7 +864,7 @@ export async function uploadAndParseMenu(req: AuthenticatedRequest, res: Respons
 
 export async function batchImportMenu(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const { categories, items } = req.body as {
       categories: Array<{ name: string; parentName?: string }>;
       items: Array<{
@@ -960,7 +971,7 @@ export async function batchImportMenu(req: AuthenticatedRequest, res: Response, 
 
 export async function deleteMenuItem(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const id = req.params.id as string;
     const existing = await prisma.menuItem.findFirst({ where: { id, restaurantId: restaurant.id, deletedAt: null } });
     if (!existing) throw new AppError('Menu item not found.', 404, 'ITEM_NOT_FOUND');
@@ -972,7 +983,7 @@ export async function deleteMenuItem(req: AuthenticatedRequest, res: Response, n
 
 export async function toggleMenuItemAvailability(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const id = req.params.id as string;
     const existing = await prisma.menuItem.findFirst({ where: { id, restaurantId: restaurant.id, deletedAt: null } });
     if (!existing) throw new AppError('Menu item not found.', 404, 'ITEM_NOT_FOUND');
@@ -986,7 +997,7 @@ export async function toggleMenuItemAvailability(req: AuthenticatedRequest, res:
 
 export async function getCoupons(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const coupons = await prisma.coupon.findMany({
       where: { restaurantId: restaurant.id },
       orderBy: { createdAt: 'desc' },
@@ -997,7 +1008,7 @@ export async function getCoupons(req: AuthenticatedRequest, res: Response, next:
 
 export async function createCoupon(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const coupon = await prisma.coupon.create({
       data: { ...req.body as any, restaurantId: restaurant.id },
     });
@@ -1008,7 +1019,7 @@ export async function createCoupon(req: AuthenticatedRequest, res: Response, nex
 
 export async function updateCoupon(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const id = req.params.id as string;
     const existing = await prisma.coupon.findFirst({ where: { id, restaurantId: restaurant.id } });
     if (!existing) throw new AppError('Coupon not found.', 404, 'COUPON_NOT_FOUND');
@@ -1020,7 +1031,7 @@ export async function updateCoupon(req: AuthenticatedRequest, res: Response, nex
 
 export async function deleteCoupon(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const id = req.params.id as string;
     const existing = await prisma.coupon.findFirst({ where: { id, restaurantId: restaurant.id } });
     if (!existing) throw new AppError('Coupon not found.', 404, 'COUPON_NOT_FOUND');
@@ -1032,7 +1043,7 @@ export async function deleteCoupon(req: AuthenticatedRequest, res: Response, nex
 
 export async function toggleCoupon(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const id = req.params.id as string;
     const existing = await prisma.coupon.findFirst({ where: { id, restaurantId: restaurant.id } });
     if (!existing) throw new AppError('Coupon not found.', 404, 'COUPON_NOT_FOUND');
@@ -1046,7 +1057,7 @@ export async function toggleCoupon(req: AuthenticatedRequest, res: Response, nex
 
 export async function getOrders(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const { status, page = '1', limit = '20', search } = req.query as {
       status?: string; page?: string; limit?: string; search?: string;
     };
@@ -1116,7 +1127,7 @@ export async function getOrders(req: AuthenticatedRequest, res: Response, next: 
 
 export async function getOrderDetail(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const id = req.params.id as string;
 
     const order = await prisma.order.findFirst({
@@ -1137,7 +1148,7 @@ export async function getOrderDetail(req: AuthenticatedRequest, res: Response, n
 
 export async function updateOrderStatus(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const id = req.params.id as string;
     const { status, addOnStatus, reason } = req.body as { status?: string; addOnStatus?: string; reason?: string };
 
@@ -1492,7 +1503,7 @@ export async function updateOrderStatus(req: AuthenticatedRequest, res: Response
 
 export async function confirmPayment(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const id = req.params.id as string;
 
     const order = await prisma.order.findFirst({
@@ -1605,7 +1616,7 @@ export async function confirmPayment(req: AuthenticatedRequest, res: Response, n
 
 export async function rejectPayment(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const id = req.params.id as string;
 
     const order = await prisma.order.findFirst({
@@ -1657,7 +1668,7 @@ export async function rejectPayment(req: AuthenticatedRequest, res: Response, ne
 
 export async function getAnalytics(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const { period = '7d' } = req.query as { period?: string };
 
     const numDays = period === '30d' ? 30 : 7;
@@ -1840,7 +1851,7 @@ export async function getAnalytics(req: AuthenticatedRequest, res: Response, nex
 
 export async function seedDemoMenu(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
 
     const sampleCategories = [
       {
@@ -1947,7 +1958,7 @@ export async function seedDemoMenu(req: AuthenticatedRequest, res: Response, nex
 
 export async function signTable(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const table = req.query.table as string;
     if (!table) {
       throw new AppError('Table number is required.', 400, 'BAD_REQUEST');
@@ -1967,7 +1978,7 @@ export async function getRestaurantReviews(
   next: NextFunction
 ): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
 
     const reviews = await prisma.review.findMany({
       where: { restaurantId: restaurant.id },
@@ -2018,7 +2029,7 @@ export async function getRestaurantReviews(
 
 export async function createKitchenStaff(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const flags = (restaurant.featureFlags as Record<string, any>) || {};
     const disabledTabs = Array.isArray(restaurant.disabledTabs) ? (restaurant.disabledTabs as string[]) : [];
     if (flags.kotMode === 'PRINT_KOT' || flags.kitchenDisplayEnabled === false || disabledTabs.includes('kitchen-staff')) {
@@ -2075,7 +2086,7 @@ export async function createKitchenStaff(req: AuthenticatedRequest, res: Respons
 
 export async function getKitchenStaff(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const flags = (restaurant.featureFlags as Record<string, any>) || {};
     const disabledTabs = Array.isArray(restaurant.disabledTabs) ? (restaurant.disabledTabs as string[]) : [];
     const isPrintKot = flags.kotMode === 'PRINT_KOT' || flags.kitchenDisplayEnabled === false || disabledTabs.includes('kitchen-staff');
@@ -2112,7 +2123,7 @@ export async function getKitchenStaff(req: AuthenticatedRequest, res: Response, 
 
 export async function deleteKitchenStaff(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const id = req.params.id as string;
 
     const staffUser = await prisma.user.findFirst({
@@ -2139,7 +2150,7 @@ export async function deleteKitchenStaff(req: AuthenticatedRequest, res: Respons
 
 export async function deleteOwnerOrder(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const id = req.params.id as string;
 
     const order = await prisma.order.findFirst({
@@ -2167,7 +2178,7 @@ export async function deleteOwnerOrder(req: AuthenticatedRequest, res: Response,
 
 export async function clearOwnerOrderHistory(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const { status } = req.query as { status?: string };
 
     const validStatuses = ['PENDING', 'CONFIRMED', 'PREPARING', 'BAKING', 'READY', 'ON_THE_WAY', 'DELIVERED', 'CANCELLED'];
@@ -2199,7 +2210,7 @@ export async function clearOwnerOrderHistory(req: AuthenticatedRequest, res: Res
 export async function getOwnerSubscription(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const targetRestaurantId = (req.headers['x-restaurant-id'] as string) || (req.query?.restaurantId as string) || (req.user as any)?.restaurantId;
-    const restaurant = await getOwnerRestaurant(req.user!.id, targetRestaurantId);
+    const restaurant = await getOwnerRestaurant(req);
 
     // Check if subscription has expired and auto-suspend if so
     await checkRestaurantSubscriptionExpiry(restaurant.id);
@@ -2281,7 +2292,7 @@ export async function getOwnerSubscription(req: AuthenticatedRequest, res: Respo
 export async function buyOwnerSubscription(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const targetRestaurantId = (req.headers['x-restaurant-id'] as string) || req.body?.restaurantId || (req.query?.restaurantId as string) || (req.user as any)?.restaurantId;
-    const restaurant = await getOwnerRestaurant(req.user!.id, targetRestaurantId);
+    const restaurant = await getOwnerRestaurant(req);
     const {
       planId,
       durationInDays = 30,
@@ -2516,7 +2527,7 @@ export async function buyOwnerSubscription(req: AuthenticatedRequest, res: Respo
 export async function createOwnerSubscriptionOrder(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const targetRestaurantId = (req.headers['x-restaurant-id'] as string) || req.body?.restaurantId || (req.query?.restaurantId as string) || (req.user as any)?.restaurantId;
-    const restaurant = await getOwnerRestaurant(req.user!.id, targetRestaurantId);
+    const restaurant = await getOwnerRestaurant(req);
     const {
       planId,
       durationInDays = 30,
@@ -2671,7 +2682,7 @@ export async function createOwnerSubscriptionOrder(req: AuthenticatedRequest, re
 export async function verifyOwnerSubscriptionPayment(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const targetRestaurantId = (req.headers['x-restaurant-id'] as string) || req.body?.restaurantId || (req.query?.restaurantId as string) || (req.user as any)?.restaurantId;
-    const restaurant = await getOwnerRestaurant(req.user!.id, targetRestaurantId);
+    const restaurant = await getOwnerRestaurant(req);
     const {
       planId,
       durationInDays = 30,
@@ -2891,7 +2902,7 @@ export async function getOwnerUpiAccount(
   next: NextFunction
 ): Promise<void> {
   try {
-    const ownerRestaurant = await getOwnerRestaurant(req.user!.id);
+    const ownerRestaurant = await getOwnerRestaurant(req);
     const restaurant = await prisma.restaurant.findUnique({
       where: { id: ownerRestaurant.id },
       include: {
@@ -2960,7 +2971,7 @@ export async function registerOwnerUpiAccount(
   next: NextFunction
 ): Promise<void> {
   try {
-    const ownerRestaurant = await getOwnerRestaurant(req.user!.id);
+    const ownerRestaurant = await getOwnerRestaurant(req);
     const restaurant = await prisma.restaurant.findUnique({
       where: { id: ownerRestaurant.id },
       include: { upiAccount: true, paymentConfiguration: true },
@@ -3139,7 +3150,7 @@ export async function getPaymentAccountStages(
   next: NextFunction
 ): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const stages = await MerchantAccountService.getPaymentAccountStages(restaurant.id);
     const paymentAccount = await prisma.restaurantPaymentAccount.findUnique({
       where: { restaurantId: restaurant.id },
@@ -3168,7 +3179,7 @@ export async function registerPaymentAccount(
   next: NextFunction
 ): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const { upiVpa, payeeName, businessName, accountType, bankAccountNumber, bankIfsc, bankAccountHolder, providerId } = req.body;
 
     if (!upiVpa) {
@@ -3203,7 +3214,7 @@ export async function submitMerchantOnboarding(
   next: NextFunction
 ): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const {
       legalBusinessName,
       businessStructure,
@@ -3253,7 +3264,7 @@ export async function refreshMerchantStatus(
   next: NextFunction
 ): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const stages = await MerchantAccountService.refreshMerchantStatus(restaurant.id);
 
     res.json({
@@ -3274,7 +3285,7 @@ export async function createManualOrder(
   next: NextFunction
 ): Promise<void> {
   try {
-    const restaurant = await getOwnerRestaurant(req.user!.id);
+    const restaurant = await getOwnerRestaurant(req);
     const { tableNumber, items, notes, guestName } = req.body as {
       tableNumber?: string;
       items: Array<{
@@ -3482,6 +3493,32 @@ export async function createManualOrder(
     next(error);
   }
 }
+
+/**
+ * List all restaurants owned by the authenticated owner.
+ * Used by the owner panel restaurant switcher to switch between multiple restaurants.
+ */
+export async function getOwnerRestaurantsList(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const restaurants = await prisma.restaurant.findMany({
+      where: { ownerId: req.user!.id, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        logo: true,
+        isOpen: true,
+        platformType: true,
+        themeColor: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    res.json({ success: true, data: { restaurants } });
+  } catch (error) {
+    next(error);
+  }
+}
+
 
 
 

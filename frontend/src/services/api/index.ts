@@ -94,6 +94,11 @@ api.interceptors.request.use((config) => {
     if (actId && !config.headers['x-active-order-id']) {
       config.headers['x-active-order-id'] = actId;
     }
+    // Attach selected restaurant ID for owner and staff endpoints so changes are scoped strictly to that restaurant
+    const activeRestId = localStorage.getItem('owner_active_restaurant_id') || useAuthStore.getState().user?.restaurantId;
+    if (activeRestId && !config.headers['x-restaurant-id']) {
+      config.headers['x-restaurant-id'] = activeRestId;
+    }
   }
   return config;
 });
