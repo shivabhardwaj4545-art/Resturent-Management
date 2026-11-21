@@ -21,6 +21,7 @@ export interface LiveOrderAlert {
   tableNumber?: string | number;
   total?: number;
   status?: string;
+  addOnStatus?: string | null;
   paymentMethod?: string;
   createdAt?: string;
   items?: Array<{ name?: string; menuItem?: { name?: string }; quantity: number; subtotal?: number; unitPrice?: number }>;
@@ -113,10 +114,13 @@ export const useWaiterStore = create<WaiterState>((set) => ({
     })),
 
   removeNewOrder: (id) =>
-    set((state) => ({
-      newOrders: state.newOrders.filter((o) => o.id !== id),
-      activeNewOrderAlert: state.activeNewOrderAlert?.id === id ? null : state.activeNewOrderAlert,
-    })),
+    set((state) => {
+      const currentAlertId = state.activeNewOrderAlert?.id || (state.activeNewOrderAlert as any)?.orderId;
+      return {
+        newOrders: state.newOrders.filter((o) => o.id !== id && (o as any).orderId !== id),
+        activeNewOrderAlert: currentAlertId === id ? null : state.activeNewOrderAlert,
+      };
+    }),
 
   setSoundEnabled: (soundEnabled) => set({ soundEnabled }),
   setActiveWaiterAlert: (activeWaiterAlert) => set({ activeWaiterAlert }),

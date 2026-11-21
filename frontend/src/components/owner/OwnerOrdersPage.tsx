@@ -161,7 +161,7 @@ export function OwnerOrdersPage() {
   const isPrintKotMode = (restaurantData?.featureFlags?.kotMode === 'PRINT_KOT') || ((data as any)?.data?.restaurant?.featureFlags?.kotMode === 'PRINT_KOT');
   const restaurantName = restaurantData?.name || (data as any)?.data?.restaurant?.name || 'Restaurant';
 
-  const restId = (user as any)?.restaurantId;
+  const restId = restaurantData?.id || (data as any)?.data?.restaurant?.id;
 
   useEffect(() => {
     if (!restId) return;
@@ -193,6 +193,7 @@ export function OwnerOrdersPage() {
     socket.on('order_status_changed', handleRefresh);
     socket.on('order_cancelled', handleRefresh);
     socket.on('order_deleted', handleRefresh);
+    socket.on('order:dismiss_alert', handleRefresh);
 
     return () => {
       socket.disconnect();

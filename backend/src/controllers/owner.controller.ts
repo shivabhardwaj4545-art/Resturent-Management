@@ -1139,6 +1139,30 @@ export async function updateOrderStatus(req: AuthenticatedRequest, res: Response
 
     if (!order) throw new AppError('Order not found.', 404, 'ORDER_NOT_FOUND');
 
+    // Idempotency check: if status is already in the requested state and addOnStatus is unchanged,
+    // avoid double billing, batch mutation, or sending duplicate notifications to the customer
+    const isStatusIdentical = status === undefined || status === order.status;
+    const isAddOnStatusIdentical = addOnStatus === undefined || addOnStatus === order.addOnStatus;
+
+    if (isStatusIdentical && isAddOnStatusIdentical) {
+      // Re-broadcast status and alert dismissal so all owner devices dismiss any open popups
+      emitOrderStatusUpdate(id, restaurant.id, {
+        orderId: id,
+        status: order.status,
+        addOnStatus: order.addOnStatus,
+        lastAddOnAt: order.lastAddOnAt,
+        updatedAt: order.updatedAt.toISOString(),
+      });
+
+      res.json({
+        success: true,
+        data: { order },
+        message: 'Order status was already updated',
+        alreadyProcessed: true,
+      });
+      return;
+    }
+
     const statusDateFields: Record<string, string> = {
       CONFIRMED: 'confirmedAt',
       PREPARING: 'preparingAt',

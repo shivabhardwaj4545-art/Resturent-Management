@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -122,11 +122,22 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
   });
 
   // Keep local status synchronized
+  const lastNotifiedStatusRef = useRef<string | null>(null);
+  const lastNotifiedAddOnStatusRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (order?.status) {
       setCurrentStatus(order.status);
+      if (!lastNotifiedStatusRef.current) {
+        lastNotifiedStatusRef.current = order.status;
+      }
     }
-  }, [order?.status]);
+    if (order?.addOnStatus) {
+      if (!lastNotifiedAddOnStatusRef.current) {
+        lastNotifiedAddOnStatusRef.current = order.addOnStatus;
+      }
+    }
+  }, [order?.status, order?.addOnStatus]);
 
   // Persist session order storage for companions & add-ons
   useEffect(() => {
@@ -160,22 +171,28 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
     }) => {
       if (data.orderId === orderId) {
         processRealTimeEvent('order_status_changed', () => {
-          if (data.addOnStatus === 'CONFIRMED') {
-            playNewOrderSound();
-            toast.success('🎉 Add-on Accepted! Your items are now being prepared.');
-          } else if (data.addOnStatus === 'CANCELLED') {
-            toast.error('Add-on request could not be accepted by the counter.');
+          if (data.addOnStatus && data.addOnStatus !== lastNotifiedAddOnStatusRef.current) {
+            lastNotifiedAddOnStatusRef.current = data.addOnStatus;
+            if (data.addOnStatus === 'CONFIRMED') {
+              playNewOrderSound();
+              toast.success('🎉 Add-on Accepted! Your items are now being prepared.');
+            } else if (data.addOnStatus === 'CANCELLED') {
+              toast.error('Add-on request could not be accepted by the counter.');
+            }
           }
 
           if (data.status) {
             setCurrentStatus(data.status);
-            if (data.status === 'CONFIRMED' && !data.addOnStatus) {
-              playNewOrderSound();
-              toast.success('🎉 Order Accepted! Your food is now being prepared.');
-            } else if (data.status === 'CANCELLED') {
-              toast.error(`Order Not Accepted${data.reason ? `: ${data.reason}` : ''}`);
-            } else if (data.status === 'DELIVERED') {
-              toast.success('🍽️ Your food has been served. Enjoy your meal!');
+            if (data.status !== lastNotifiedStatusRef.current) {
+              lastNotifiedStatusRef.current = data.status;
+              if (data.status === 'CONFIRMED' && !data.addOnStatus) {
+                playNewOrderSound();
+                toast.success('🎉 Order Accepted! Your food is now being prepared.');
+              } else if (data.status === 'CANCELLED') {
+                toast.error(`Order Not Accepted${data.reason ? `: ${data.reason}` : ''}`);
+              } else if (data.status === 'DELIVERED') {
+                toast.success('🍽️ Your food has been served. Enjoy your meal!');
+              }
             }
           }
         });

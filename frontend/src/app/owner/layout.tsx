@@ -30,6 +30,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
   const { user, isAuthenticated, isBootstrapping } = useAuthStore();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
+  const [isAcceptingOrder, setIsAcceptingOrder] = useState(false);
   const { activeWaiterAlert, activeNewOrderAlert, activeGeneralNotificationAlert, setActiveWaiterAlert, setActiveNewOrderAlert, setActiveGeneralNotificationAlert } = useWaiterStore();
 
   useEffect(() => {
@@ -237,8 +238,10 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       if (orderId) {
         useWaiterStore.getState().removeNewOrder(orderId);
         const currentAlert = useWaiterStore.getState().activeNewOrderAlert;
-        if (currentAlert?.id === orderId) {
+        const currentAlertId = currentAlert?.id || (currentAlert as any)?.orderId;
+        if (!currentAlert || currentAlertId === orderId) {
           setActiveNewOrderAlert(null);
+          useWaiterStore.getState().setActiveNewOrderAlert(null);
         }
       }
       queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
@@ -251,10 +254,24 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       queryClient.refetchQueries({ queryKey: ['owner-notifications'] });
     };
 
+    const handleDismissAlert = (payload?: any) => {
+      const orderId = payload?.id || payload?.orderId;
+      if (orderId) {
+        useWaiterStore.getState().removeNewOrder(orderId);
+      }
+      const currentAlert = useWaiterStore.getState().activeNewOrderAlert;
+      const currentAlertId = currentAlert?.id || (currentAlert as any)?.orderId;
+      if (!orderId || currentAlertId === orderId) {
+        setActiveNewOrderAlert(null);
+        useWaiterStore.getState().setActiveNewOrderAlert(null);
+      }
+    };
+
     socket.on('order:status_updated', handleStatusUpdated);
     socket.on('order_status_changed', handleStatusUpdated);
     socket.on('order_cancelled', handleStatusUpdated);
     socket.on('driver_assigned', handleStatusUpdated);
+    socket.on('order:dismiss_alert', handleDismissAlert);
 
     // 4. Broadcast & Direct Chat Notifications
     socket.on('notification:new', (notif: any) => {
@@ -599,8 +616,10 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       {mounted && typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {activeNewOrderAlert && (
-            !activeNewOrderAlert.status ||
-            !['CANCELLED'].includes(String(activeNewOrderAlert.status).toUpperCase())
+            (activeNewOrderAlert.status === 'PENDING' || !activeNewOrderAlert.status || activeNewOrderAlert.addOnStatus === 'PENDING') &&
+            activeNewOrderAlert.status !== 'CANCELLED' &&
+            activeNewOrderAlert.status !== 'DELIVERED' &&
+            (activeNewOrderAlert.status !== 'CONFIRMED' || activeNewOrderAlert.addOnStatus === 'PENDING')
           ) && (
               <motion.div
                 initial={{ opacity: 0 }}
@@ -699,27 +718,40 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                     {restaurantData?.featureFlags?.kotMode === 'PRINT_KOT' ? (
                       <>
                         <button
+                          disabled={isAcceptingOrder}
                           onClick={async () => {
-                            const orderId = activeNewOrderAlert.id;
+                            if (isAcceptingOrder) return;
+                            setIsAcceptingOrder(true);
+                            const orderId = activeNewOrderAlert.id || (activeNewOrderAlert as any)?.orderId;
+                            const isAddon = Boolean(activeNewOrderAlert.isNewAddon || activeNewOrderAlert.isAddon || activeNewOrderAlert.addOnStatus === 'PENDING');
+                            const patchPayload = isAddon ? { addOnStatus: 'CONFIRMED' } : { status: 'CONFIRMED' };
+
+                            // Close modal immediately on this device
+                            setActiveNewOrderAlert(null);
+                            useWaiterStore.getState().setActiveNewOrderAlert(null);
+                            useWaiterStore.getState().removeNewOrder(orderId);
+
                             try {
-                              await api.patch(`/owner/orders/${orderId}/status`, { status: 'CONFIRMED' });
-                              useWaiterStore.getState().removeNewOrder(orderId);
+                              const res = await api.patch(`/owner/orders/${orderId}/status`, patchPayload);
                               queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
                               queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
-                              // Print physical KOT ticket
-                              printKitchenOrderTicket({
-                                order: activeNewOrderAlert,
-                                restaurantName: restaurantData?.name || 'Restaurant',
-                                isAddonOnly: Boolean(activeNewOrderAlert.isNewAddon),
-                              });
-                              toast.success('Order accepted & KOT sent to printer!');
+                              if (res.data?.alreadyProcessed) {
+                                toast.info('Order was already accepted on another device.');
+                              } else {
+                                printKitchenOrderTicket({
+                                  order: activeNewOrderAlert,
+                                  restaurantName: restaurantData?.name || 'Restaurant',
+                                  isAddonOnly: isAddon,
+                                });
+                                toast.success(isAddon ? 'Add-on accepted & KOT printed!' : 'Order accepted & KOT sent to printer!');
+                              }
                             } catch {
                               // Silent fail or handled in order store
                             } finally {
-                              setActiveNewOrderAlert(null);
+                              setIsAcceptingOrder(false);
                             }
                           }}
-                          className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer min-w-[140px]"
+                          className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer min-w-[140px] disabled:opacity-50"
                         >
                           <Check className="w-4 h-4" />
                           <Printer className="w-4 h-4" />
@@ -743,20 +775,35 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                       </>
                     ) : (
                       <button
+                        disabled={isAcceptingOrder}
                         onClick={async () => {
-                          const orderId = activeNewOrderAlert.id;
+                          if (isAcceptingOrder) return;
+                          setIsAcceptingOrder(true);
+                          const orderId = activeNewOrderAlert.id || (activeNewOrderAlert as any)?.orderId;
+                          const isAddon = Boolean(activeNewOrderAlert.isNewAddon || activeNewOrderAlert.isAddon || activeNewOrderAlert.addOnStatus === 'PENDING');
+                          const patchPayload = isAddon ? { addOnStatus: 'CONFIRMED' } : { status: 'CONFIRMED' };
+
+                          // Close modal immediately on this device
+                          setActiveNewOrderAlert(null);
+                          useWaiterStore.getState().setActiveNewOrderAlert(null);
+                          useWaiterStore.getState().removeNewOrder(orderId);
+
                           try {
-                            await api.patch(`/owner/orders/${orderId}/status`, { status: 'CONFIRMED' });
-                            useWaiterStore.getState().removeNewOrder(orderId);
+                            const res = await api.patch(`/owner/orders/${orderId}/status`, patchPayload);
                             queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
                             queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
+                            if (res.data?.alreadyProcessed) {
+                              toast.info('Order was already accepted on another device.');
+                            } else {
+                              toast.success(isAddon ? 'Add-on accepted!' : 'Order confirmed!');
+                            }
                           } catch {
                             // Silent fail or handled in order store
                           } finally {
-                            setActiveNewOrderAlert(null);
+                            setIsAcceptingOrder(false);
                           }
                         }}
-                        className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                        className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                       >
                         <Check className="w-4 h-4" /> {activeNewOrderAlert.isNewAddon || activeNewOrderAlert.isAddon ? 'Accept Add-on' : 'Confirm Order'}
                       </button>

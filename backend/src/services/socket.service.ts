@@ -166,6 +166,24 @@ export function emitOrderStatusUpdate(orderId: string, restaurantId: string, dat
   io.to(`order:${orderId}`).emit('order_status_changed', data);
   io.to(`restaurant:${restaurantId}`).emit('order:status_updated', data);
   io.to(`restaurant:${restaurantId}`).emit('order_status_changed', data);
+  io.to(`restaurant:${restaurantId}`).emit('order:dismiss_alert', { orderId, status: data.status, addOnStatus: data.addOnStatus });
+
+  // Also emit to owner's personal room so all owner devices receive status updates and dismiss popups
+  void (async () => {
+    try {
+      const rest = await prisma.restaurant.findUnique({
+        where: { id: restaurantId },
+        select: { ownerId: true },
+      });
+      if (rest?.ownerId && io) {
+        io.to(`user:${rest.ownerId}`).emit('order:status_updated', data);
+        io.to(`user:${rest.ownerId}`).emit('order_status_changed', data);
+        io.to(`user:${rest.ownerId}`).emit('order:dismiss_alert', { orderId, status: data.status, addOnStatus: data.addOnStatus });
+      }
+    } catch {
+      // Ignore lookup error
+    }
+  })();
 
   if (data.paymentStatus === 'PAID') {
     io.to(`order:${orderId}`).emit('payment:confirmed', data);
