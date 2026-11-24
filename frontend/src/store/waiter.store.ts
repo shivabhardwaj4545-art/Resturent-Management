@@ -47,18 +47,39 @@ interface WaiterState {
   handledTables: string[];
   socket: Socket | null;
   soundEnabled: boolean;
+  volume: number; // 0 to 150 (%)
   addWaiterCall: (call: Omit<WaiterCall, 'id'>, showAlert?: boolean) => void;
   removeWaiterCall: (id: string) => void;
   dismissWaiterCall: (id: string, tableNumber?: string) => void;
   addNewOrder: (order: LiveOrderAlert) => void;
   removeNewOrder: (id: string) => void;
   setSoundEnabled: (enabled: boolean) => void;
+  setVolume: (volume: number) => void;
   setActiveWaiterAlert: (alert: WaiterCall | null) => void;
   setActiveNewOrderAlert: (alert: LiveOrderAlert | null) => void;
   setActiveGeneralNotificationAlert: (alert: GeneralNotificationAlert | null) => void;
   clearAll: () => void;
   setSocket: (socket: Socket | null) => void;
 }
+
+const getInitialSound = () => {
+  if (typeof window !== 'undefined') {
+    const val = localStorage.getItem('notification_sound_enabled');
+    if (val !== null) return val === 'true';
+  }
+  return true;
+};
+
+const getInitialVolume = () => {
+  if (typeof window !== 'undefined') {
+    const val = localStorage.getItem('notification_volume');
+    if (val !== null) {
+      const n = Number(val);
+      if (!isNaN(n) && n >= 0 && n <= 150) return n;
+    }
+  }
+  return 100;
+};
 
 export const useWaiterStore = create<WaiterState>((set) => ({
   waiterCalls: [],
@@ -68,7 +89,8 @@ export const useWaiterStore = create<WaiterState>((set) => ({
   activeGeneralNotificationAlert: null,
   handledTables: [],
   socket: null,
-  soundEnabled: true,
+  soundEnabled: getInitialSound(),
+  volume: getInitialVolume(),
 
   addWaiterCall: (payload, showAlert = false) => {
     const cleanTable = String(payload.tableNumber).trim();
@@ -122,7 +144,19 @@ export const useWaiterStore = create<WaiterState>((set) => ({
       };
     }),
 
-  setSoundEnabled: (soundEnabled) => set({ soundEnabled }),
+  setSoundEnabled: (soundEnabled) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('notification_sound_enabled', String(soundEnabled));
+    }
+    set({ soundEnabled });
+  },
+  setVolume: (volume) => {
+    const clean = Math.max(0, Math.min(150, Math.round(volume)));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('notification_volume', String(clean));
+    }
+    set({ volume: clean });
+  },
   setActiveWaiterAlert: (activeWaiterAlert) => set({ activeWaiterAlert }),
   setActiveNewOrderAlert: (activeNewOrderAlert) => set({ activeNewOrderAlert }),
   setActiveGeneralNotificationAlert: (activeGeneralNotificationAlert) => set({ activeGeneralNotificationAlert }),

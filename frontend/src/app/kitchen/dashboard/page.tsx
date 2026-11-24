@@ -27,7 +27,8 @@ import {
   Printer,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { playKitchenOrderSound, processRealTimeEvent, requestDesktopNotificationPermission, sendDesktopNotification } from '@/utils/audio';
+import { playKitchenOrderSound, playVolumePreview, processRealTimeEvent, requestDesktopNotificationPermission, sendDesktopNotification } from '@/utils/audio';
+import { useWaiterStore } from '@/store/waiter.store';
 import { isItemAddon } from '@/utils/orderAddon';
 import { formatTableLabel } from '@/utils/tableCode';
 
@@ -99,7 +100,8 @@ export default function KitchenDashboardPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [mounted, setMounted] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(true);
+  const { volume, setVolume: setStoreVolume, soundEnabled: storeSoundEnabled, setSoundEnabled: setStoreSoundEnabled } = useWaiterStore();
+  const [soundEnabled, setSoundEnabled] = useState(storeSoundEnabled);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'CONFIRMED' | 'PREPARING' | 'READY' | 'DELIVERED'>('ALL');
   const [activeNewOrderAlert, setActiveNewOrderAlert] = useState<any | null>(null);
@@ -453,17 +455,56 @@ export default function KitchenDashboardPage() {
             <RefreshCw className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
           </button>
 
-          <button
-            onClick={() => setSoundEnabled(!soundEnabled)}
-            className={`p-1.5 sm:p-2.5 rounded-lg sm:rounded-xl transition-all border active:scale-95 flex items-center gap-1.5 text-xs font-bold ${soundEnabled
-                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
-                : 'bg-slate-800 text-slate-400 border-slate-700'
+          {/* Kitchen Notification Audio & Volume Boost Controls */}
+          <div className="flex items-center gap-1 bg-slate-800 border border-slate-700 rounded-lg sm:rounded-xl p-1 px-1.5 sm:px-2">
+            <button
+              type="button"
+              onClick={() => {
+                const nextState = !soundEnabled;
+                setSoundEnabled(nextState);
+                setStoreSoundEnabled(nextState);
+              }}
+              className={`p-1 rounded-md transition-colors flex items-center gap-1 ${
+                soundEnabled ? 'text-emerald-400 hover:text-emerald-300' : 'text-slate-400 hover:text-slate-200'
               }`}
-            title="Toggle Sound Alerts"
-          >
-            {soundEnabled ? <Volume2 className="w-3.5 h-3.5 sm:w-5 sm:h-5" /> : <VolumeX className="w-3.5 h-3.5 sm:w-5 sm:h-5" />}
-            <span className="hidden sm:inline">{soundEnabled ? 'Audio ON' : 'Audio OFF'}</span>
-          </button>
+              title={soundEnabled ? 'Audio ON' : 'Audio OFF'}
+            >
+              {soundEnabled ? <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-400" />}
+              <span className="text-[11px] font-bold hidden sm:inline">{soundEnabled ? 'Sound ON' : 'Muted'}</span>
+            </button>
+
+            {soundEnabled && (
+              <div className="flex items-center gap-1 pl-1.5 border-l border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = Math.max(10, volume - 10);
+                    setStoreVolume(next);
+                    playVolumePreview(next);
+                  }}
+                  className="w-5 h-5 rounded bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-black flex items-center justify-center cursor-pointer transition-colors shadow-2xs active:scale-95"
+                  title="Decrease Volume (-10%)"
+                >
+                  -
+                </button>
+                <span className={`text-[10px] font-bold w-8 text-center tabular-nums ${volume > 100 ? 'text-amber-400 font-black' : 'text-slate-300'}`}>
+                  {volume}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = Math.min(150, volume + 10);
+                    setStoreVolume(next);
+                    playVolumePreview(next);
+                  }}
+                  className="w-5 h-5 rounded bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-black flex items-center justify-center cursor-pointer transition-colors shadow-2xs active:scale-95"
+                  title="Increase Volume (+10%)"
+                >
+                  +
+                </button>
+              </div>
+            )}
+          </div>
 
           <button
             onClick={toggleFullscreen}

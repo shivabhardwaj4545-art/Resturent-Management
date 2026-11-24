@@ -18,6 +18,8 @@ import {
   CheckCheck,
   Loader2,
   ShoppingBag,
+  Volume,
+  Volume1,
   Volume2,
   VolumeX,
   ArrowRight,
@@ -26,7 +28,7 @@ import {
   Utensils
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { playNewOrderSound, playWaiterCallSound } from '@/utils/audio';
+import { playNewOrderSound, playWaiterCallSound, playVolumePreview } from '@/utils/audio';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -74,7 +76,9 @@ export function WaiterBell() {
     removeNewOrder,
     clearAll,
     soundEnabled,
-    setSoundEnabled
+    setSoundEnabled,
+    volume,
+    setVolume
   } = useWaiterStore();
 
   const [showWaiterPanel, setShowWaiterPanel] = useState(false);
@@ -272,6 +276,85 @@ export function WaiterBell() {
                     {soundEnabled ? <Volume2 className="w-3.5 h-3.5 shrink-0" /> : <VolumeX className="w-3.5 h-3.5 shrink-0" />}
                     <span>{soundEnabled ? 'Sound On' : 'Muted'}</span>
                   </button>
+                </div>
+              </div>
+
+              {/* Notification Volume & Laptop Loudness Control Bar */}
+              <div className="px-3 sm:px-4 py-2 bg-slate-50 dark:bg-zinc-900/60 border-b border-border flex items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {!soundEnabled || volume === 0 ? (
+                    <VolumeX className="w-3.5 h-3.5 text-rose-500" />
+                  ) : volume < 50 ? (
+                    <Volume className="w-3.5 h-3.5 text-primary" />
+                  ) : volume <= 100 ? (
+                    <Volume1 className="w-3.5 h-3.5 text-primary" />
+                  ) : (
+                    <Volume2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  )}
+                  <span className="text-[11px] font-semibold text-muted-foreground">Volume:</span>
+                </div>
+
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  {/* Decrease (-) button */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const next = Math.max(10, volume - 10);
+                      setVolume(next);
+                      playVolumePreview(next);
+                    }}
+                    disabled={!soundEnabled || volume <= 10}
+                    className="w-6 h-6 rounded-md bg-card border border-border hover:bg-accent disabled:opacity-30 flex items-center justify-center font-black text-xs transition-all cursor-pointer shadow-2xs active:scale-95"
+                    title="Decrease Volume (-10%)"
+                  >
+                    -
+                  </button>
+
+                  {/* Volume Slider */}
+                  <input
+                    type="range"
+                    min="10"
+                    max="150"
+                    step="5"
+                    value={volume}
+                    disabled={!soundEnabled}
+                    onChange={(e) => {
+                      const next = Number(e.target.value);
+                      setVolume(next);
+                    }}
+                    onMouseUp={() => playVolumePreview(volume)}
+                    onTouchEnd={() => playVolumePreview(volume)}
+                    className="w-20 sm:w-28 h-1.5 bg-neutral-200 dark:bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-primary"
+                    title={`Notification Volume: ${volume}%`}
+                  />
+
+                  {/* Increase (+) button */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const next = Math.min(150, volume + 10);
+                      setVolume(next);
+                      playVolumePreview(next);
+                    }}
+                    disabled={!soundEnabled || volume >= 150}
+                    className="w-6 h-6 rounded-md bg-card border border-border hover:bg-accent disabled:opacity-30 flex items-center justify-center font-black text-xs transition-all cursor-pointer shadow-2xs active:scale-95"
+                    title="Increase Volume (+10%)"
+                  >
+                    +
+                  </button>
+
+                  {/* Volume Indicator */}
+                  <span
+                    className={`text-[11px] font-bold w-12 text-right tabular-nums ${
+                      volume > 100
+                        ? 'text-amber-600 dark:text-amber-400 font-extrabold'
+                        : 'text-foreground'
+                    }`}
+                  >
+                    {volume}%
+                  </span>
                 </div>
               </div>
 

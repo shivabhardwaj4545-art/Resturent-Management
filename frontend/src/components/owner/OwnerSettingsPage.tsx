@@ -7,9 +7,11 @@ import {
   Settings, UtensilsCrossed, LayoutDashboard, ShoppingBag, Tag, BarChart3, LogOut,
   Menu, Save, Globe, Phone, MapPin, Clock, Palette, QrCode, Download, CreditCard, Banknote, Building2, Smartphone, Star, Printer,
   Upload, Trash2, CheckCircle2, Sparkles, RefreshCw, FileImage, Info, Bed, Power, Ban, Plus, Check, CheckCheck, Lock, X, Loader2,
-  ShieldCheck, FileText, SlidersHorizontal, Users
+  ShieldCheck, FileText, SlidersHorizontal, Users, Volume, Volume1, Volume2, VolumeX
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
+import { useWaiterStore } from '@/store/waiter.store';
+import { playNewOrderSound, playWaiterCallSound, playVolumePreview } from '@/utils/audio';
 import api from '@/services/api';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
@@ -88,6 +90,7 @@ export function OwnerSettingsPage() {
   const router = useRouter();
   const qc = useQueryClient();
   const queryClient = qc;
+  const { soundEnabled, setSoundEnabled, volume, setVolume } = useWaiterStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [form, setForm] = useState<Partial<Restaurant>>({});
   const formInitialized = useRef(false);
@@ -1596,6 +1599,154 @@ export function OwnerSettingsPage() {
                     <span>
                       <strong>Mode Switching Policy:</strong> Switching modes never resets or affects existing active dining sessions. New sessions created after switching will adhere to the chosen policy.
                     </span>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Notification Audio & Laptop Sound Boost */}
+              {data && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-card border border-border rounded-2xl p-6 space-y-6"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-border gap-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Volume2 className="w-5 h-5 text-primary" />
+                        <h2 className="font-display font-semibold text-lg text-foreground">
+                          Order & Waiter Notification Sound (Laptop Boost)
+                        </h2>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Configure live audio alerts for incoming orders and waiter requests with dedicated laptop speaker amplification.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playNewOrderSound();
+                          toast.success('Playing incoming order POS chime');
+                        }}
+                        className="px-3 py-1.5 rounded-xl border border-border bg-card hover:bg-accent text-xs font-bold text-foreground flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
+                        title="Test Incoming Order Chime"
+                      >
+                        <span>🛍️ Test Chime</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playWaiterCallSound();
+                          toast.success('Playing waiter call service bell');
+                        }}
+                        className="px-3 py-1.5 rounded-xl border border-border bg-card hover:bg-accent text-xs font-bold text-foreground flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
+                        title="Test Waiter Service Bell"
+                      >
+                        <span>🛎️ Test Bell</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                    {/* Sound Toggle */}
+                    <div className="flex items-center justify-between p-4 bg-muted/40 rounded-xl border border-border">
+                      <div className="space-y-0.5">
+                        <span className="text-sm font-bold text-foreground flex items-center gap-2">
+                          {soundEnabled ? <Volume2 className="w-4 h-4 text-emerald-500" /> : <VolumeX className="w-4 h-4 text-rose-500" />}
+                          Notification Audio State
+                        </span>
+                        <p className="text-xs text-muted-foreground">
+                          {soundEnabled ? 'Live audible alerts are enabled' : 'All incoming notifications are muted'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSoundEnabled(!soundEnabled)}
+                        className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition-all border cursor-pointer ${
+                          soundEnabled
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                            : 'bg-muted text-muted-foreground border-border'
+                        }`}
+                      >
+                        {soundEnabled ? 'Audio ON' : 'MUTED'}
+                      </button>
+                    </div>
+
+                    {/* Volume Slider & Step Buttons */}
+                    <div className="p-4 bg-muted/40 rounded-xl border border-border space-y-3">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-foreground flex items-center gap-1.5">
+                          <SlidersHorizontal className="w-4 h-4 text-primary" />
+                          Loudness Level:
+                        </span>
+                        <span className={`font-black ${volume > 100 ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'}`}>
+                          {volume}% {volume > 100 ? '⚡ (Laptop Boost Active)' : ''}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        {/* Decrease (-) button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = Math.max(10, volume - 10);
+                            setVolume(next);
+                            playVolumePreview(next);
+                          }}
+                          disabled={!soundEnabled || volume <= 10}
+                          className="w-8 h-8 rounded-lg bg-card border border-border hover:bg-accent disabled:opacity-40 flex items-center justify-center font-black text-sm cursor-pointer shadow-2xs transition-all active:scale-95"
+                          title="Decrease Volume (-10%)"
+                        >
+                          -
+                        </button>
+
+                        {/* Interactive Slider */}
+                        <input
+                          type="range"
+                          min="10"
+                          max="150"
+                          step="5"
+                          value={volume}
+                          disabled={!soundEnabled}
+                          onChange={(e) => {
+                            const next = Number(e.target.value);
+                            setVolume(next);
+                          }}
+                          onMouseUp={() => playVolumePreview(volume)}
+                          onTouchEnd={() => playVolumePreview(volume)}
+                          className="flex-1 h-2 bg-neutral-200 dark:bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-primary"
+                        />
+
+                        {/* Increase (+) button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = Math.min(150, volume + 10);
+                            setVolume(next);
+                            playVolumePreview(next);
+                          }}
+                          disabled={!soundEnabled || volume >= 150}
+                          className="w-8 h-8 rounded-lg bg-card border border-border hover:bg-accent disabled:opacity-40 flex items-center justify-center font-black text-sm cursor-pointer shadow-2xs transition-all active:scale-95"
+                          title="Increase Volume (+10%)"
+                        >
+                          +
+                        </button>
+                      </div>
+
+                      <div className="flex justify-between text-[10px] text-muted-foreground px-1">
+                        <span>10% (Quiet)</span>
+                        <span>100% (Standard)</span>
+                        <span className="text-amber-600 dark:text-amber-400 font-bold">150% (Max Laptop Boost)</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2.5">
+                    <Sparkles className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                    <p className="leading-relaxed">
+                      <strong>PC & Windows Laptop Speaker Optimization:</strong> Built-in laptop speakers often lack volume. We use an integrated dynamic range compressor and harmonic acoustic enhancers so audio easily cuts through ambient restaurant noise. Increase to <strong>120% – 150%</strong> for maximum projection!
+                    </p>
                   </div>
                 </motion.div>
               )}

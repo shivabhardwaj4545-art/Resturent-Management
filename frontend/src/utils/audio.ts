@@ -158,57 +158,175 @@ function getAudioContext(): AudioContext | null {
 
 import { useWaiterStore } from '@/store/waiter.store';
 
+/**
+ * Returns the current notification volume as a scalar multiplier (0.10 to 1.50).
+ * 1.00 = 100% standard high volume, up to 1.50 = 150% Laptop Boost Mode.
+ */
+export function getNotificationVolume(): number {
+  try {
+    const vol = useWaiterStore.getState().volume;
+    if (typeof vol === 'number' && !isNaN(vol)) {
+      return Math.max(0.05, Math.min(1.5, vol / 100));
+    }
+  } catch {}
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('notification_volume');
+    if (saved) {
+      const parsed = Number(saved);
+      if (!isNaN(parsed)) return Math.max(0.05, Math.min(1.5, parsed / 100));
+    }
+  }
+  return 1.0;
+}
+
+export function setNotificationVolume(percentage: number) {
+  const clean = Math.max(0, Math.min(150, Math.round(percentage)));
+  try {
+    useWaiterStore.getState().setVolume(clean);
+  } catch {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('notification_volume', String(clean));
+    }
+  }
+}
+
+/**
+ * Master output bus tailored specifically for PC and Windows laptop speakers:
+ * - Uses DynamicsCompressorNode to boost RMS loudness by +6dB to +12dB without digital clipping.
+ * - Scales directly with the user's volume preference (10% to 150%).
+ */
+function createAudioMaster(ctx: AudioContext, gainMultiplier: number = 1.0): { input: GainNode; masterGain: GainNode } {
+  const userVol = getNotificationVolume(); // 0.1 to 1.5
+
+  const compressor = ctx.createDynamicsCompressor();
+  compressor.threshold.setValueAtTime(-12, ctx.currentTime);
+  compressor.knee.setValueAtTime(8, ctx.currentTime);
+  compressor.ratio.setValueAtTime(4.0, ctx.currentTime);
+  compressor.attack.setValueAtTime(0.003, ctx.currentTime);
+  compressor.release.setValueAtTime(0.20, ctx.currentTime);
+
+  const masterGain = ctx.createGain();
+  // Base 1.8x amplifier ensures 100% is significantly louder than before, with 150% providing massive laptop projection
+  const effectiveGain = Math.max(0.02, userVol * gainMultiplier * 1.8);
+  masterGain.gain.setValueAtTime(effectiveGain, ctx.currentTime);
+
+  const inputNode = ctx.createGain();
+  inputNode.gain.setValueAtTime(1.0, ctx.currentTime);
+
+  inputNode.connect(masterGain);
+  masterGain.connect(compressor);
+  compressor.connect(ctx.destination);
+
+  return { input: inputNode, masterGain };
+}
+
+/**
+ * Play a quick, pleasant feedback chirp whenever volume is increased or decreased
+ */
+export function playVolumePreview(volumePercent?: number): boolean {
+  try {
+    if (typeof volumePercent === 'number') {
+      setNotificationVolume(volumePercent);
+    }
+    const ctx = getAudioContext();
+    if (!ctx) return false;
+    const now = ctx.currentTime;
+    const master = createAudioMaster(ctx, 1.0);
+
+    const notes = [
+      { freq: 783.99, time: 0.00, dur: 0.12, vol: 0.65 }, // G5
+      { freq: 1046.50, time: 0.08, dur: 0.22, vol: 0.80 }, // C6
+    ];
+
+    notes.forEach(({ freq, time, dur, vol }) => {
+      const tStart = now + time;
+      const tEnd = tStart + dur;
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, tStart);
+
+      gain.gain.setValueAtTime(0.0001, tStart);
+      gain.gain.linearRampToValueAtTime(vol, tStart + 0.006);
+      gain.gain.exponentialRampToValueAtTime(0.0001, tEnd);
+
+      osc.connect(gain);
+      gain.connect(master.input);
+      osc.start(tStart);
+      osc.stop(tEnd);
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ── 1. OWNER AUDIO SYNTHS (Pleasant POS Chime & Restaurant Desk Bell) ───────────
 
 // 🛍️ New Order Sound: Warm, cheerful ascending 4-note POS chime (C5 -> E5 -> G5 -> C6)
-// Pleasant, modern, upbeat notification - completely different from a service bell
+// Boosted with high-mid acoustic body to cut clearly through laptop speakers
 export function playOwnerOrderSynth(): boolean {
   try {
     const ctx = getAudioContext();
     if (!ctx) return false;
     const now = ctx.currentTime;
+    const master = createAudioMaster(ctx, 1.0);
 
-    // Upbeat 4-note ascending chord arpeggio
+    // Upbeat 4-note ascending chord arpeggio (C5 -> E5 -> G5 -> C6)
     const notes = [
-      { freq: 523.25, time: 0.00, duration: 0.20, vol: 0.35 }, // C5
-      { freq: 659.25, time: 0.10, duration: 0.20, vol: 0.35 }, // E5
-      { freq: 783.99, time: 0.20, duration: 0.22, vol: 0.38 }, // G5
-      { freq: 1046.50, time: 0.30, duration: 0.45, vol: 0.42 }, // C6 (Resolution)
+      { freq: 523.25, time: 0.00, duration: 0.22, vol: 0.75 }, // C5
+      { freq: 659.25, time: 0.10, duration: 0.22, vol: 0.78 }, // E5
+      { freq: 783.99, time: 0.20, duration: 0.25, vol: 0.85 }, // G5
+      { freq: 1046.50, time: 0.30, duration: 0.50, vol: 0.95 }, // C6 (Resolution)
     ];
 
     notes.forEach(({ freq, time, duration, vol }) => {
       const noteStart = now + time;
       const noteEnd = noteStart + duration;
 
-      // Primary crystal-clear sine tone
+      // Primary crisp sine tone
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
       osc.frequency.setValueAtTime(freq, noteStart);
 
-      // Smooth attack to prevent pops/clicks (8ms linear ramp)
       gain.gain.setValueAtTime(0.0001, noteStart);
-      gain.gain.linearRampToValueAtTime(vol, noteStart + 0.008);
-      // Gentle exponential decay
+      gain.gain.linearRampToValueAtTime(vol, noteStart + 0.006);
       gain.gain.exponentialRampToValueAtTime(0.0001, noteEnd);
 
       osc.connect(gain);
-      gain.connect(ctx.destination);
+      gain.connect(master.input);
       osc.start(noteStart);
       osc.stop(noteEnd);
 
-      // Subtle warm octave overtone for acoustic depth
+      // Warm acoustic body harmonic (triangle waveform adds acoustic punch on laptop speakers)
+      const bodyOsc = ctx.createOscillator();
+      const bodyGain = ctx.createGain();
+      bodyOsc.type = 'triangle';
+      bodyOsc.frequency.setValueAtTime(freq, noteStart);
+
+      bodyGain.gain.setValueAtTime(0.0001, noteStart);
+      bodyGain.gain.linearRampToValueAtTime(vol * 0.35, noteStart + 0.006);
+      bodyGain.gain.exponentialRampToValueAtTime(0.0001, noteEnd);
+
+      bodyOsc.connect(bodyGain);
+      bodyGain.connect(master.input);
+      bodyOsc.start(noteStart);
+      bodyOsc.stop(noteEnd);
+
+      // Shimmering octave overtone for acoustic presence
       const overtone = ctx.createOscillator();
       const overtoneGain = ctx.createGain();
       overtone.type = 'sine';
       overtone.frequency.setValueAtTime(freq * 2, noteStart);
 
       overtoneGain.gain.setValueAtTime(0.0001, noteStart);
-      overtoneGain.gain.linearRampToValueAtTime(vol * 0.18, noteStart + 0.008);
+      overtoneGain.gain.linearRampToValueAtTime(vol * 0.25, noteStart + 0.006);
       overtoneGain.gain.exponentialRampToValueAtTime(0.0001, noteEnd);
 
       overtone.connect(overtoneGain);
-      overtoneGain.connect(ctx.destination);
+      overtoneGain.connect(master.input);
       overtone.start(noteStart);
       overtone.stop(noteEnd);
     });
@@ -219,32 +337,33 @@ export function playOwnerOrderSynth(): boolean {
 }
 
 // 🔔 Waiter Call Sound: Authentic Brass Desk Service Bell ("Ding-Ding!")
-// Classic counter service bell with crisp double-strike & long metallic shimmer
+// Classic counter service bell with crisp double-strike & resonant metallic shimmer
 export function playOwnerWaiterSynth(): boolean {
   try {
     const ctx = getAudioContext();
     if (!ctx) return false;
     const now = ctx.currentTime;
+    const master = createAudioMaster(ctx, 1.1);
 
     // Double bell strike: first strike at t=0, second at t=0.22s
     const strikes = [0.0, 0.22];
 
     strikes.forEach((delay, idx) => {
       const strikeTime = now + delay;
-      const strikeVol = idx === 0 ? 0.45 : 0.40;
+      const strikeVol = idx === 0 ? 0.90 : 0.85;
 
       // 1. Strike transient tap (mallet hitting brass bell)
       const tapOsc = ctx.createOscillator();
       const tapGain = ctx.createGain();
-      tapOsc.type = 'sine';
+      tapOsc.type = 'triangle';
       tapOsc.frequency.setValueAtTime(980, strikeTime);
       tapGain.gain.setValueAtTime(0.0001, strikeTime);
-      tapGain.gain.linearRampToValueAtTime(0.12 * strikeVol, strikeTime + 0.002);
-      tapGain.gain.exponentialRampToValueAtTime(0.0001, strikeTime + 0.035);
+      tapGain.gain.linearRampToValueAtTime(0.25 * strikeVol, strikeTime + 0.002);
+      tapGain.gain.exponentialRampToValueAtTime(0.0001, strikeTime + 0.04);
       tapOsc.connect(tapGain);
-      tapGain.connect(ctx.destination);
+      tapGain.connect(master.input);
       tapOsc.start(strikeTime);
-      tapOsc.stop(strikeTime + 0.035);
+      tapOsc.stop(strikeTime + 0.04);
 
       // 2. Fundamental Bell Resonance: A6 (1760 Hz)
       const bellOsc = ctx.createOscillator();
@@ -253,12 +372,11 @@ export function playOwnerWaiterSynth(): boolean {
       bellOsc.frequency.setValueAtTime(1760, strikeTime);
       bellGain.gain.setValueAtTime(0.0001, strikeTime);
       bellGain.gain.linearRampToValueAtTime(strikeVol, strikeTime + 0.003);
-      // Long, authentic brass bell sustain & decay (0.75s)
-      bellGain.gain.exponentialRampToValueAtTime(0.0001, strikeTime + 0.75);
+      bellGain.gain.exponentialRampToValueAtTime(0.0001, strikeTime + 0.85);
       bellOsc.connect(bellGain);
-      bellGain.connect(ctx.destination);
+      bellGain.connect(master.input);
       bellOsc.start(strikeTime);
-      bellOsc.stop(strikeTime + 0.75);
+      bellOsc.stop(strikeTime + 0.85);
 
       // 3. Bell Overtone: E7 (2640 Hz)
       const overtone1 = ctx.createOscillator();
@@ -266,12 +384,12 @@ export function playOwnerWaiterSynth(): boolean {
       overtone1.type = 'sine';
       overtone1.frequency.setValueAtTime(2640, strikeTime);
       gain1.gain.setValueAtTime(0.0001, strikeTime);
-      gain1.gain.linearRampToValueAtTime(strikeVol * 0.30, strikeTime + 0.003);
-      gain1.gain.exponentialRampToValueAtTime(0.0001, strikeTime + 0.45);
+      gain1.gain.linearRampToValueAtTime(strikeVol * 0.40, strikeTime + 0.003);
+      gain1.gain.exponentialRampToValueAtTime(0.0001, strikeTime + 0.55);
       overtone1.connect(gain1);
-      gain1.connect(ctx.destination);
+      gain1.connect(master.input);
       overtone1.start(strikeTime);
-      overtone1.stop(strikeTime + 0.45);
+      overtone1.stop(strikeTime + 0.55);
 
       // 4. Shimmering high overtone: A7 (3520 Hz)
       const overtone2 = ctx.createOscillator();
@@ -279,12 +397,12 @@ export function playOwnerWaiterSynth(): boolean {
       overtone2.type = 'sine';
       overtone2.frequency.setValueAtTime(3520, strikeTime);
       gain2.gain.setValueAtTime(0.0001, strikeTime);
-      gain2.gain.linearRampToValueAtTime(strikeVol * 0.16, strikeTime + 0.003);
-      gain2.gain.exponentialRampToValueAtTime(0.0001, strikeTime + 0.35);
+      gain2.gain.linearRampToValueAtTime(strikeVol * 0.25, strikeTime + 0.003);
+      gain2.gain.exponentialRampToValueAtTime(0.0001, strikeTime + 0.45);
       overtone2.connect(gain2);
-      gain2.connect(ctx.destination);
+      gain2.connect(master.input);
       overtone2.start(strikeTime);
-      overtone2.stop(strikeTime + 0.35);
+      overtone2.stop(strikeTime + 0.45);
     });
 
     return true;
@@ -293,16 +411,17 @@ export function playOwnerWaiterSynth(): boolean {
   }
 }
 
-// ── 2. KITCHEN AUDIO SYNTHS (Warm double kitchen chime) ───────────────────────
+// ── 2. KITCHEN AUDIO SYNTHS (Resonant triple kitchen chime) ───────────────────
 export function playKitchenOrderSynth(): boolean {
   try {
     const ctx = getAudioContext();
     if (!ctx) return false;
     const now = ctx.currentTime;
+    const master = createAudioMaster(ctx, 1.2);
     const strokes = [
-      { delay: 0.00, freq: 587.33, duration: 0.30, vol: 0.55 }, // D5
-      { delay: 0.16, freq: 880.00, duration: 0.35, vol: 0.60 }, // A5
-      { delay: 0.32, freq: 1046.50, duration: 0.50, vol: 0.65 }, // C6
+      { delay: 0.00, freq: 587.33, duration: 0.35, vol: 0.85 }, // D5
+      { delay: 0.16, freq: 880.00, duration: 0.40, vol: 0.90 }, // A5
+      { delay: 0.32, freq: 1046.50, duration: 0.60, vol: 1.00 }, // C6
     ];
     strokes.forEach(({ delay, freq, duration, vol }) => {
       const strikeTime = now + delay;
@@ -311,12 +430,25 @@ export function playKitchenOrderSynth(): boolean {
       osc.type = 'sine';
       osc.frequency.setValueAtTime(freq, strikeTime);
       gain.gain.setValueAtTime(0.0001, strikeTime);
-      gain.gain.linearRampToValueAtTime(vol, strikeTime + 0.01);
+      gain.gain.linearRampToValueAtTime(vol, strikeTime + 0.008);
       gain.gain.exponentialRampToValueAtTime(0.0001, strikeTime + duration);
       osc.connect(gain);
-      gain.connect(ctx.destination);
+      gain.connect(master.input);
       osc.start(strikeTime);
       osc.stop(strikeTime + duration);
+
+      // Rich body harmonic
+      const body = ctx.createOscillator();
+      const bodyGain = ctx.createGain();
+      body.type = 'triangle';
+      body.frequency.setValueAtTime(freq, strikeTime);
+      bodyGain.gain.setValueAtTime(0.0001, strikeTime);
+      bodyGain.gain.linearRampToValueAtTime(vol * 0.35, strikeTime + 0.008);
+      bodyGain.gain.exponentialRampToValueAtTime(0.0001, strikeTime + duration);
+      body.connect(bodyGain);
+      bodyGain.connect(master.input);
+      body.start(strikeTime);
+      body.stop(strikeTime + duration);
     });
     return true;
   } catch {
@@ -494,7 +626,8 @@ export function playRoleEventSound(event: EventType, role: UserRole = 'owner') {
     if (soundFile) {
       try {
         const audio = new Audio(soundFile);
-        audio.volume = role === 'kitchen' ? 0.9 : role === 'customer' ? 0.5 : 0.7;
+        const baseVol = role === 'kitchen' ? 1.0 : role === 'customer' ? 0.6 : 0.9;
+        audio.volume = Math.min(1.0, Math.max(0.05, baseVol * getNotificationVolume()));
         audio.play().catch(() => {});
       } catch {}
     }
