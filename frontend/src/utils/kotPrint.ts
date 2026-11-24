@@ -313,14 +313,6 @@ export function generateKotHtml(options: KotPrintOptions): string {
       </style>
     </head>
     <body>
-      <div class="no-print" style="margin-bottom: 8px; padding: 6px 8px; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 6px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 11px; display: flex; align-items: center; justify-content: space-between; gap: 6px;">
-        <span style="font-weight: 600; color: #1f2937;">🖨️ Auto-printing KOT Ticket...</span>
-        <div style="display: flex; gap: 4px;">
-          <button onclick="window.print()" style="padding: 4px 10px; background: #059669; color: #fff; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 11px;">Print Now</button>
-          <button onclick="window.close()" style="padding: 4px 8px; background: #6b7280; color: #fff; border: none; border-radius: 4px; font-weight: 500; cursor: pointer; font-size: 11px;">Close</button>
-        </div>
-      </div>
-
       ${isReprint ? '<div class="reprint-banner">** REPRINT **</div>' : ''}
 
       <div class="text-center">
@@ -393,25 +385,15 @@ export function generateKotHtml(options: KotPrintOptions): string {
         ${isReprint ? '<div style="font-weight:900; margin-bottom:2px;">*** REPRINT COPY — DO NOT DUPLICATE PREPARATION ***</div>' : ''}
         Printed: ${printTimestamp} • Direct Kitchen Ticket
       </div>
-      <script>
-        window.addEventListener('load', function() {
-          setTimeout(function() {
-            try {
-              window.focus();
-              window.print();
-            } catch (e) {
-              console.error('Auto print error', e);
-            }
-          }, 350);
-        });
-      </script>
     </body>
     </html>
   `;
 }
 
 /**
- * Opens the KOT in a formatted thermal receipt window and automatically triggers the print dialog.
+ * Directly prints the KOT ticket via a hidden iframe on the same page.
+ * Opens the native print dialog without opening any new tab or window,
+ * and ensures single-execution so cancelling never causes the dialog to reappear.
  */
 export function printKitchenOrderTicket(options: KotPrintOptions): void {
   if (typeof window === 'undefined') return;
@@ -419,30 +401,51 @@ export function printKitchenOrderTicket(options: KotPrintOptions): void {
   const html = generateKotHtml(options);
 
   try {
-    const win = window.open('', '_blank', 'width=520,height=750,menubar=no,toolbar=no,scrollbars=yes');
-    if (win) {
-      win.document.open();
-      win.document.write(html);
-      win.document.close();
-      win.focus();
-      setTimeout(() => {
-        try {
-          win.focus();
-          win.print();
-        } catch (e) {
-          console.error('Trigger print failed:', e);
-        }
-      }, 500);
-    } else {
-      // Popup blocked — write into a data URL as fallback
-      const blob = new Blob([html], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
-      const fallbackWin = window.open(url, '_blank');
-      if (fallbackWin) {
-        fallbackWin.focus();
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '1px';
+    iframe.style.height = '1px';
+    iframe.style.border = '0';
+    iframe.style.opacity = '0.01';
+    iframe.style.pointerEvents = 'none';
+    iframe.style.zIndex = '-9999';
+    document.body.appendChild(iframe);
+
+    let printed = false;
+    const triggerPrint = () => {
+      if (printed) return;
+      printed = true;
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (err) {
+        console.warn('KOT iframe print error:', err);
       }
+    };
+
+    iframe.onload = () => {
+      setTimeout(triggerPrint, 100);
+    };
+
+    const doc = iframe.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write(html);
+      doc.close();
+
+      setTimeout(triggerPrint, 300);
+
+      // Clean up iframe from DOM after printing
+      setTimeout(() => {
+        if (iframe.parentNode) {
+          document.body.removeChild(iframe);
+        }
+      }, 30000);
+      return;
     }
-  } catch (e) {
-    console.error('KOT print open failed:', e);
+  } catch (err) {
+    console.error('KOT iframe print failed:', err);
   }
 }
