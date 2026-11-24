@@ -64,7 +64,15 @@ async function bootstrap() {
     // Graceful shutdown
     const gracefulShutdown = async (signal: string) => {
       logger.info(`\n${signal} received. Shutting down gracefully...`);
-      await prisma.$disconnect();
+      setTimeout(() => process.exit(0), 1000).unref();
+      try {
+        if (typeof (httpServer as any).closeAllConnections === 'function') {
+          (httpServer as any).closeAllConnections();
+        }
+        await prisma.$disconnect();
+      } catch {
+        // ignore
+      }
       httpServer.close(() => {
         logger.info('HTTP server closed');
         process.exit(0);

@@ -18,9 +18,18 @@ export function normalizeTableNumber(raw?: string | null): string {
   if (!raw) return 'Table 1';
   const trimmed = raw.trim();
   const lower = trimmed.toLowerCase();
-  if (lower.startsWith('room')) return trimmed;
-  if (lower.startsWith('table')) return trimmed;
-  return `Table ${trimmed}`;
+  if (lower.startsWith('room') || lower.startsWith('suite')) {
+    const stripped = trimmed.replace(/^(room|suite)\s*(room|suite)?\s*/i, '').trim();
+    return stripped ? `Room ${stripped}` : trimmed;
+  }
+  if (lower.startsWith('table')) {
+    const strippedTable = trimmed.replace(/^(table\s*)+/i, '').trim();
+    return strippedTable ? `Table ${strippedTable}` : 'Table 1';
+  }
+  if (/^\d+$/.test(trimmed)) {
+    return `Table ${trimmed}`;
+  }
+  return trimmed;
 }
 
 /**
@@ -109,11 +118,14 @@ export async function joinOrCreateSession(
     }
     const cleanTable = normalizeTableNumber(tableNumber);
 
+    const bareNum = cleanTable.replace(/^Table\s*/i, '').trim();
+    const tableVariants = Array.from(new Set([cleanTable, tableNumber.trim(), bareNum, `Table ${bareNum}`]));
+
     // Concurrency-safe check for existing active session
     let session = await prisma.tableSession.findFirst({
       where: {
         restaurantId: restaurant.id,
-        tableNumber: cleanTable,
+        tableNumber: { in: tableVariants },
         status: 'ACTIVE',
       },
       include: {
@@ -1640,6 +1652,7 @@ export async function getSessionBill(
         },
         orderBy: { createdAt: 'desc' },
         include: {
+          restaurant: { select: { id: true, sessionManagementMode: true } },
           batches: {
             orderBy: { batchNumber: 'asc' },
             include: {
@@ -1769,7 +1782,29 @@ export async function getSessionBill(
         // Overall payment status
         const isPaid =
           (sessionOrders.length > 0 && sessionOrders.every((o: any) => o.paymentStatus === 'PAID')) ||
-          (s.batches.length > 0 && s.batches.every((b: any) => b.order?.paymentStatus === 'PAID'));
+          (s.batches.length > 0 && s.batches.every((b: any) => b.order?.paymentStatus === 'PAID')) ||
+          s.paymentStatus === 'PAID';
+
+        const restMode = s.restaurant?.sessionManagementMode || s.sessionManagementModeSnapshot || 'MANUAL';
+        if (restMode === 'AUTO' && isPaid && (sessionOrders.length > 0 || s.batches.length > 0)) {
+          const now = new Date();
+          prisma.tableSession.update({
+            where: { id: s.id },
+            data: {
+              status: 'COMPLETED',
+              completedAt: now,
+              closedAt: now,
+              closedBy: 'AUTO_SESSION_RESET',
+              closureReason: 'Auto Session Reset: All orders settled',
+              paymentStatus: 'PAID',
+            },
+          }).catch(() => {});
+          prisma.sessionDeviceAccess.updateMany({
+            where: { sessionId: s.id, revokedAt: null },
+            data: { revokedAt: now },
+          }).catch(() => {});
+          return null;
+        }
 
         // If currentBatch has no items, enrich from matching order
         let currentBatchItems = currentBatch?.items || [];
@@ -1825,7 +1860,7 @@ export async function getSessionBill(
           updatedAt: s.updatedAt,
           orders: sessionOrders,
         };
-      });
+      }).filter((x: any): x is NonNullable<typeof x> => Boolean(x));
 
       // Also look for standalone ongoing table orders created today that don't belong to any session
       const startOfToday = new Date();

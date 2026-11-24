@@ -391,8 +391,8 @@ export function generateKotHtml(options: KotPrintOptions): string {
 }
 
 /**
- * Triggers thermal KOT print.
- * Uses an invisible iframe to prevent popup blockers, with a window.open fallback.
+ * Opens the KOT in a new window/tab so the user can print it manually.
+ * No auto-print — avoids double-dialog bugs and browser suppression issues.
  */
 export function printKitchenOrderTicket(options: KotPrintOptions): void {
   if (typeof window === 'undefined') return;
@@ -400,54 +400,19 @@ export function printKitchenOrderTicket(options: KotPrintOptions): void {
   const html = generateKotHtml(options);
 
   try {
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    iframe.style.opacity = '0';
-    iframe.style.pointerEvents = 'none';
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow?.document;
-    if (doc) {
-      doc.open();
-      doc.write(html);
-      doc.close();
-
-      iframe.contentWindow?.focus();
-      setTimeout(() => {
-        try {
-          iframe.contentWindow?.print();
-        } catch {
-          // If iframe printing is blocked, fallback to window.open
-          const win = window.open('', '_blank', 'width=400,height=600');
-          if (win) {
-            win.document.open();
-            win.document.write(html);
-            win.document.close();
-          }
-        }
-
-        setTimeout(() => {
-          if (iframe.parentNode) {
-            document.body.removeChild(iframe);
-          }
-        }, 3000);
-      }, 300);
-      return;
+    const win = window.open('', '_blank', 'width=500,height=700,menubar=no,toolbar=no,scrollbars=yes');
+    if (win) {
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+    } else {
+      // Popup blocked — write into a data URL as last resort
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
     }
-  } catch (err) {
-    console.error('Iframe print error, falling back to window.open:', err);
-  }
-
-  // Fallback to window.open
-  const win = window.open('', '_blank', 'width=400,height=600');
-  if (win) {
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
+  } catch (e) {
+    console.error('KOT print open failed:', e);
   }
 }

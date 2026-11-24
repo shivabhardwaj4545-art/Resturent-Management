@@ -17,6 +17,8 @@
  * - Payment Method, Settlement Status & Timestamps
  */
 
+import { formatTableLabel } from './tableCode';
+
 export interface InvoiceOrderItem {
   id?: string;
   quantity: number;
@@ -226,9 +228,7 @@ export function buildInvoicePdfBinary(order: InvoiceOrderData, restaurantInput?:
   text('DINING & PAYMENT INFORMATION:', col2X, metaBoxY + 38, '/F2', 8, 'left', 0.45, 0.5, 0.55);
 
   const cleanTable = order.tableNumber
-    ? String(order.tableNumber).toLowerCase().includes('room')
-      ? String(order.tableNumber).toUpperCase()
-      : `Table ${String(order.tableNumber).toUpperCase()}`
+    ? formatTableLabel(order.tableNumber)
     : 'Dine-In';
 
   const verCodeStr = order.verificationCode ? `  (Verification #${order.verificationCode})` : '';

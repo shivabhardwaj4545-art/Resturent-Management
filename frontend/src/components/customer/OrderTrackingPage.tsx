@@ -23,7 +23,9 @@ import {
   FileText,
   Star,
   Check,
+  Loader2,
 } from 'lucide-react';
+import { formatTableLabel } from '@/utils/tableCode';
 import { getImageUrl } from '@/lib/image';
 import { io, Socket } from 'socket.io-client';
 import api, { getSocketUrl } from '@/services/api';
@@ -33,6 +35,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { InvoiceDownload } from './InvoiceDownload';
 import { QuickServiceModal, QuickServiceType } from './QuickServiceModal';
+import { CustomerAlertModal, CustomerAlertData } from './CustomerAlertModal';
 import { playNewOrderSound, processRealTimeEvent } from '@/utils/audio';
 import { applyThemeColor } from '@/utils/theme';
 import { printCustomerBill } from '@/utils/billPrint';
@@ -91,6 +94,12 @@ interface Order {
     paidAmount?: number;
     status: string;
   } | null;
+  review?: {
+    id: string;
+    rating: number;
+    comment?: string | null;
+    createdAt: string;
+  } | null;
 }
 
 interface OrderTrackingPageProps {
@@ -109,6 +118,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
   const [activeServiceModal, setActiveServiceModal] = useState<QuickServiceType | null>(null);
   const [showBillModal, setShowBillModal] = useState(false);
   const [showMoreModal, setShowMoreModal] = useState(false);
+  const [paymentAlert, setPaymentAlert] = useState<CustomerAlertData | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -144,6 +154,7 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
   // Keep local status synchronized
   const lastNotifiedStatusRef = useRef<string | null>(null);
   const lastNotifiedAddOnStatusRef = useRef<string | null>(null);
+  const lastNotifiedPaymentRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (order?.status) {
@@ -157,7 +168,26 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
         lastNotifiedAddOnStatusRef.current = order.addOnStatus;
       }
     }
-  }, [order?.status, order?.addOnStatus]);
+    if (order?.paymentStatus) {
+      if (order.paymentStatus === 'PAID' && lastNotifiedPaymentRef.current && lastNotifiedPaymentRef.current !== 'PAID') {
+        playNewOrderSound();
+        toast.success('🎉 Payment Confirmed! Please share your review below.');
+        setPaymentAlert({
+          isOpen: true,
+          type: 'PAYMENT_CONFIRMED',
+          title: '🎉 Payment Confirmed!',
+          message: 'Your bill payment has been successfully completed. How was your food and service today? Please share a quick review!',
+          actionLabel: '⭐ Rate & Review Order',
+          onAction: () => {
+            setTimeout(() => {
+              document.getElementById('review-section')?.scrollIntoView({ behavior: 'smooth' });
+            }, 150);
+          },
+        });
+      }
+      lastNotifiedPaymentRef.current = order.paymentStatus;
+    }
+  }, [order?.status, order?.addOnStatus, order?.paymentStatus]);
 
   // Persist session order storage for companions & add-ons
   useEffect(() => {
@@ -202,6 +232,24 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
             } else if (data.addOnStatus === 'CANCELLED') {
               toast.error(data.reason ? `Add-on Rejected: ${data.reason}` : 'Add-on request could not be accepted by the counter.');
             }
+          }
+
+          if (data.paymentStatus === 'PAID' && lastNotifiedPaymentRef.current !== 'PAID') {
+            lastNotifiedPaymentRef.current = 'PAID';
+            playNewOrderSound();
+            toast.success('🎉 Payment Confirmed! Please share your review below.');
+            setPaymentAlert({
+              isOpen: true,
+              type: 'PAYMENT_CONFIRMED',
+              title: '🎉 Payment Confirmed!',
+              message: 'Your bill payment has been successfully completed. How was your food and service today? Please share a quick review!',
+              actionLabel: '⭐ Rate & Review Order',
+              onAction: () => {
+                setTimeout(() => {
+                  document.getElementById('review-section')?.scrollIntoView({ behavior: 'smooth' });
+                }, 150);
+              },
+            });
           }
 
           if (data.status) {
@@ -275,13 +323,42 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
   };
 
   const cleanTableNumber = useMemo(() => {
-    if (!order?.tableNumber) return 'Table 01';
-    const raw = order.tableNumber.trim();
-    if (raw.toLowerCase().includes('room') || raw.toLowerCase().includes('suite')) {
-      return raw.toLowerCase().startsWith('room') ? raw : `Room ${raw}`;
-    }
-    return raw.toLowerCase().startsWith('table') ? raw : `Table ${raw}`;
+    return formatTableLabel(order?.tableNumber);
   }, [order?.tableNumber]);
+
+  const [selectedRating, setSelectedRating] = useState<number>(5);
+  const [hoverRating, setHoverRating] = useState<number>(0);
+  const [reviewComment, setReviewComment] = useState<string>('');
+  const [isSubmittingReview, setIsSubmittingReview] = useState<boolean>(false);
+  const [submittedReview, setSubmittedReview] = useState<{ id?: string; rating: number; comment?: string | null; createdAt: string } | null>(null);
+
+  const existingReview = submittedReview || order?.review;
+
+  const handleSubmitReview = async () => {
+    if (selectedRating < 1 || selectedRating > 5) {
+      toast.error('Please select a star rating between 1 and 5');
+      return;
+    }
+    setIsSubmittingReview(true);
+    try {
+      const res = await api.post(`/orders/${orderId}/review`, {
+        rating: selectedRating,
+        comment: reviewComment.trim() || undefined,
+      });
+      const created = res.data?.data?.review || {
+        rating: selectedRating,
+        comment: reviewComment.trim() || null,
+        createdAt: new Date().toISOString(),
+      };
+      setSubmittedReview(created);
+      toast.success('Thank you! Your review has been submitted.');
+      queryClient.invalidateQueries({ queryKey: ['order', orderId] });
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || err.response?.data?.error || 'Failed to submit review');
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
 
   // Loading Skeleton
   if (isLoading || !mounted) {
@@ -504,7 +581,133 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
           <span>+ Add More Items</span>
         </button>
 
-        {/* ── 5. FOUR QUICK SERVICE BUTTONS (Exactly 1 horizontal row) ───────── */}
+        {/* ── 5. CUSTOMER REVIEW & RATING CARD (Only once order is paid or already reviewed) ── */}
+        {(order?.paymentStatus === 'PAID' || existingReview) && (
+          <div id="review-section" className="bg-white dark:bg-neutral-900 rounded-3xl p-5 shadow-xs border border-neutral-200/60 dark:border-neutral-800 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
+                  <Star className="w-4 h-4 fill-amber-500 text-amber-500" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-neutral-900 dark:text-white">
+                    {existingReview ? 'Your Dining Review' : 'Rate Your Experience'}
+                  </h3>
+                  <p className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">
+                    {existingReview ? 'Thank you for your valuable feedback!' : 'How was your food and dining service?'}
+                  </p>
+                </div>
+              </div>
+              {existingReview && (
+                <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                  <Check className="w-3 h-3" /> Reviewed
+                </span>
+              )}
+            </div>
+
+            {existingReview ? (
+              <div className="p-4 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 space-y-2">
+                <div className="flex items-center gap-1.5">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star
+                      key={star}
+                      className={`w-5 h-5 ${
+                        star <= existingReview.rating
+                          ? 'text-amber-500 fill-amber-500'
+                          : 'text-neutral-300 dark:text-neutral-700'
+                      }`}
+                    />
+                  ))}
+                  <span className="ml-1.5 text-xs font-black text-amber-600 dark:text-amber-400">
+                    {existingReview.rating} of 5 Stars
+                  </span>
+                </div>
+                {existingReview.comment && (
+                  <p className="text-xs text-neutral-700 dark:text-neutral-300 italic">
+                    "{existingReview.comment}"
+                  </p>
+                )}
+                <p className="text-[10px] text-neutral-400 dark:text-neutral-500">
+                  Submitted on {new Date(existingReview.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3.5">
+                {/* Star Rating Selector */}
+                <div className="flex items-center justify-center gap-2 py-1">
+                  {[1, 2, 3, 4, 5].map((star) => {
+                    const isHovered = hoverRating >= star;
+                    const isSelected = selectedRating >= star;
+                    const isFilled = isHovered || (!hoverRating && isSelected);
+
+                    return (
+                      <button
+                        key={star}
+                        type="button"
+                        onMouseEnter={() => setHoverRating(star)}
+                        onMouseLeave={() => setHoverRating(0)}
+                        onClick={() => setSelectedRating(star)}
+                        className="p-1.5 rounded-xl hover:scale-115 active:scale-95 transition-all cursor-pointer focus:outline-none"
+                        title={`${star} Star${star > 1 ? 's' : ''}`}
+                      >
+                        <Star
+                          className={`w-8 h-8 transition-colors ${
+                            isFilled
+                              ? 'text-amber-400 fill-amber-400 drop-shadow-xs'
+                              : 'text-neutral-300 dark:text-neutral-700 hover:text-amber-300'
+                          }`}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Rating Label Helper */}
+                <p className="text-center text-xs font-bold text-amber-600 dark:text-amber-400">
+                  {selectedRating === 5 && '🌟 Excellent! Loved it!'}
+                  {selectedRating === 4 && '😊 Very Good!'}
+                  {selectedRating === 3 && '👍 Good, satisfied!'}
+                  {selectedRating === 2 && '😐 Fair, could be better'}
+                  {selectedRating === 1 && '😞 Poor experience'}
+                </p>
+
+                {/* Comment Textarea */}
+                <div>
+                  <textarea
+                    rows={2}
+                    value={reviewComment}
+                    onChange={(e) => setReviewComment(e.target.value)}
+                    placeholder="Share a few words about the taste, speed, or staff... (Optional)"
+                    className="w-full px-3.5 py-2.5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700/80 text-xs text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500/50 resize-none transition-all"
+                    maxLength={500}
+                  />
+                </div>
+
+                {/* Submit Button */}
+                <button
+                  type="button"
+                  onClick={handleSubmitReview}
+                  disabled={isSubmittingReview || selectedRating === 0}
+                  className="w-full py-3 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 text-white font-extrabold text-xs shadow-md shadow-amber-500/20 hover:opacity-95 active:scale-98 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                >
+                  {isSubmittingReview ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Submitting Review...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Star className="w-3.5 h-3.5 fill-white text-white" />
+                      <span>Submit Review</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── 6. FOUR QUICK SERVICE BUTTONS (Exactly 1 horizontal row) ───────── */}
         <div className="grid grid-cols-4 gap-2 pt-1">
           {/* 1. Call Waiter */}
           <button
@@ -775,10 +978,24 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
                 </div>
               )}
 
+              {(order?.paymentStatus === 'PAID' || existingReview) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMoreModal(false);
+                    document.getElementById('review-section')?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="w-full py-2.5 px-3 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-xs flex items-center justify-center gap-2 border border-amber-500/20 hover:bg-amber-500/20 transition-all cursor-pointer"
+                >
+                  <Star className="w-4 h-4 fill-amber-500 text-amber-500" />
+                  <span>{existingReview ? 'View Your Review' : 'Rate & Review Order'}</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => setShowMoreModal(false)}
-                className="w-full py-3 rounded-2xl bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 font-bold text-xs"
+                className="w-full py-3 rounded-2xl bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 font-bold text-xs cursor-pointer"
               >
                 Close
               </button>
@@ -786,6 +1003,12 @@ export function OrderTrackingPage({ orderId, restaurantSlug }: OrderTrackingPage
           </div>
         )}
       </AnimatePresence>
+
+      {/* ── 7. PAYMENT CONFIRMATION & REVIEW ALERT MODAL ────────────────── */}
+      <CustomerAlertModal
+        data={paymentAlert}
+        onClose={() => setPaymentAlert(null)}
+      />
     </div>
   );
 }

@@ -23,6 +23,7 @@ import { printCustomerBill } from '@/utils/billPrint';
 import { downloadInvoicePdf, downloadGstRegisterPdf, type InvoiceRestaurantInfo } from '@/utils/pdfInvoice';
 import { ManualKotModal } from '@/components/owner/ManualKotModal';
 import { PREDEFINED_REJECTION_REASONS } from '@/utils/orderRejection';
+import { formatTableLabel } from '@/utils/tableCode';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: LayoutDashboard, href: '/owner/dashboard' },
@@ -651,9 +652,7 @@ export function OwnerOrdersPage() {
                             {order.tableNumber && (
                               <span className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
                                 <MapPin className="w-3 h-3 text-primary" />
-                                {order.tableNumber.toLowerCase().includes('room') || order.tableNumber.toLowerCase().includes('suite')
-                                  ? (order.tableNumber.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`)
-                                  : (order.tableNumber.toLowerCase().startsWith('table') ? order.tableNumber : `Table ${order.tableNumber}`)}
+                                {formatTableLabel(order.tableNumber)}
                               </span>
                             )}
 
@@ -924,7 +923,7 @@ export function OwnerOrdersPage() {
                                   <span className="font-bold text-foreground flex items-center gap-1">
                                     <MapPin className="w-3.5 h-3.5 text-primary" />
                                     {order.tableNumber
-                                      ? (order.tableNumber.toLowerCase().includes('room') ? order.tableNumber : `Table ${order.tableNumber}`)
+                                      ? formatTableLabel(order.tableNumber)
                                       : 'Dine-In'}
                                   </span>
                                   <span className="text-[11px] flex items-center gap-1">

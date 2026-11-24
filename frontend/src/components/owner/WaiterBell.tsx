@@ -39,6 +39,24 @@ interface NotificationItem {
   createdAt: string;
 }
 
+function formatTableLabel(raw?: string | number | null): string {
+  if (raw === undefined || raw === null || raw === '') return 'Table';
+  const trimmed = String(raw).trim();
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('room') || lower.startsWith('suite')) {
+    const stripped = trimmed.replace(/^(room|suite)\s*(room|suite)?\s*/i, '').trim();
+    return stripped ? `Room ${stripped}` : trimmed;
+  }
+  if (lower.startsWith('table')) {
+    const strippedTable = trimmed.replace(/^(table\s*)+/i, '').trim();
+    return strippedTable ? `Table ${strippedTable}` : 'Table';
+  }
+  if (/^\d+$/.test(trimmed)) {
+    return `Table ${trimmed}`;
+  }
+  return trimmed;
+}
+
 export function WaiterBell() {
   const router = useRouter();
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -390,9 +408,7 @@ export function WaiterBell() {
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-1.5 flex-wrap">
                                     <span className="text-xs font-black text-foreground">
-                                      {call.tableNumber.toLowerCase().includes('room') || call.tableNumber.toLowerCase().includes('suite')
-                                        ? (call.tableNumber.toLowerCase().startsWith('room') ? call.tableNumber : `Room ${call.tableNumber}`)
-                                        : `Table ${call.tableNumber}`}
+                                      {formatTableLabel(call.tableNumber)}
                                     </span>
                                     {call.purpose && (
                                       <span className="text-[9px] bg-primary/15 text-primary dark:text-primary-foreground dark:bg-primary/25 px-1.5 py-0.5 rounded-full font-bold border border-primary/20">
@@ -534,9 +550,7 @@ export function WaiterBell() {
                                   <span className="text-xs font-black text-foreground font-mono">#{orderIdShort}</span>
                                   {order.tableNumber && (
                                     <span className="text-[10px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded-full border border-primary/20">
-                                      {order.tableNumber.toLowerCase().includes('room') || order.tableNumber.toLowerCase().includes('suite')
-                                        ? (order.tableNumber.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`)
-                                        : `Table ${order.tableNumber}`}
+                                      {formatTableLabel(order.tableNumber)}
                                     </span>
                                   )}
                                 </div>

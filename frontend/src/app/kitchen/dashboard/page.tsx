@@ -29,6 +29,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { playKitchenOrderSound, processRealTimeEvent, requestDesktopNotificationPermission, sendDesktopNotification } from '@/utils/audio';
 import { isItemAddon } from '@/utils/orderAddon';
+import { formatTableLabel } from '@/utils/tableCode';
 
 interface KitchenOrderItem {
   id: string;
@@ -184,12 +185,7 @@ export default function KitchenDashboardPage() {
         return `${i.menuItem?.name || i.name || 'Item'}${variantStr}${addOnStr} × ${i.quantity}`;
       }).join(', ') || 'New items in kitchen';
       const rawTable = order?.tableNumber || order?.table?.tableNumber;
-      const isRoom = rawTable && (String(rawTable).toLowerCase().includes('room') || String(rawTable).toLowerCase().includes('suite'));
-      const tableFormatted = rawTable
-        ? (isRoom
-            ? (String(rawTable).toLowerCase().startsWith('room') ? String(rawTable) : `Room ${rawTable}`)
-            : (String(rawTable).toLowerCase().startsWith('table') ? String(rawTable) : `Table ${rawTable}`))
-        : 'Dine-In / Delivery';
+      const tableFormatted = rawTable ? formatTableLabel(rawTable) : 'Dine-In / Delivery';
       const batchPart = order?.batchNumber ? ` • BATCH ${order.batchNumber}` : '';
       const locationLabel = `${tableFormatted}${batchPart}`;
       const totalLabel = order?.total ? `₹${Number(order.total).toFixed(2)}` : '';
@@ -601,11 +597,7 @@ export default function KitchenDashboardPage() {
                             {(() => {
                               const rawTable = order.tableNumber || (order.table as any)?.tableNumber;
                               const isRoom = rawTable && (String(rawTable).toLowerCase().includes('room') || String(rawTable).toLowerCase().includes('suite'));
-                              const tableDisplay = rawTable
-                                ? (isRoom
-                                    ? (String(rawTable).toLowerCase().startsWith('room') ? String(rawTable) : `Room ${rawTable}`)
-                                    : (String(rawTable).toLowerCase().startsWith('table') ? String(rawTable) : `Table ${rawTable}`))
-                                : 'Dine-In Order';
+                              const tableDisplay = rawTable ? formatTableLabel(rawTable) : 'Dine-In Order';
                               const batchDisplay = order.batchNumber ? ` • BATCH ${order.batchNumber}` : '';
 
                               return (

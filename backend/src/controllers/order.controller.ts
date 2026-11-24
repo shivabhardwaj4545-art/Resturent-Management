@@ -53,11 +53,14 @@ async function resolveOrCreateTableSession(
   });
   const restaurantMode = restConfig?.sessionManagementMode || 'MANUAL';
 
+  const bareNum = cleanTable.replace(/^Table\s*/i, '').trim();
+  const tableVariants = Array.from(new Set([cleanTable, rawTableNumber.trim(), bareNum, `Table ${bareNum}`]));
+
   // Check for an active table session
   let session = await prisma.tableSession.findFirst({
     where: {
       restaurantId,
-      tableNumber: cleanTable,
+      tableNumber: { in: tableVariants },
       status: 'ACTIVE',
     },
     include: {
@@ -1780,8 +1783,12 @@ async function resolveOrCreateTableSession(
         throw new AppError('Order not found.', 404, 'ORDER_NOT_FOUND');
       }
 
-      if (order.status !== 'DELIVERED') {
-        throw new AppError('You can only review completed/delivered orders.', 400, 'ORDER_NOT_DELIVERED');
+      if (order.status === 'CANCELLED') {
+        throw new AppError('Cannot review a cancelled order.', 400, 'ORDER_CANCELLED');
+      }
+
+      if (order.paymentStatus !== 'PAID') {
+        throw new AppError('You can only review your order once payment is confirmed.', 400, 'ORDER_NOT_PAID');
       }
 
       // Check if review already exists
@@ -1803,6 +1810,29 @@ async function resolveOrCreateTableSession(
           comment: comment || null,
         },
       });
+
+      // Real-time notification to restaurant owner
+      try {
+        const restaurant = await prisma.restaurant.findUnique({
+          where: { id: order.restaurantId },
+          select: { ownerId: true },
+        });
+        if (restaurant?.ownerId) {
+          const reviewerName = order.guestName || 'Customer';
+          const notif = await prisma.notification.create({
+            data: {
+              restaurantId: order.restaurantId,
+              userId: restaurant.ownerId,
+              type: 'NEW_REVIEW',
+              title: `⭐ New ${rating}-Star Review!`,
+              message: `${reviewerName} rated their order ${rating}/5 stars${comment ? `: "${comment}"` : '.'}`,
+            },
+          });
+          emitNotification(restaurant.ownerId, notif);
+        }
+      } catch (notifErr) {
+        logger.warn('Failed to dispatch review notification to owner:', notifErr);
+      }
 
       res.status(201).json({
         success: true,

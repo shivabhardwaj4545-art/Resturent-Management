@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
-import { X, Bell, CheckCheck, Sparkles, CreditCard, ShoppingBag, AlertTriangle, Megaphone, Loader2, Gift } from 'lucide-react';
+import { X, Bell, CheckCheck, Sparkles, CreditCard, ShoppingBag, AlertTriangle, Megaphone, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface NotificationItem {
@@ -129,27 +129,11 @@ export function CustomerNotificationModal({ isOpen, onClose }: CustomerNotificat
                 <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-left space-y-2">
                   <div className="flex items-center gap-2 font-bold text-xs text-amber-700 dark:text-amber-300">
                     <Sparkles className="w-4 h-4 text-amber-500" />
-                    <span>Guest Ordering Mode — No Login Required!</span>
+                    <span>Guest Ordering Mode</span>
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    You can place orders, add items, and track order status live in real-time without creating an account.
+                    You can place orders, add items, and track order status live in real-time. Notifications about your order status will appear here.
                   </p>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-primary/5 border border-primary/20 text-left space-y-2.5">
-                  <div className="flex items-center gap-2 font-bold text-xs text-primary">
-                    <Gift className="w-4 h-4" />
-                    <span>Optional Loyalty Points Program</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Logging in is <strong>completely optional</strong>. Create a free account if you want to earn loyalty points on orders and redeem discounts on future visits!
-                  </p>
-                  <a
-                    href="/login"
-                    className="inline-block w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-xs text-center shadow-sm hover:opacity-95 transition-opacity"
-                  >
-                    Log In / Sign Up (Optional)
-                  </a>
                 </div>
               </div>
             ) : isLoading ? (

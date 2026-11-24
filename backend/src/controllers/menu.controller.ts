@@ -353,7 +353,10 @@ export async function callWaiter(
         throw new AppError('Calling a waiter requires scanning a valid table QR code.', 403, 'INVALID_TABLE_TOKEN');
       }
     }
-    const label = isRoom ? (cleanTable.toLowerCase().startsWith('room') ? cleanTable : `Room ${cleanTable}`) : (cleanTable.toLowerCase().startsWith('table') ? cleanTable : `Table ${cleanTable}`);
+    const lower = cleanTable.toLowerCase();
+    const label = isRoom
+      ? (lower.startsWith('room') ? cleanTable.replace(/^(room|suite)\s*(room|suite)?\s*/i, 'Room ') : `Room ${cleanTable}`)
+      : (lower.startsWith('table') ? cleanTable.replace(/^(table\s*)+/i, 'Table ') : (/^\d+$/.test(cleanTable) ? `Table ${cleanTable}` : cleanTable));
     const notifTitle = isRoom
       ? `🛎️ Room Service - ${label}${purpose ? ` (${purpose})` : ''}`
       : `🔔 Waiter Call - ${label}${purpose ? ` (${purpose})` : ''}`;

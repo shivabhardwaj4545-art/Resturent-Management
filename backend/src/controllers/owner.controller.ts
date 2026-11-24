@@ -17,6 +17,7 @@ import { checkRestaurantSubscriptionExpiry } from '../jobs/subscription.job';
 import { UpiProviderRegistry } from '../services/payment/UpiProviderRegistry';
 import { isValidUpiId } from '../services/payment.upi.service';
 import { MerchantAccountService } from '../services/merchant.account.service';
+import { normalizeTableNumber } from './tableSession.controller';
 
 async function getOwnerRestaurant(
   ownerIdOrReq: string | AuthenticatedRequest,
@@ -1584,9 +1585,23 @@ export async function updateOrderStatus(req: AuthenticatedRequest, res: Response
       });
     }
 
+    const finalOrder = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        items: {
+          include: {
+            menuItem: true,
+            variant: true,
+          },
+        },
+        restaurant: true,
+        user: true,
+      },
+    });
+
     res.json({
       success: true,
-      data: { order: { id: updatedOrder.id, status: updatedOrder.status } },
+      data: { order: finalOrder || updatedOrder },
       message: `Order status updated to ${status}`,
     });
   } catch (error) { next(error); }
@@ -1710,6 +1725,101 @@ export async function confirmPayment(req: AuthenticatedRequest, res: Response, n
       isPaymentEvent: true,
       updatedAt: new Date().toISOString(),
     });
+
+    // Synchronize TableSession if order is associated with a table
+    const targetSessionId = order.tableSessionId;
+    let tableSession = targetSessionId
+      ? await prisma.tableSession.findUnique({
+          where: { id: targetSessionId },
+          include: {
+            orders: { where: { deletedAt: null } },
+            restaurant: { select: { id: true, sessionManagementMode: true } },
+          },
+        })
+      : null;
+
+    if (!tableSession && order.tableNumber) {
+      const bareNum = order.tableNumber.trim().replace(/^Table\s*/i, '').trim();
+      const tableVariants = Array.from(new Set([normalizeTableNumber(order.tableNumber), order.tableNumber.trim(), bareNum, `Table ${bareNum}`]));
+      tableSession = await prisma.tableSession.findFirst({
+        where: {
+          restaurantId: restaurant.id,
+          tableNumber: { in: tableVariants },
+          status: 'ACTIVE',
+        },
+        include: {
+          orders: { where: { deletedAt: null } },
+          restaurant: { select: { id: true, sessionManagementMode: true } },
+        },
+      });
+    }
+
+    if (tableSession && tableSession.status === 'ACTIVE') {
+      const sessionOrders = tableSession.orders;
+      const unpaidOrders = sessionOrders.filter(
+        (o) => o.id !== order.id && o.status !== 'CANCELLED' && o.paymentStatus !== 'PAID'
+      );
+      const totalAmount = sessionOrders
+        .filter((o) => o.status !== 'CANCELLED')
+        .reduce((sum, o) => sum + (o.total || 0), 0);
+      const paidAmount = sessionOrders
+        .filter((o) => o.status !== 'CANCELLED' && (o.id === order.id || o.paymentStatus === 'PAID'))
+        .reduce((sum, o) => sum + (o.total || 0), 0);
+
+      const isAllPaid = unpaidOrders.length === 0;
+      const effectiveMode = tableSession.restaurant?.sessionManagementMode || restaurant.sessionManagementMode || tableSession.sessionManagementModeSnapshot || 'MANUAL';
+
+      if (isAllPaid && effectiveMode === 'AUTO') {
+        // Mode A: AUTO SESSION RESET
+        // Fast automatic table release as soon as payment is confirmed
+        await prisma.tableSession.update({
+          where: { id: tableSession.id },
+          data: {
+            status: 'COMPLETED',
+            completedAt: now,
+            closedAt: now,
+            closedBy: req.user?.id || 'AUTO_SESSION_RESET',
+            closureReason: 'Auto Session Reset: All orders settled upon counter payment confirmation',
+            paymentStatus: 'PAID',
+            paidAmount: totalAmount,
+          },
+        });
+
+        await prisma.sessionDeviceAccess.updateMany({
+          where: { sessionId: tableSession.id, revokedAt: null },
+          data: { revokedAt: now },
+        });
+
+        emitTableSessionUpdate(restaurant.id, tableSession.tableNumber, {
+          sessionId: tableSession.id,
+          event: 'SESSION_COMPLETED',
+          status: 'COMPLETED',
+          tableNumber: tableSession.tableNumber,
+          isAvailable: true,
+          isOccupied: false,
+          totalAmount,
+          paidAmount: totalAmount,
+        });
+      } else {
+        await prisma.tableSession.update({
+          where: { id: tableSession.id },
+          data: {
+            paymentStatus: isAllPaid ? 'PAID' : 'PARTIALLY_PAID',
+            paidAmount,
+          },
+        });
+
+        emitTableSessionUpdate(restaurant.id, tableSession.tableNumber, {
+          sessionId: tableSession.id,
+          event: 'PAYMENT_UPDATED',
+          status: tableSession.status,
+          tableNumber: tableSession.tableNumber,
+          paymentStatus: isAllPaid ? 'PAID' : 'PARTIALLY_PAID',
+          totalAmount,
+          paidAmount,
+        });
+      }
+    }
 
     if (order.userId) {
       await prisma.notification.create({
@@ -2231,7 +2341,7 @@ export async function getKitchenStaff(req: AuthenticatedRequest, res: Response, 
       success: true,
       data: {
         staff,
-        kotMode: flags.kotMode || 'DIGITAL_KDS',
+        kotMode: flags.kotMode || 'PRINT_KOT',
         isPrintKot,
         kitchenDisplayEnabled: flags.kitchenDisplayEnabled !== false,
       },
@@ -3427,13 +3537,15 @@ export async function createManualOrder(
       throw new AppError('At least one item is required to generate a manual KOT.', 400, 'EMPTY_ITEMS');
     }
 
-    const cleanTable = tableNumber.trim();
+    const cleanTable = normalizeTableNumber(tableNumber);
+    const bareNum = tableNumber.trim().replace(/^Table\s*/i, '').trim();
+    const tableVariants = Array.from(new Set([cleanTable, tableNumber.trim(), bareNum, `Table ${bareNum}`]));
 
     // 1. Resolve or create active TableSession
     let session = await prisma.tableSession.findFirst({
       where: {
         restaurantId: restaurant.id,
-        tableNumber: cleanTable,
+        tableNumber: { in: tableVariants },
         status: 'ACTIVE',
       },
       include: {
@@ -3450,7 +3562,10 @@ export async function createManualOrder(
       isAddon = session.orders.some((o) => o.status !== 'CANCELLED');
       await prisma.tableSession.update({
         where: { id: session.id },
-        data: { currentBatchNumber: targetBatchNumber },
+        data: {
+          tableNumber: cleanTable,
+          currentBatchNumber: targetBatchNumber,
+        },
       });
     } else {
       const sessionCode = String(Math.floor(1000 + Math.random() * 9000));
@@ -3463,6 +3578,8 @@ export async function createManualOrder(
           accessCodeHash: crypto.createHash('sha256').update(sessionCode).digest('hex'),
           status: 'ACTIVE',
           currentBatchNumber: 1,
+          primaryDeviceReference: 'CASHIER_MANUAL_KOT',
+          sessionManagementModeSnapshot: restaurant.sessionManagementMode || 'AUTO',
         },
         include: {
           batches: true,

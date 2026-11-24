@@ -2,12 +2,12 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChefHat, Clock, CheckCircle2, AlertCircle, ShoppingBag, X, Bell, Sparkles, ChevronRight } from 'lucide-react';
+import { ChefHat, Clock, CheckCircle2, AlertCircle, ShoppingBag, X, Bell, Sparkles, ChevronRight, Star } from 'lucide-react';
 import Link from 'next/link';
 
 export interface CustomerAlertData {
   isOpen: boolean;
-  type: 'WAITER_COMING' | 'WAITER_OCCUPIED' | 'ORDER_UPDATE' | 'ADDON_ORDER';
+  type: 'WAITER_COMING' | 'WAITER_OCCUPIED' | 'ORDER_UPDATE' | 'ADDON_ORDER' | 'PAYMENT_CONFIRMED';
   title: string;
   message: string;
   tableNumber?: string;
@@ -16,6 +16,7 @@ export interface CustomerAlertData {
   timerSeconds?: number;
   actionUrl?: string;
   actionLabel?: string;
+  onAction?: () => void;
 }
 
 interface CustomerAlertModalProps {
@@ -84,6 +85,12 @@ export function CustomerAlertModal({ data, onClose }: CustomerAlertModalProps) {
             <Sparkles className="w-8 h-8" />
           </div>
         );
+      case 'PAYMENT_CONFIRMED':
+        return (
+          <div className="w-14 h-14 rounded-full bg-amber-500/20 text-amber-500 border-2 border-amber-500/40 flex items-center justify-center shadow-lg shadow-amber-500/20 animate-bounce">
+            <Star className="w-8 h-8 fill-amber-500 text-amber-500" />
+          </div>
+        );
       default:
         return (
           <div className="w-14 h-14 rounded-full bg-primary/20 text-primary border-2 border-primary/40 flex items-center justify-center shadow-lg">
@@ -102,6 +109,9 @@ export function CustomerAlertModal({ data, onClose }: CustomerAlertModalProps) {
     }
     if (data.type === 'ADDON_ORDER') {
       return <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 uppercase tracking-wider">⚡ Add-on Order</span>;
+    }
+    if (data.type === 'PAYMENT_CONFIRMED') {
+      return <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 uppercase tracking-wider">🎉 Payment Confirmed</span>;
     }
     if (data.orderStatus) {
       return <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 uppercase tracking-wider">{data.orderStatus.replace(/_/g, ' ')}</span>;
@@ -163,7 +173,7 @@ export function CustomerAlertModal({ data, onClose }: CustomerAlertModalProps) {
           )}
 
           {/* Action Button */}
-          {data.actionUrl ? (
+          {data.actionUrl || data.onAction ? (
             <div className="flex gap-2.5 w-full pt-1">
               <button
                 type="button"
@@ -172,14 +182,28 @@ export function CustomerAlertModal({ data, onClose }: CustomerAlertModalProps) {
               >
                 Dismiss
               </button>
-              <Link
-                href={data.actionUrl}
-                onClick={onClose}
-                className="flex-1 py-3.5 rounded-2xl bg-primary hover:bg-primary/95 text-primary-foreground font-display font-bold text-xs sm:text-sm shadow-lg shadow-primary/25 active:scale-98 transition-all flex items-center justify-center gap-1.5 min-h-[44px]"
-              >
-                <span>{data.actionLabel || 'View Order'}</span>
-                <ChevronRight className="w-4 h-4" />
-              </Link>
+              {data.onAction ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    data.onAction?.();
+                    onClose();
+                  }}
+                  className="flex-1 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:opacity-95 text-white font-display font-bold text-xs sm:text-sm shadow-lg shadow-amber-500/25 active:scale-98 transition-all flex items-center justify-center gap-1.5 min-h-[44px]"
+                >
+                  <Star className="w-4 h-4 fill-white text-white" />
+                  <span>{data.actionLabel || 'Rate & Review'}</span>
+                </button>
+              ) : (
+                <Link
+                  href={data.actionUrl!}
+                  onClick={onClose}
+                  className="flex-1 py-3.5 rounded-2xl bg-primary hover:bg-primary/95 text-primary-foreground font-display font-bold text-xs sm:text-sm shadow-lg shadow-primary/25 active:scale-98 transition-all flex items-center justify-center gap-1.5 min-h-[44px]"
+                >
+                  <span>{data.actionLabel || 'View Order'}</span>
+                  <ChevronRight className="w-4 h-4" />
+                </Link>
+              )}
             </div>
           ) : (
             <button

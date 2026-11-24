@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useAuthStore } from '@/store/auth.store';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, DollarSign, BellRing, Banknote, ShoppingBag, Check, X, Bed, Lock, Sparkles, Printer, AlertTriangle } from 'lucide-react';
+import { Loader2, DollarSign, BellRing, Banknote, ShoppingBag, Check, X, Bed, Lock, Sparkles, AlertTriangle } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getSocketUrl } from '@/services/api';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -25,6 +25,24 @@ function playAlertBeep() {
   try {
     playOrderStatusSound();
   } catch { /* silent fail */ }
+}
+
+function formatTableLabel(raw?: string | number | null): string {
+  if (raw === undefined || raw === null || raw === '') return 'Table';
+  const trimmed = String(raw).trim();
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('room') || lower.startsWith('suite')) {
+    const stripped = trimmed.replace(/^(room|suite)\s*(room|suite)?\s*/i, '').trim();
+    return stripped ? `Room ${stripped}` : trimmed;
+  }
+  if (lower.startsWith('table')) {
+    const strippedTable = trimmed.replace(/^(table\s*)+/i, '').trim();
+    return strippedTable ? `Table ${strippedTable}` : 'Table';
+  }
+  if (/^\d+$/.test(trimmed)) {
+    return `Table ${trimmed}`;
+  }
+  return trimmed;
 }
 
 export default function OwnerLayout({ children }: { children: React.ReactNode }) {
@@ -131,9 +149,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       processedEventsRef.current.set(eventKey, now);
 
       const isRoom = payload.tableNumber.toLowerCase().includes('room') || payload.tableNumber.toLowerCase().includes('suite');
-      const roomLabel = isRoom
-        ? (payload.tableNumber.toLowerCase().startsWith('room') ? payload.tableNumber : `Room ${payload.tableNumber}`)
-        : `Table ${payload.tableNumber}`;
+      const roomLabel = formatTableLabel(payload.tableNumber);
 
       const waiterCallObj: WaiterCall = {
         id: `${payload.tableNumber}-${now}`,
@@ -212,7 +228,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
 
       const orderIdShort = normalizedOrder.id ? String(normalizedOrder.id).slice(-8).toUpperCase() : 'NEW';
       const itemsLabel = normalizedOrder.items?.map((i: any) => `${i.menuItem?.name || i.name || 'Item'} × ${i.quantity}`).join(', ') || 'New order received';
-      const locationLabel = normalizedOrder.tableNumber ? `Table ${normalizedOrder.tableNumber}` : 'Home Delivery';
+      const locationLabel = normalizedOrder.tableNumber ? formatTableLabel(normalizedOrder.tableNumber) : 'Home Delivery';
       const totalLabel = normalizedOrder.total ? `₹${Number(normalizedOrder.total).toFixed(2)}` : '';
       const alertTitle = isAddonOrder ? `⚡ ADD-ON ORDER RECEIVED #${orderIdShort}` : `🛍️ NEW ORDER RECEIVED #${orderIdShort}`;
 
@@ -400,9 +416,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
             const isPayOnCounter = activeWaiterAlert.paymentMethod === 'COD';
             const isPayToWaiter = activeWaiterAlert.paymentMethod === 'PAY_TO_WAITER';
             const isRoom = activeWaiterAlert.tableNumber.toLowerCase().includes('room') || activeWaiterAlert.tableNumber.toLowerCase().includes('suite');
-            const roomLabel = isRoom
-              ? (activeWaiterAlert.tableNumber.toLowerCase().startsWith('room') ? activeWaiterAlert.tableNumber : `Room ${activeWaiterAlert.tableNumber}`)
-              : `Table ${activeWaiterAlert.tableNumber}`;
+            const roomLabel = formatTableLabel(activeWaiterAlert.tableNumber);
 
             let headerTitle = isRoom ? 'HOTEL ROOM SERVICE' : 'WAITER CALL REQUEST';
             let headerSubtitle = isRoom ? `Guest in ${roomLabel} requested hotel room service` : 'Customer requested staff assistance at table';
@@ -682,7 +696,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                       <div>
                         <p className="text-xs text-muted-foreground font-medium">Order Type / Location</p>
                         <p className="text-sm font-bold text-foreground">
-                          {activeNewOrderAlert.tableNumber ? `🍽️ Table ${activeNewOrderAlert.tableNumber}` : '🏠 Home Delivery'}
+                          {activeNewOrderAlert.tableNumber ? `🍽️ ${formatTableLabel(activeNewOrderAlert.tableNumber)}` : '🏠 Home Delivery'}
                         </p>
                       </div>
                       <div className="text-right">
@@ -730,108 +744,58 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="p-4 border-t border-border bg-muted/30 flex gap-2 flex-wrap">
-                    {restaurantData?.featureFlags?.kotMode === 'PRINT_KOT' ? (
-                      <>
-                        <button
-                          disabled={isAcceptingOrder}
-                          onClick={async () => {
-                            if (isAcceptingOrder) return;
-                            setIsAcceptingOrder(true);
-                            const orderId = activeNewOrderAlert.id || (activeNewOrderAlert as any)?.orderId;
-                            const isAddon = Boolean(activeNewOrderAlert.isNewAddon || activeNewOrderAlert.isAddon || activeNewOrderAlert.addOnStatus === 'PENDING');
-                            const patchPayload = isAddon ? { addOnStatus: 'CONFIRMED' } : { status: 'CONFIRMED' };
-
-                            // Close modal immediately on this device
-                            setActiveNewOrderAlert(null);
-                            useWaiterStore.getState().setActiveNewOrderAlert(null);
-                            useWaiterStore.getState().removeNewOrder(orderId);
-
-                            try {
-                              const res = await api.patch(`/owner/orders/${orderId}/status`, patchPayload);
-                              queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
-                              queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
-                              if (res.data?.alreadyProcessed) {
-                                toast.info('Order was already accepted on another device.');
-                              } else {
-                                printKitchenOrderTicket({
-                                  order: activeNewOrderAlert,
-                                  restaurantName: restaurantData?.name || 'Restaurant',
-                                  isAddonOnly: isAddon,
-                                });
-                                toast.success(isAddon ? 'Add-on accepted & KOT printed!' : 'Order accepted & KOT sent to printer!');
-                              }
-                            } catch {
-                              // Silent fail or handled in order store
-                            } finally {
-                              setIsAcceptingOrder(false);
-                            }
-                          }}
-                          className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer min-w-[140px] disabled:opacity-50"
-                        >
-                          <Check className="w-4 h-4" />
-                          <Printer className="w-4 h-4" />
-                          <span>{activeNewOrderAlert.isNewAddon || activeNewOrderAlert.isAddon ? 'Accept & Print Add-on KOT' : 'Accept & Print KOT'}</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            printKitchenOrderTicket({
-                              order: activeNewOrderAlert,
-                              restaurantName: restaurantData?.name || 'Restaurant',
-                              isAddonOnly: Boolean(activeNewOrderAlert.isNewAddon),
-                            });
-                          }}
-                          className="py-3 px-3.5 rounded-xl bg-orange-500/15 hover:bg-orange-500/25 text-orange-600 dark:text-orange-400 font-bold text-xs border border-orange-500/30 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                          title="Print KOT Ticket without accepting"
-                        >
-                          <Printer className="w-4 h-4" />
-                          <span>Print KOT</span>
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        disabled={isAcceptingOrder}
-                        onClick={async () => {
-                          if (isAcceptingOrder) return;
-                          setIsAcceptingOrder(true);
-                          const orderId = activeNewOrderAlert.id || (activeNewOrderAlert as any)?.orderId;
-                          const isAddon = Boolean(activeNewOrderAlert.isNewAddon || activeNewOrderAlert.isAddon || activeNewOrderAlert.addOnStatus === 'PENDING');
-                          const patchPayload = isAddon ? { addOnStatus: 'CONFIRMED' } : { status: 'CONFIRMED' };
-
-                          // Close modal immediately on this device
-                          setActiveNewOrderAlert(null);
-                          useWaiterStore.getState().setActiveNewOrderAlert(null);
-                          useWaiterStore.getState().removeNewOrder(orderId);
-
-                          try {
-                            const res = await api.patch(`/owner/orders/${orderId}/status`, patchPayload);
-                            queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
-                            queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
-                            if (res.data?.alreadyProcessed) {
-                              toast.info('Order was already accepted on another device.');
-                            } else {
-                              toast.success(isAddon ? 'Add-on accepted!' : 'Order confirmed!');
-                            }
-                          } catch {
-                            // Silent fail or handled in order store
-                          } finally {
-                            setIsAcceptingOrder(false);
-                          }
-                        }}
-                        className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                      >
-                        <Check className="w-4 h-4" /> {activeNewOrderAlert.isNewAddon || activeNewOrderAlert.isAddon ? 'Accept Add-on' : 'Confirm Order'}
-                      </button>
-                    )}
+                  <div className="p-4 border-t border-border bg-muted/30 flex gap-3">
                     <button
-                      onClick={() => {
+                      disabled={isAcceptingOrder}
+                      onClick={async () => {
+                        if (isAcceptingOrder) return;
+                        setIsAcceptingOrder(true);
+                        const currentOrder = { ...activeNewOrderAlert };
+                        const orderId = currentOrder.id || (currentOrder as any)?.orderId;
+                        const isAddon = Boolean(currentOrder.isNewAddon || currentOrder.isAddon || currentOrder.addOnStatus === 'PENDING');
+                        const patchPayload = isAddon ? { addOnStatus: 'CONFIRMED' } : { status: 'CONFIRMED' };
+
+                        // Close modal immediately on this device
                         setActiveNewOrderAlert(null);
-                        router.push('/owner/orders');
+                        useWaiterStore.getState().setActiveNewOrderAlert(null);
+                        useWaiterStore.getState().removeNewOrder(orderId);
+
+                        try {
+                          const res = await api.patch(`/owner/orders/${orderId}/status`, patchPayload);
+                          queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
+                          queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
+                          if (res.data?.alreadyProcessed) {
+                            toast.info('Order was already accepted on another device.');
+                          } else {
+                            const returnedOrder = res.data?.data?.order;
+                            const orderToPrint = {
+                              ...currentOrder,
+                              ...(returnedOrder || {}),
+                              items: (currentOrder.items && currentOrder.items.length > 0)
+                                ? currentOrder.items
+                                : (returnedOrder?.items || []),
+                            };
+                            printKitchenOrderTicket({
+                              order: orderToPrint,
+                              restaurantName: restaurantData?.name || 'Restaurant',
+                              isAddonOnly: isAddon,
+                            });
+                            toast.success(isAddon ? 'Add-on accepted!' : 'Order accepted!');
+                          }
+                        } catch (err: any) {
+                          toast.error(err?.response?.data?.message || 'Failed to accept order');
+                        } finally {
+                          setIsAcceptingOrder(false);
+                        }
                       }}
-                      className="py-3 px-4 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold text-xs shadow-md transition-all text-center cursor-pointer"
+                      className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                     >
-                      View All Orders
+                      {isAcceptingOrder ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Check className="w-4 h-4" />
+                      )}
+                      <span>{activeNewOrderAlert.isNewAddon || activeNewOrderAlert.isAddon ? 'Accept Add-on' : 'Accept Order'}</span>
                     </button>
                     <button
                       type="button"
@@ -840,7 +804,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                         setSelectedRejectReason(PREDEFINED_REJECTION_REASONS[0]);
                         setCustomRejectReason('');
                       }}
-                      className="py-3 px-4 rounded-xl bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-950/40 dark:text-red-400 dark:hover:bg-red-900/50 font-bold text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                      className="flex-1 py-3 px-4 rounded-xl bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-950/40 dark:text-red-400 dark:hover:bg-red-900/50 font-bold text-sm transition-colors cursor-pointer flex items-center justify-center gap-2"
                     >
                       <X className="w-4 h-4" />
                       <span>{activeNewOrderAlert.isNewAddon || activeNewOrderAlert.isAddon || activeNewOrderAlert.addOnStatus === 'PENDING' ? 'Reject Add-on' : 'Reject Order'}</span>
@@ -881,7 +845,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                       </h3>
                       <p className="text-xs text-white/80">
                         Order #{rejectOrderTarget.id ? String(rejectOrderTarget.id).slice(-8).toUpperCase() : 'NEW'}
-                        {rejectOrderTarget.tableNumber ? ` • Table ${rejectOrderTarget.tableNumber}` : ''}
+                        {rejectOrderTarget.tableNumber ? ` • ${formatTableLabel(rejectOrderTarget.tableNumber)}` : ''}
                       </p>
                     </div>
                   </div>

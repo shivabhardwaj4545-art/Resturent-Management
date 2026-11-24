@@ -281,8 +281,12 @@ export function emitWaiterCall(
   ownerId?: string
 ): void {
   if (!io) return;
-  const isRoom = tableNumber.toLowerCase().includes('room') || tableNumber.toLowerCase().includes('suite');
-  const label = isRoom ? (tableNumber.toLowerCase().startsWith('room') ? tableNumber : `Room ${tableNumber}`) : `Table ${tableNumber}`;
+  const cleanT = (tableNumber || '').trim();
+  const lower = cleanT.toLowerCase();
+  const isRoom = lower.includes('room') || lower.includes('suite');
+  const label = isRoom
+    ? (lower.startsWith('room') ? cleanT.replace(/^(room|suite)\s*(room|suite)?\s*/i, 'Room ') : `Room ${cleanT}`)
+    : (lower.startsWith('table') ? cleanT.replace(/^(table\s*)+/i, 'Table ') : (/^\d+$/.test(cleanT) ? `Table ${cleanT}` : cleanT));
   const displayTitle = isRoom
     ? `🛎️ Room Service - ${label}${purpose ? ` (${purpose})` : ''}`
     : `🔔 Waiter Call - ${label}${purpose ? ` (${purpose})` : ''}`;

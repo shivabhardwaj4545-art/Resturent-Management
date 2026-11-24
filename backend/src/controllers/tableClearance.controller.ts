@@ -187,20 +187,23 @@ export async function getTableClearanceDashboard(
     let paymentPendingCount = 0;
     let availableCount = 0;
 
-    const tables = sortedTableList.map((tableName) => {
+    const tables: any[] = [];
+
+    for (const tableName of sortedTableList) {
       const normalizedKey = tableName.toLowerCase();
       const session = sessionByTable.get(normalizedKey);
       const isDisabled = disabledLocations.some((d) => normalizeTableNumber(d).toLowerCase() === normalizedKey);
 
       if (!session) {
         availableCount++;
-        return {
+        tables.push({
           tableNumber: tableName,
           status: 'AVAILABLE',
           displayStatus: 'Available',
           isDisabled,
           session: null,
-        };
+        });
+        continue;
       }
 
       // Calculate orders summary
@@ -228,6 +231,38 @@ export async function getTableClearanceDashboard(
       let occupancyStatus: 'PAID_AWAITING_CLEARANCE' | 'PAYMENT_PENDING' | 'OCCUPIED' = 'OCCUPIED';
       let displayStatus = 'Occupied';
 
+      const mode = restaurant.sessionManagementMode || session.sessionManagementModeSnapshot || 'MANUAL';
+
+      if (mode === 'AUTO' && paymentStatus === 'PAID') {
+        const now = new Date();
+        await prisma.tableSession.update({
+          where: { id: session.id },
+          data: {
+            status: 'COMPLETED',
+            completedAt: now,
+            closedAt: now,
+            closedBy: 'AUTO_SESSION_RESET',
+            closureReason: 'Auto Session Reset: All orders settled',
+            paymentStatus: 'PAID',
+            paidAmount: totalAmount,
+          },
+        });
+        await prisma.sessionDeviceAccess.updateMany({
+          where: { sessionId: session.id, revokedAt: null },
+          data: { revokedAt: now },
+        });
+
+        availableCount++;
+        tables.push({
+          tableNumber: tableName,
+          status: 'AVAILABLE',
+          displayStatus: 'Available',
+          isDisabled,
+          session: null,
+        });
+        continue;
+      }
+
       if (paymentStatus === 'PAID') {
         occupancyStatus = 'PAID_AWAITING_CLEARANCE';
         displayStatus = 'Paid – Awaiting Clearance';
@@ -248,7 +283,7 @@ export async function getTableClearanceDashboard(
       const durationMs = Date.now() - new Date(session.createdAt).getTime();
       const durationMinutes = Math.max(1, Math.floor(durationMs / 60000));
 
-      return {
+      tables.push({
         tableNumber: tableName,
         status: occupancyStatus,
         displayStatus,
@@ -266,8 +301,8 @@ export async function getTableClearanceDashboard(
           sessionManagementModeSnapshot: session.sessionManagementModeSnapshot || restaurant.sessionManagementMode || 'MANUAL',
           notes: session.notes,
         },
-      };
-    });
+      });
+    }
 
     res.json({
       success: true,
@@ -313,12 +348,14 @@ export async function clearTableManual(
     }
 
     const cleanTable = tableNumber ? normalizeTableNumber(tableNumber) : undefined;
+    const bareNum = cleanTable ? cleanTable.replace(/^Table\s*/i, '').trim() : '';
+    const tableVariants = cleanTable && tableNumber ? Array.from(new Set([cleanTable, tableNumber.trim(), bareNum, `Table ${bareNum}`])) : [];
 
     // Concurrency-safe lookup of active session
     let session = await prisma.tableSession.findFirst({
       where: {
         restaurantId: restaurant.id,
-        ...(sessionId ? { id: sessionId } : { tableNumber: cleanTable }),
+        ...(sessionId ? { id: sessionId } : { tableNumber: { in: tableVariants } }),
         status: 'ACTIVE',
       },
       include: {
@@ -562,12 +599,14 @@ export async function checkTableStatusAndAccess(
     }
 
     const currentMode = restaurant.sessionManagementMode || 'MANUAL';
+    const bareNum = cleanTable.replace(/^Table\s*/i, '').trim();
+    const tableVariants = Array.from(new Set([cleanTable, tableNumber.trim(), bareNum, `Table ${bareNum}`]));
 
     // Check for an active session
     let session = await prisma.tableSession.findFirst({
       where: {
         restaurantId: restaurant.id,
-        tableNumber: cleanTable,
+        tableNumber: { in: tableVariants },
         status: 'ACTIVE',
       },
       include: {
@@ -582,10 +621,10 @@ export async function checkTableStatusAndAccess(
     });
 
     if (session) {
-      const mode = session.sessionManagementModeSnapshot || currentMode;
+      const mode = restaurant.sessionManagementMode || session.sessionManagementModeSnapshot || currentMode;
       const nonCancelledOrders = session.orders.filter((o) => o.status !== 'CANCELLED');
       const paidOrders = nonCancelledOrders.filter((o) => o.paymentStatus === 'PAID');
-      const isAllPaid = nonCancelledOrders.length > 0 && paidOrders.length === nonCancelledOrders.length;
+      const isAllPaid = (nonCancelledOrders.length > 0 && paidOrders.length === nonCancelledOrders.length) || session.paymentStatus === 'PAID';
 
       // In Auto Session Reset Mode:
       // If previous dining orders were all paid, auto-close the old session and create a brand-new session
@@ -898,11 +937,14 @@ export async function validateTableAccessCode(
       return;
     }
 
+    const bareNum = cleanTable.replace(/^Table\s*/i, '').trim();
+    const tableVariants = Array.from(new Set([cleanTable, tableNumber.trim(), bareNum, `Table ${bareNum}`]));
+
     // Look up active table session
     const session = await prisma.tableSession.findFirst({
       where: {
         restaurantId: restaurant.id,
-        tableNumber: cleanTable,
+        tableNumber: { in: tableVariants },
         status: 'ACTIVE',
       },
       include: {

@@ -9,6 +9,8 @@
  * - Net total & Payment method
  */
 
+import { formatTableLabel } from './tableCode';
+
 export interface BillItem {
   id?: string;
   quantity: number;
@@ -87,9 +89,7 @@ export function generateBillHtml(options: BillPrintOptions): string {
   const grandTotal = Number(order.total || 0);
 
   const cleanTable = order.tableNumber
-    ? String(order.tableNumber).toLowerCase().includes('room')
-      ? String(order.tableNumber).toUpperCase()
-      : `Table ${String(order.tableNumber).toUpperCase()}`
+    ? formatTableLabel(order.tableNumber)
     : 'Dine-In';
 
   const paymentMethodLabel =
@@ -440,17 +440,56 @@ export function printCustomerBill(options: BillPrintOptions): void {
 
   const html = generateBillHtml(options);
 
+  const fallbackWindowPrint = () => {
+    try {
+      const win = window.open('', '_blank', 'width=450,height=650');
+      if (win) {
+        win.document.open();
+        win.document.write(html);
+        win.document.close();
+        win.focus();
+        setTimeout(() => {
+          try {
+            win.print();
+          } catch (e) {
+            console.error('Bill window print execution error:', e);
+          }
+        }, 300);
+      }
+    } catch (e) {
+      console.error('Bill window print fallback failed:', e);
+    }
+  };
+
   try {
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
     iframe.style.right = '0';
     iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
+    iframe.style.width = '1px';
+    iframe.style.height = '1px';
     iframe.style.border = '0';
-    iframe.style.opacity = '0';
+    iframe.style.opacity = '0.01';
     iframe.style.pointerEvents = 'none';
+    iframe.style.zIndex = '-9999';
     document.body.appendChild(iframe);
+
+    let printed = false;
+    const triggerPrint = () => {
+      if (printed) return;
+      printed = true;
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (err) {
+        console.warn('Bill iframe print error, falling back to window.open:', err);
+        fallbackWindowPrint();
+      }
+    };
+
+    iframe.onload = () => {
+      setTimeout(triggerPrint, 100);
+    };
 
     const doc = iframe.contentWindow?.document;
     if (doc) {
@@ -458,37 +497,20 @@ export function printCustomerBill(options: BillPrintOptions): void {
       doc.write(html);
       doc.close();
 
-      iframe.contentWindow?.focus();
-      setTimeout(() => {
-        try {
-          iframe.contentWindow?.print();
-        } catch {
-          const win = window.open('', '_blank', 'width=450,height=650');
-          if (win) {
-            win.document.open();
-            win.document.write(html);
-            win.document.close();
-          }
-        }
+      setTimeout(triggerPrint, 350);
 
-        setTimeout(() => {
-          if (iframe.parentNode) {
-            document.body.removeChild(iframe);
-          }
-        }, 3000);
-      }, 300);
+      setTimeout(() => {
+        if (iframe.parentNode) {
+          document.body.removeChild(iframe);
+        }
+      }, 60000);
       return;
     }
   } catch (err) {
     console.error('Iframe bill print error, falling back to window.open:', err);
   }
 
-  const win = window.open('', '_blank', 'width=450,height=650');
-  if (win) {
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
-  }
+  fallbackWindowPrint();
 }
 
 /**

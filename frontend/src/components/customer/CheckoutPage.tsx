@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, CreditCard, Banknote, Wallet, MapPin, User, Phone, Loader2, Plus, PlusCircle, Check, Lock, X, Smartphone, Building, Gift, Copy, QrCode, AlertCircle, UtensilsCrossed, Pencil, Tag, Percent } from 'lucide-react';
+import { ChevronLeft, CreditCard, Banknote, Wallet, MapPin, User, Phone, Loader2, Plus, PlusCircle, Check, Lock, X, Smartphone, Building, Copy, QrCode, AlertCircle, UtensilsCrossed, Pencil, Tag, Percent } from 'lucide-react';
 import { useCartStore } from '@/store/cart.store';
 import { useAuthStore } from '@/store/auth.store';
 import api, { getSocketUrl } from '@/services/api';
@@ -206,18 +206,6 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
     enabled: !!activeUser && !!accessToken,
   });
 
-  const { data: loyaltySettings } = useQuery({
-    queryKey: ['loyalty-settings'],
-    queryFn: async () => {
-      const res = await api.get('/menu/loyalty-settings');
-      return res.data.data?.settings || {};
-    },
-  });
-  const loyaltyEnabled = loyaltySettings?.enabled !== false;
-  const pointsPerDiscountRupee = Number(loyaltySettings?.pointsPerDiscountRupee) || 50;
-
-  const [usePoints, setUsePoints] = useState(false);
-
   const {
     items,
     couponCode,
@@ -289,7 +277,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
   const subtotalAmount = mounted ? subtotal() : 0;
   const gst = subtotalAmount * GST_RATE;
   const finalCouponDiscount = addonOrderId ? 0 : couponDiscount;
-  const grandTotalBeforePoints = Math.max(subtotalAmount + gst - finalCouponDiscount, 0);
+  const grandTotal = Math.max(subtotalAmount + gst - finalCouponDiscount, 0);
 
   // Live coupons for this restaurant
   const { data: publicCoupons = [], isSuccess: isCouponsFetched } = useQuery<Array<{
@@ -380,11 +368,6 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
     toast.info('Coupon removed');
   };
 
-  const pointsAvailable = profileData?.loyaltyPoints ?? activeUser?.loyaltyPoints ?? 0;
-  const maxPointsDiscount = pointsAvailable / pointsPerDiscountRupee;
-  const pointsDiscount = loyaltyEnabled && usePoints && !addonOrderId ? Math.min(maxPointsDiscount, grandTotalBeforePoints) : 0;
-  const grandTotal = Math.max(grandTotalBeforePoints - pointsDiscount, 0);
-
   const { register, handleSubmit, formState: { errors } } = useForm<GuestForm>({
     resolver: zodResolver(guestSchema),
     defaultValues: { paymentMethod: 'PAY_AT_COUNTER' },
@@ -449,7 +432,6 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
           });
           if (activeUser) {
             queryClient.invalidateQueries({ queryKey: ['user-profile'] });
-            queryClient.invalidateQueries({ queryKey: ['user-profile-loyalty'] });
           }
           saveOrderToRecent(orderId, restaurantSlug);
           clearCart();
@@ -666,7 +648,7 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
         couponCode: couponCode ?? undefined,
         restaurantSlug,
         useWallet: false,
-        usePoints,
+        usePoints: false,
         cartItems: items.map((item) => ({
           menuItemId: item.menuItemId,
           variantId: item.variantId,
@@ -680,7 +662,6 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
       };
 
       queryClient.invalidateQueries({ queryKey: ['user-profile'] });
-      queryClient.invalidateQueries({ queryKey: ['user-profile-loyalty'] });
       saveOrderToRecent(order.id, restaurantSlug);
       clearCart();
       toast.success('Order placed! 🎉 Show your 4-digit verification code at the counter.');
@@ -835,11 +816,6 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                 <span>Coupon ({couponCode})</span><span>-₹{couponDiscount.toFixed(2)}</span>
               </div>
             )}
-            {mounted && !addonOrderId && pointsDiscount > 0 && (
-              <div className="flex justify-between text-green-600">
-                <span>Loyalty Points Discount</span><span>-₹{pointsDiscount.toFixed(2)}</span>
-              </div>
-            )}
             <div className="flex justify-between font-bold text-base border-t border-border pt-2">
               <span>Total</span><span suppressHydrationWarning>₹{grandTotal.toFixed(2)}</span>
             </div>
@@ -971,33 +947,6 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
           </div>
         )}
 
-        {/* Loyalty Points Card */}
-        {loyaltyEnabled && activeUser && pointsAvailable > 0 && !addonOrderId && (
-          <div className="bg-card border border-border rounded-2xl p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-orange-100 dark:bg-orange-950/40 flex items-center justify-center text-orange-500">
-                <Gift className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="font-semibold text-sm text-foreground">Redeem Loyalty Points</p>
-                <p className="text-xs text-muted-foreground">
-                  You have {pointsAvailable} points (Worth ₹{maxPointsDiscount.toFixed(0)})
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setUsePoints(!usePoints)}
-              className={`px-4 py-1.5 rounded-xl text-xs font-semibold border transition-all ${usePoints
-                ? 'border-orange-500 bg-orange-500 text-white'
-                : 'border-border text-foreground hover:bg-muted'
-                }`}
-            >
-              {usePoints ? 'Redeemed' : 'Redeem'}
-            </button>
-          </div>
-        )}
-
             {/* Payment Method - Offline Counter Payment */}
             <div className="bg-card border border-border rounded-2xl p-4 space-y-3 shadow-xs">
               <div className="flex items-center justify-between">
@@ -1051,11 +1000,11 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
                     onClick={() => {
                       logout();
                       toast.success('Logged out successfully');
-                      router.push(`/login?restaurant=${restaurantSlug}`);
+                      router.push(`/r/${restaurantSlug}`);
                     }}
                     className="w-full py-3.5 bg-muted hover:bg-muted/80 text-foreground font-semibold rounded-xl text-center transition-all active:scale-95 text-sm"
                   >
-                    Log Out & Use Customer Account
+                    Log Out & Continue as Guest
                   </button>
                 </div>
               </div>
@@ -1127,12 +1076,6 @@ export function CheckoutPage({ restaurantSlug, tableNumber, tableToken, isTableV
               <form onSubmit={handleSubmit(onGuestSubmit)} className="bg-card border border-border rounded-2xl p-4 space-y-4">
                 <div className="flex items-center justify-between">
                   <h2 className="font-display font-semibold">Your Details</h2>
-                  <Link
-                    href={`/login?restaurant=${restaurantSlug}`}
-                    className="text-xs text-primary font-semibold hover:underline"
-                  >
-                    Have an account? Log in (Optional)
-                  </Link>
                 </div>
 
                 <div>

@@ -2,29 +2,38 @@
 
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Printer,
-  X,
-  Search,
-  Plus,
-  Minus,
-  Trash2,
-  Utensils,
-  Receipt,
-  FileText,
-  AlertCircle,
-  Check,
-} from 'lucide-react';
+import { Printer, X, Plus, Minus, Trash2, Utensils, Search } from 'lucide-react';
 import api from '@/services/api';
 import { toast } from 'sonner';
 import { printKitchenOrderTicket } from '@/utils/kotPrint';
+
+function getFoodFallbackImage(image?: string | null, name: string = '', isVeg: boolean = true): string {
+  if (image && image.trim().length > 0) return image;
+  const lower = name.toLowerCase();
+  if (lower.includes('paneer')) return 'https://images.unsplash.com/photo-1567188040759-fb8a883dc6d8?q=80&w=800&auto=format&fit=crop';
+  if (lower.includes('chicken') || lower.includes('meat') || lower.includes('mutton') || lower.includes('fish') || lower.includes('egg') || lower.includes('tikka') || lower.includes('kebab')) return 'https://images.unsplash.com/photo-1588166524941-3bf61a9c41db?q=80&w=800&auto=format&fit=crop';
+  if (lower.includes('naan') || lower.includes('roti') || lower.includes('bread') || lower.includes('paratha') || lower.includes('kulcha')) return 'https://images.unsplash.com/photo-1626074353765-517a681e40be?q=80&w=800&auto=format&fit=crop';
+  if (lower.includes('biryani') || lower.includes('rice') || lower.includes('pulao') || lower.includes('fried rice')) return 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?q=80&w=800&auto=format&fit=crop';
+  if (lower.includes('jamun') || lower.includes('dessert') || lower.includes('sweet') || lower.includes('ice cream') || lower.includes('cake') || lower.includes('halwa')) return 'https://images.unsplash.com/photo-1601050690597-df0568f70950?q=80&w=800&auto=format&fit=crop';
+  if (lower.includes('lassi') || lower.includes('drink') || lower.includes('mango') || lower.includes('tea') || lower.includes('chai') || lower.includes('coffee') || lower.includes('shake') || lower.includes('juice') || lower.includes('beverage') || lower.includes('mojito') || lower.includes('soda') || lower.includes('cola')) return 'https://images.unsplash.com/photo-1546173159-315724a31696?q=80&w=800&auto=format&fit=crop';
+  if (lower.includes('pizza')) return 'https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=800&auto=format&fit=crop';
+  if (lower.includes('burger')) return 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?q=80&w=800&auto=format&fit=crop';
+  if (lower.includes('fries') || lower.includes('finger') || lower.includes('french fries')) return 'https://images.unsplash.com/photo-1576107232684-1279f3908594?q=80&w=800&auto=format&fit=crop';
+  if (lower.includes('dal') || lower.includes('curry') || lower.includes('gravy') || lower.includes('chole') || lower.includes('rajma') || lower.includes('soup')) return 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?q=80&w=800&auto=format&fit=crop';
+  if (lower.includes('noodle') || lower.includes('chowmein') || lower.includes('manchurian') || lower.includes('pasta')) return 'https://images.unsplash.com/photo-1612927601601-6638404737ce?q=80&w=800&auto=format&fit=crop';
+  if (lower.includes('chaat') || lower.includes('tikki') || lower.includes('roll') || lower.includes('wrap') || lower.includes('sandwich') || lower.includes('momos') || lower.includes('samosa')) return 'https://images.unsplash.com/photo-1606471191009-63994c53433b?q=80&w=800&auto=format&fit=crop';
+  return isVeg
+    ? 'https://images.unsplash.com/photo-1540420773420-3366772f4999?q=80&w=800&auto=format&fit=crop'
+    : 'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?q=80&w=800&auto=format&fit=crop';
+}
 
 interface MenuItem {
   id: string;
   name: string;
   price: number;
   isAvailable: boolean;
+  image?: string | null;
+  isVeg?: boolean;
   category?: { name: string } | null;
   variants?: Array<{ id: string; name: string; price: number }>;
 }
@@ -32,11 +41,12 @@ interface MenuItem {
 interface SelectedItem {
   menuItemId: string;
   name: string;
+  image?: string | null;
+  isVeg?: boolean;
   variantId?: string | null;
   variantName?: string | null;
   unitPrice: number;
   quantity: number;
-  notes?: string;
 }
 
 interface ManualKotModalProps {
@@ -55,10 +65,12 @@ export function ManualKotModal({
   const queryClient = useQueryClient();
 
   const [tableNumber, setTableNumber] = useState(initialTable);
-  const [guestName, setGuestName] = useState('Walk-in Customer');
   const [kitchenNotes, setKitchenNotes] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
+  // Track selected portion per menuItemId (variantId or 'full')
+  const [selectedPortions, setSelectedPortions] = useState<Record<string, string>>({});
 
   // Fetch Menu Items
   const { data: menuData, isLoading: isMenuLoading } = useQuery({
@@ -71,7 +83,7 @@ export function ManualKotModal({
     staleTime: 60 * 1000,
   });
 
-  // Fetch Active Table Sessions for quick select
+  // Fetch Active Table Sessions
   const { data: sessionsData } = useQuery({
     queryKey: ['owner-active-sessions-for-kot'],
     queryFn: async () => {
@@ -79,8 +91,6 @@ export function ManualKotModal({
       return (res.data?.data?.sessions || []) as Array<{
         id: string;
         tableNumber: string;
-        sessionCode: string;
-        totalAmount: number;
         status: string;
       }>;
     },
@@ -88,57 +98,109 @@ export function ManualKotModal({
     staleTime: 15 * 1000,
   });
 
-  const activeSessions = useMemo(() => {
-    return (sessionsData || []).filter((s) => s.status === 'ACTIVE');
-  }, [sessionsData]);
+  const activeTables = useMemo(
+    () => (sessionsData || []).filter((s) => s.status === 'ACTIVE').map((s) => s.tableNumber),
+    [sessionsData]
+  );
 
-  // Filter menu items by search query
-  const filteredMenuItems = useMemo(() => {
+  // Extract all categories
+  const categories = useMemo(() => {
     if (!menuData) return [];
-    if (!searchQuery.trim()) return menuData.slice(0, 30);
-    const q = searchQuery.toLowerCase();
-    return menuData.filter(
-      (m) =>
-        m.name.toLowerCase().includes(q) ||
-        (m.category?.name && m.category.name.toLowerCase().includes(q))
-    );
-  }, [menuData, searchQuery]);
-
-  // Add Item to Order
-  const handleAddItem = (item: MenuItem, variantId?: string) => {
-    let unitPrice = item.price;
-    let variantName: string | null = null;
-
-    if (variantId && item.variants) {
-      const v = item.variants.find((vr) => vr.id === variantId);
-      if (v) {
-        unitPrice = v.price;
-        variantName = v.name;
+    const set = new Set<string>();
+    menuData.forEach((m) => {
+      if (m.isAvailable !== false) {
+        set.add(m.category?.name || 'Other');
       }
+    });
+    return Array.from(set);
+  }, [menuData]);
+
+  // Group items by category with filters
+  const groupedMenu = useMemo(() => {
+    if (!menuData) return [];
+    const available = menuData.filter((m) => m.isAvailable !== false);
+    const q = searchQuery.toLowerCase().trim();
+    
+    let filtered = available;
+    if (q) {
+      filtered = filtered.filter(
+        (m) =>
+          m.name.toLowerCase().includes(q) ||
+          (m.category?.name && m.category.name.toLowerCase().includes(q))
+      );
     }
+    if (selectedCategory !== 'ALL') {
+      filtered = filtered.filter((m) => (m.category?.name || 'Other') === selectedCategory);
+    }
+
+    const map = new Map<string, MenuItem[]>();
+    for (const item of filtered) {
+      const cat = item.category?.name || 'Other';
+      if (!map.has(cat)) map.set(cat, []);
+      map.get(cat)!.push(item);
+    }
+    return Array.from(map.entries()).map(([cat, items]) => ({ cat, items }));
+  }, [menuData, searchQuery, selectedCategory]);
+
+  // Get the currently selected portion for a menu item (defaults to Full)
+  const getPortionKey = (item: MenuItem): { variantId: string | null; variantName: string | null; price: number } => {
+    const sel = selectedPortions[item.id];
+    if (!sel || sel === 'full' || !item.variants?.length) {
+      return { variantId: null, variantName: item.variants?.length ? 'Full' : null, price: item.price };
+    }
+    const v = item.variants?.find((vr) => vr.id === sel);
+    if (!v) return { variantId: null, variantName: null, price: item.price };
+    return { variantId: v.id, variantName: v.name, price: v.price };
+  };
+
+  const getItemCartQty = (itemId: string, variantId?: string | null) => {
+    const found = selectedItems.find(
+      (p) => p.menuItemId === itemId && (p.variantId || null) === (variantId || null)
+    );
+    return found ? found.quantity : 0;
+  };
+
+  const handleAddItem = (item: MenuItem) => {
+    const portion = getPortionKey(item);
 
     setSelectedItems((prev) => {
       const existingIdx = prev.findIndex(
-        (p) => p.menuItemId === item.id && (p.variantId || null) === (variantId || null)
+        (p) => p.menuItemId === item.id && (p.variantId || null) === (portion.variantId || null)
       );
-
       if (existingIdx !== -1) {
         const copy = [...prev];
         copy[existingIdx].quantity += 1;
         return copy;
       }
-
       return [
         ...prev,
         {
           menuItemId: item.id,
           name: item.name,
-          variantId: variantId || null,
-          variantName,
-          unitPrice,
+          image: item.image,
+          isVeg: item.isVeg,
+          variantId: portion.variantId,
+          variantName: portion.variantName,
+          unitPrice: portion.price,
           quantity: 1,
         },
       ];
+    });
+  };
+
+  const handleDecrementItem = (item: MenuItem) => {
+    const portion = getPortionKey(item);
+    setSelectedItems((prev) => {
+      const existingIdx = prev.findIndex(
+        (p) => p.menuItemId === item.id && (p.variantId || null) === (portion.variantId || null)
+      );
+      if (existingIdx === -1) return prev;
+      const copy = [...prev];
+      if (copy[existingIdx].quantity <= 1) {
+        return copy.filter((_, i) => i !== existingIdx);
+      }
+      copy[existingIdx].quantity -= 1;
+      return copy;
     });
   };
 
@@ -146,9 +208,7 @@ export function ManualKotModal({
     setSelectedItems((prev) => {
       const copy = [...prev];
       const newQty = copy[index].quantity + delta;
-      if (newQty <= 0) {
-        return copy.filter((_, i) => i !== index);
-      }
+      if (newQty <= 0) return copy.filter((_, i) => i !== index);
       copy[index].quantity = newQty;
       return copy;
     });
@@ -158,30 +218,27 @@ export function ManualKotModal({
     setSelectedItems((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // Calculations
-  const subtotal = selectedItems.reduce((acc, i) => acc + i.unitPrice * i.quantity, 0);
-  const gstAmount = subtotal * 0.05; // 5% GST
-  const total = subtotal + gstAmount;
+  const totalQty = selectedItems.reduce((a, i) => a + i.quantity, 0);
+  const subtotal = selectedItems.reduce((a, i) => a + i.unitPrice * i.quantity, 0);
 
-  // Mutation to Create Manual Order & Print KOT
+  // Mutation to create manual order & print
   const manualKotMutation = useMutation({
     mutationFn: async () => {
-      if (!tableNumber.trim()) {
-        throw new Error('Please enter or select a table number.');
-      }
-      if (selectedItems.length === 0) {
-        throw new Error('Please select at least one item.');
-      }
+      if (!tableNumber.trim()) throw new Error('Please enter a table number.');
+      if (selectedItems.length === 0) throw new Error('Please select at least one item.');
+
+      const cleanTable = tableNumber.trim().toLowerCase().startsWith('table') || tableNumber.trim().toLowerCase().startsWith('room')
+        ? tableNumber.trim()
+        : `Table ${tableNumber.trim()}`;
 
       const payload = {
-        tableNumber: tableNumber.trim(),
-        guestName: guestName.trim() || 'Manual Counter Order',
+        tableNumber: cleanTable,
+        guestName: 'Walk-in Customer',
         notes: kitchenNotes.trim() || undefined,
         items: selectedItems.map((item) => ({
           menuItemId: item.menuItemId,
           variantId: item.variantId || undefined,
           quantity: item.quantity,
-          notes: item.notes,
         })),
       };
 
@@ -189,9 +246,7 @@ export function ManualKotModal({
       return res.data?.data?.order;
     },
     onSuccess: (createdOrder) => {
-      toast.success(`Manual KOT generated for Table ${tableNumber}!`);
-
-      // Print physical thermal KOT ticket
+      toast.success(`KOT created for Table ${tableNumber}!`);
       try {
         printKitchenOrderTicket({
           order: {
@@ -203,194 +258,291 @@ export function ManualKotModal({
           orderSource: 'MANUAL',
         });
       } catch (err) {
-        console.error('Failed to auto-print KOT:', err);
+        console.error('KOT print failed:', err);
       }
-
-      // Invalidate queries so dashboard, orders, and table sessions refresh immediately
       queryClient.invalidateQueries({ queryKey: ['owner-orders'] });
       queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['owner-recent-orders'] });
       queryClient.invalidateQueries({ queryKey: ['table-sessions'] });
-
-      // Reset and close
       setSelectedItems([]);
       setKitchenNotes('');
+      setSelectedPortions({});
       onClose();
     },
     onError: (err: any) => {
-      toast.error(err?.response?.data?.message || err?.message || 'Failed to create manual KOT');
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to create KOT');
     },
   });
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/60 backdrop-blur-sm overflow-y-auto">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.96 }}
-        className="bg-card border border-border rounded-2xl max-w-4xl w-full p-4 sm:p-6 shadow-2xl flex flex-col max-h-[92vh] overflow-hidden"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-border shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-xl bg-orange-500/15 text-orange-600 dark:text-orange-400 flex items-center justify-center">
-              <Printer className="w-5 h-5" />
+    <div className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-card border border-border rounded-none sm:rounded-2xl w-full sm:max-w-4xl flex flex-col max-h-screen sm:max-h-[92vh] shadow-2xl overflow-hidden">
+
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0 bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-orange-500/5">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-orange-500 flex items-center justify-center shadow-sm">
+              <Printer className="w-4 h-4 text-white" />
             </div>
             <div>
-              <h2 className="font-bold text-base sm:text-lg text-foreground">
-                + New Manual KOT
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                Fast Cashier Entry • Directly Accepted • Prints Kitchen Ticket
-              </p>
+              <h2 className="font-bold text-base text-foreground leading-tight">New Manual KOT</h2>
+              <p className="text-[11px] text-muted-foreground">Select items with pictures & portions → Print KOT</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl text-muted-foreground hover:bg-muted transition-colors cursor-pointer"
-          >
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-muted transition-colors cursor-pointer text-muted-foreground">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Content Body: Split Layout */}
-        <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-12 gap-4 py-4 overflow-y-auto">
-          {/* Left Column: Table & Menu Selection (7 cols) */}
-          <div className="md:col-span-7 flex flex-col space-y-3.5 min-h-0">
-            {/* Table Number & Guest Name Row */}
-            <div className="grid grid-cols-2 gap-2.5 shrink-0">
-              <div>
-                <label className="text-xs font-bold text-foreground mb-1 block">
-                  Table / Room Number *
-                </label>
-                <input
-                  type="text"
-                  value={tableNumber}
-                  onChange={(e) => setTableNumber(e.target.value)}
-                  placeholder="e.g. 5 or Room 102"
-                  className="w-full px-3 py-2 text-xs font-semibold rounded-xl bg-muted/40 border border-border focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-foreground mb-1 block">
-                  Guest Reference
-                </label>
-                <input
-                  type="text"
-                  value={guestName}
-                  onChange={(e) => setGuestName(e.target.value)}
-                  placeholder="e.g. Counter Guest"
-                  className="w-full px-3 py-2 text-xs font-semibold rounded-xl bg-muted/40 border border-border focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
-              </div>
-            </div>
-
-            {/* Active Sessions Quick-select chips */}
-            {activeSessions.length > 0 && (
-              <div className="shrink-0">
-                <span className="text-[11px] font-bold text-muted-foreground block mb-1">
-                  Active Running Tables (Click to select):
-                </span>
-                <div className="flex flex-wrap gap-1.5 max-h-16 overflow-y-auto">
-                  {activeSessions.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setTableNumber(s.tableNumber)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
-                        tableNumber.trim().toLowerCase() === s.tableNumber.trim().toLowerCase()
-                          ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
-                          : 'bg-muted/50 text-foreground border-border hover:bg-muted'
-                      }`}
-                    >
-                      {s.tableNumber} (Running ₹{s.totalAmount})
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Menu Items Search */}
-            <div className="relative shrink-0">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        {/* ── Table Number Bar ── */}
+        <div className="px-4 py-2.5 border-b border-border shrink-0 bg-muted/30">
+          <div className="flex items-center gap-2.5 sm:gap-4 flex-wrap sm:flex-nowrap">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black uppercase tracking-wider text-foreground whitespace-nowrap">🍽️ Table / Room:</span>
               <input
                 type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search dish name or category..."
-                className="w-full pl-9 pr-3 py-2 text-xs font-medium rounded-xl bg-muted/40 border border-border focus:outline-none focus:ring-2 focus:ring-primary/40"
+                value={tableNumber}
+                onChange={(e) => setTableNumber(e.target.value)}
+                placeholder="e.g. 5"
+                className="w-24 sm:w-28 px-3 py-1.5 text-sm font-bold text-center rounded-xl bg-background border-2 border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-400/50"
               />
             </div>
 
-            {/* Dishes List */}
-            <div className="flex-1 min-h-[180px] overflow-y-auto space-y-1.5 pr-1 border border-border/60 rounded-xl p-2 bg-muted/10">
-              {isMenuLoading ? (
-                <p className="text-xs text-muted-foreground text-center py-6">
-                  Loading menu items...
-                </p>
-              ) : filteredMenuItems.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-6">
-                  No matching dishes found.
-                </p>
-              ) : (
-                filteredMenuItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="p-2.5 rounded-xl border border-border/60 bg-card hover:bg-muted/40 transition-colors flex items-center justify-between gap-2"
+            {/* Active running tables chips */}
+            {activeTables.length > 0 && (
+              <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 max-w-full">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase whitespace-nowrap">Active:</span>
+                {activeTables.slice(0, 8).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTableNumber(t)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer whitespace-nowrap ${
+                      tableNumber.trim() === t.trim()
+                        ? 'bg-orange-500 text-white border-orange-500 shadow-xs'
+                        : 'bg-muted/70 text-foreground border-border hover:border-orange-400'
+                    }`}
                   >
-                    <div className="min-w-0">
-                      <p className="font-bold text-xs text-foreground truncate">
-                        {item.name}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        ₹{item.price}{' '}
-                        {item.category?.name ? `• ${item.category.name}` : ''}
-                      </p>
+                    Table {t}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Body: Menu (left) + Order Summary (right) ── */}
+        <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
+
+          {/* ── Left: Menu ── */}
+          <div className="flex-1 min-h-0 flex flex-col border-r border-border overflow-hidden">
+            {/* Search + Category Filter Bar */}
+            <div className="p-2.5 border-b border-border shrink-0 space-y-2 bg-muted/15">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search dish by name or category..."
+                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl bg-background border border-border focus:outline-none focus:ring-2 focus:ring-orange-400/50"
+                />
+              </div>
+
+              {/* Category tabs */}
+              {categories.length > 0 && (
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategory('ALL')}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                      selectedCategory === 'ALL'
+                        ? 'bg-orange-500 text-white shadow-xs'
+                        : 'bg-muted text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    All Items
+                  </button>
+                  {categories.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setSelectedCategory(c)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        selectedCategory === c
+                          ? 'bg-orange-500 text-white shadow-xs'
+                          : 'bg-muted text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Menu Item Cards List */}
+            <div className="flex-1 overflow-y-auto divide-y divide-border/50">
+              {isMenuLoading ? (
+                <div className="py-16 text-center text-muted-foreground space-y-2">
+                  <div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto" />
+                  <p className="text-xs font-semibold">Loading menu items...</p>
+                </div>
+              ) : groupedMenu.length === 0 ? (
+                <div className="py-16 text-center text-muted-foreground">
+                  <Utensils className="w-8 h-8 opacity-30 mx-auto mb-2" />
+                  <p className="text-xs font-semibold">No items match your search</p>
+                </div>
+              ) : (
+                groupedMenu.map(({ cat, items }) => (
+                  <div key={cat}>
+                    {/* Category sticky subheader */}
+                    <div className="px-3.5 py-1.5 bg-muted/60 border-b border-border/60 sticky top-0 z-10 backdrop-blur-xs flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{cat}</span>
+                      <span className="text-[10px] font-bold text-muted-foreground">{items.length} items</span>
                     </div>
 
-                    {/* If item has variants */}
-                    {item.variants && item.variants.length > 0 ? (
-                      <div className="flex items-center gap-1 shrink-0">
-                        {item.variants.map((v) => (
-                          <button
-                            key={v.id}
-                            type="button"
-                            onClick={() => handleAddItem(item, v.id)}
-                            className="px-2 py-1 rounded-lg bg-primary/10 hover:bg-primary text-primary hover:text-primary-foreground text-[11px] font-bold transition-all cursor-pointer"
-                          >
-                            +{v.name} (₹{v.price})
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleAddItem(item)}
-                        className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:opacity-90 transition-opacity cursor-pointer shrink-0 flex items-center gap-1 shadow-2xs"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        Add
-                      </button>
-                    )}
+                    {/* Dish rows */}
+                    {items.map((item) => {
+                      const hasVariants = Boolean(item.variants && item.variants.length > 0);
+                      const selPortion = selectedPortions[item.id] || 'full';
+                      const currentPortion = getPortionKey(item);
+                      const inCartQty = getItemCartQty(item.id, currentPortion.variantId);
+                      const foodImg = getFoodFallbackImage(item.image, item.name, item.isVeg ?? true);
+
+                      return (
+                        <div
+                          key={item.id}
+                          className="flex items-center p-3 hover:bg-muted/30 transition-colors gap-3 border-b border-border/30 last:border-b-0"
+                        >
+                          {/* Dish Image Thumbnail */}
+                          <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden shrink-0 bg-muted border border-border/70 shadow-2xs">
+                            <img
+                              src={foodImg}
+                              alt={item.name}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = getFoodFallbackImage(null, item.name, item.isVeg ?? true);
+                              }}
+                            />
+                            {item.isVeg !== undefined && (
+                              <span
+                                className={`absolute top-1 left-1 w-3 h-3 rounded-full border-2 border-white shadow-xs ${
+                                  item.isVeg ? 'bg-emerald-500' : 'bg-rose-500'
+                                }`}
+                                title={item.isVeg ? 'Vegetarian' : 'Non-Vegetarian'}
+                              />
+                            )}
+                          </div>
+
+                          {/* Dish Name + Price + Portion Selectors */}
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <div className="flex items-baseline justify-between gap-2">
+                              <h3 className="font-bold text-sm text-foreground leading-tight truncate">
+                                {item.name}
+                              </h3>
+                              <span className="font-black text-sm text-orange-600 dark:text-orange-400 shrink-0">
+                                ₹{currentPortion.price}
+                              </span>
+                            </div>
+
+                            {/* Portion selector chips (Default is Full) */}
+                            {hasVariants ? (
+                              <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                                <span className="text-[10px] font-bold text-muted-foreground uppercase">Portion:</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedPortions((p) => ({ ...p, [item.id]: 'full' }))}
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition-all cursor-pointer ${
+                                    selPortion === 'full'
+                                      ? 'bg-orange-500 text-white border-orange-500 shadow-2xs'
+                                      : 'bg-muted/80 text-foreground border-border hover:border-orange-400'
+                                  }`}
+                                >
+                                  Full (₹{item.price})
+                                </button>
+                                {item.variants!.map((v) => (
+                                  <button
+                                    key={v.id}
+                                    type="button"
+                                    onClick={() => setSelectedPortions((p) => ({ ...p, [item.id]: v.id }))}
+                                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition-all cursor-pointer ${
+                                      selPortion === v.id
+                                        ? 'bg-orange-500 text-white border-orange-500 shadow-2xs'
+                                        : 'bg-muted/80 text-foreground border-border hover:border-orange-400'
+                                    }`}
+                                  >
+                                    {v.name} (₹{v.price})
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-[10px] text-muted-foreground">Standard Portion</p>
+                            )}
+                          </div>
+
+                          {/* Quick Add / Qty Controls */}
+                          <div className="shrink-0 flex items-center">
+                            {inCartQty > 0 ? (
+                              <div className="flex items-center gap-1 bg-orange-500/10 border border-orange-500/30 rounded-xl p-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDecrementItem(item)}
+                                  className="w-6 h-6 rounded-lg bg-orange-500 text-white flex items-center justify-center hover:bg-orange-600 transition-colors cursor-pointer"
+                                  title="Decrease quantity"
+                                >
+                                  <Minus className="w-3 h-3" />
+                                </button>
+                                <span className="w-5 text-center text-xs font-black text-orange-600 dark:text-orange-400">
+                                  {inCartQty}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddItem(item)}
+                                  className="w-6 h-6 rounded-lg bg-orange-500 text-white flex items-center justify-center hover:bg-orange-600 transition-colors cursor-pointer"
+                                  title="Add one more"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleAddItem(item)}
+                                className="px-3 py-1.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold transition-all cursor-pointer flex items-center gap-1 shadow-xs"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                Add
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 ))
               )}
             </div>
           </div>
 
-          {/* Right Column: Selected Items Summary (5 cols) */}
-          <div className="md:col-span-5 flex flex-col border border-border rounded-xl p-3.5 bg-muted/15 min-h-0">
-            <div className="flex items-center justify-between pb-2 border-b border-border shrink-0">
-              <span className="font-bold text-xs text-foreground">
-                KOT Items ({selectedItems.length})
-              </span>
+          {/* ── Right: Order Summary ── */}
+          <div className="w-full md:w-72 shrink-0 flex flex-col border-t md:border-t-0 border-border max-h-72 md:max-h-full bg-muted/10">
+            {/* Order header */}
+            <div className="flex items-center justify-between px-3.5 py-3 border-b border-border shrink-0 bg-muted/30">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-black text-foreground">Current KOT</span>
+                {totalQty > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-orange-500 text-white">
+                    {totalQty}
+                  </span>
+                )}
+              </div>
               {selectedItems.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setSelectedItems([])}
-                  className="text-[11px] font-semibold text-red-600 hover:underline cursor-pointer"
+                  className="text-[11px] font-semibold text-red-500 hover:underline cursor-pointer"
                 >
                   Clear All
                 </button>
@@ -398,115 +550,112 @@ export function ManualKotModal({
             </div>
 
             {/* Selected Items List */}
-            <div className="flex-1 min-h-[140px] overflow-y-auto space-y-2 py-2 pr-1">
+            <div className="flex-1 overflow-y-auto divide-y divide-border/50 min-h-0">
               {selectedItems.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center py-6 text-muted-foreground">
-                  <Utensils className="w-8 h-8 opacity-40 mb-1" />
-                  <p className="text-xs font-semibold">No items selected</p>
-                  <p className="text-[10px]">Select items from the menu to build the KOT ticket.</p>
+                <div className="h-full flex flex-col items-center justify-center text-center p-6 text-muted-foreground">
+                  <Utensils className="w-8 h-8 opacity-25 mb-2" />
+                  <p className="text-xs font-bold text-foreground">No items added</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Click + Add next to any dish</p>
                 </div>
               ) : (
-                selectedItems.map((item, idx) => (
-                  <div
-                    key={`${item.menuItemId}-${item.variantId || 'base'}`}
-                    className="p-2 rounded-xl bg-card border border-border/80 text-xs space-y-1"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold truncate max-w-[140px]">
-                        {item.name}
-                        {item.variantName ? ` (${item.variantName})` : ''}
-                      </span>
-                      <span className="font-bold text-foreground">
-                        ₹{item.unitPrice * item.quantity}
-                      </span>
-                    </div>
+                selectedItems.map((item, idx) => {
+                  const itemImg = getFoodFallbackImage(item.image, item.name, item.isVeg ?? true);
+                  return (
+                    <div key={`${item.menuItemId}-${item.variantId || 'base'}`} className="p-2.5 flex items-center gap-2.5">
+                      {/* Mini Thumbnail */}
+                      <img
+                        src={itemImg}
+                        alt={item.name}
+                        className="w-10 h-10 rounded-lg object-cover shrink-0 border border-border/60 bg-muted"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = getFoodFallbackImage(null, item.name, item.isVeg ?? true);
+                        }}
+                      />
 
-                    <div className="flex items-center justify-between pt-1">
-                      <div className="flex items-center gap-1.5">
+                      {/* Item Details */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-foreground truncate leading-tight">
+                          {item.name}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {item.variantName ? (
+                            <span className="text-orange-600 dark:text-orange-400 font-semibold">{item.variantName} • </span>
+                          ) : null}
+                          ₹{item.unitPrice} each
+                        </p>
+                      </div>
+
+                      {/* Qty Stepper */}
+                      <div className="flex items-center gap-1 shrink-0">
                         <button
                           type="button"
                           onClick={() => handleUpdateQty(idx, -1)}
-                          className="w-5 h-5 rounded-md bg-muted flex items-center justify-center hover:bg-muted/80 cursor-pointer"
+                          className="w-5 h-5 rounded-md bg-muted flex items-center justify-center hover:bg-muted/80 text-foreground cursor-pointer"
                         >
-                          <Minus className="w-3 h-3" />
+                          <Minus className="w-2.5 h-2.5" />
                         </button>
-                        <span className="font-bold px-1.5">{item.quantity}</span>
+                        <span className="w-4 text-center text-xs font-black">{item.quantity}</span>
                         <button
                           type="button"
                           onClick={() => handleUpdateQty(idx, 1)}
-                          className="w-5 h-5 rounded-md bg-muted flex items-center justify-center hover:bg-muted/80 cursor-pointer"
+                          className="w-5 h-5 rounded-md bg-muted flex items-center justify-center hover:bg-muted/80 text-foreground cursor-pointer"
                         >
-                          <Plus className="w-3 h-3" />
+                          <Plus className="w-2.5 h-2.5" />
                         </button>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveItem(idx)}
-                        className="text-red-500 hover:text-red-700 p-1 cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {/* Price & Delete */}
+                      <div className="text-right shrink-0 flex items-center gap-1">
+                        <span className="text-xs font-bold text-foreground">
+                          ₹{item.unitPrice * item.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveItem(idx)}
+                          className="p-1 text-muted-foreground hover:text-red-500 cursor-pointer"
+                          title="Remove item"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
-            {/* Kitchen Instructions */}
-            <div className="pt-2 border-t border-border shrink-0">
-              <label className="text-[11px] font-bold text-muted-foreground block mb-1">
-                Kitchen Instructions (Printed on ticket):
-              </label>
+            {/* Total + Kitchen Note + Print Button */}
+            <div className="border-t border-border p-3 space-y-2.5 shrink-0 bg-background/80">
+              {selectedItems.length > 0 && (
+                <div className="flex justify-between items-center text-xs font-bold">
+                  <span className="text-muted-foreground">Total:</span>
+                  <span className="text-sm font-black text-foreground">₹{subtotal.toFixed(0)}</span>
+                </div>
+              )}
+
+              {/* Kitchen Instructions input */}
               <input
                 type="text"
                 value={kitchenNotes}
                 onChange={(e) => setKitchenNotes(e.target.value)}
-                placeholder="e.g. Less spicy, make it fast"
-                className="w-full px-3 py-1.5 text-xs rounded-xl bg-card border border-border focus:outline-none focus:ring-1 focus:ring-primary"
+                placeholder="Kitchen note (e.g. less spicy)..."
+                className="w-full px-2.5 py-1.5 text-xs rounded-xl bg-muted/40 border border-border focus:outline-none focus:ring-1 focus:ring-orange-400"
               />
-            </div>
 
-            {/* Totals */}
-            <div className="pt-2.5 mt-2 border-t border-border text-xs space-y-1 shrink-0">
-              <div className="flex justify-between text-muted-foreground">
-                <span>Subtotal:</span>
-                <span className="font-semibold text-foreground">₹{subtotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-muted-foreground">
-                <span>GST (5%):</span>
-                <span className="font-semibold text-foreground">₹{gstAmount.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between font-extrabold text-sm text-foreground pt-1 border-t border-border/60">
-                <span>Total Amount:</span>
-                <span className="text-primary font-black">₹{total.toFixed(2)}</span>
-              </div>
+              {/* Submit & Print */}
+              <button
+                type="button"
+                onClick={() => manualKotMutation.mutate()}
+                disabled={manualKotMutation.isPending || selectedItems.length === 0 || !tableNumber.trim()}
+                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 disabled:opacity-40 text-white font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
+              >
+                <Printer className="w-4 h-4" />
+                <span>{manualKotMutation.isPending ? 'Printing...' : 'Create & Print KOT'}</span>
+              </button>
             </div>
           </div>
         </div>
-
-        {/* Action Buttons */}
-        <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-border shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2.5 text-xs font-semibold rounded-xl border border-border hover:bg-muted text-foreground transition-all cursor-pointer"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => manualKotMutation.mutate()}
-            disabled={manualKotMutation.isPending || selectedItems.length === 0 || !tableNumber.trim()}
-            className="px-5 py-2.5 text-xs font-bold rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white transition-all flex items-center gap-2 shadow-md disabled:opacity-50 cursor-pointer"
-          >
-            <Printer className="w-4 h-4" />
-            <span>
-              {manualKotMutation.isPending ? 'Generating & Printing...' : 'Save & Print KOT'}
-            </span>
-          </button>
-        </div>
-      </motion.div>
+      </div>
     </div>
   );
 }

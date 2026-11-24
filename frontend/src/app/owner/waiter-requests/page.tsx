@@ -31,6 +31,7 @@ import { toast } from 'sonner';
 import { io } from 'socket.io-client';
 import { WaiterBell } from '@/components/owner/WaiterBell';
 import { OwnerSidebar } from '@/components/owner/OwnerSidebar';
+import { formatTableLabel } from '@/utils/tableCode';
 
 interface WaiterRequestItem {
   id: string;
@@ -399,7 +400,7 @@ export default function WaiterRequestsPage() {
                         <div className="space-y-1.5 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-base md:text-lg font-bold text-neutral-900 dark:text-neutral-100">
-                              {req.tableNumber}
+                              {formatTableLabel(req.tableNumber)}
                             </span>
 
                             {/* Service Type Badge */}
@@ -513,7 +514,7 @@ export default function WaiterRequestsPage() {
                     <Sparkles className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-base">Release {selectedRequestToClear.tableNumber}</h3>
+                    <h3 className="font-bold text-base">Release {formatTableLabel(selectedRequestToClear.tableNumber)}</h3>
                     <p className="text-xs text-neutral-500">Confirm physical table clearance</p>
                   </div>
                 </div>
@@ -528,7 +529,7 @@ export default function WaiterRequestsPage() {
               <div className="p-3.5 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl text-xs space-y-1.5 border border-neutral-200/60 dark:border-neutral-800">
                 <div className="flex justify-between">
                   <span className="text-neutral-500">Table:</span>
-                  <span className="font-semibold">{selectedRequestToClear.tableNumber}</span>
+                  <span className="font-semibold">{formatTableLabel(selectedRequestToClear.tableNumber)}</span>
                 </div>
                 {selectedRequestToClear.session && (
                   <>

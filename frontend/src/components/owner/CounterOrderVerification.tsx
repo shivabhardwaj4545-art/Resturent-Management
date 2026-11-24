@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import api from '@/services/api';
 import { toast } from 'sonner';
+import { formatTableLabel } from '@/utils/tableCode';
 
 interface CounterOrder {
   id: string;
@@ -300,7 +301,7 @@ export function CounterOrderVerification() {
                         </span>
                       </div>
                       <p className="text-[11px] text-muted-foreground">
-                        {po.tableNumber ? `Table ${po.tableNumber}` : 'Dine-In'} · {new Date(po.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {po.tableNumber ? formatTableLabel(po.tableNumber) : 'Dine-In'} · {new Date(po.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
                     <div className="text-right">
@@ -378,7 +379,7 @@ export function CounterOrderVerification() {
                 <div className="bg-muted/30 border border-border/60 rounded-xl p-3">
                   <span className="text-muted-foreground block text-[10px] uppercase font-bold">Location</span>
                   <span className="font-semibold text-foreground">
-                    {selectedOrder.tableNumber ? `Table ${selectedOrder.tableNumber}` : 'Counter / Takeaway'}
+                    {selectedOrder.tableNumber ? formatTableLabel(selectedOrder.tableNumber) : 'Counter / Takeaway'}
                   </span>
                 </div>
                 <div className="bg-muted/30 border border-border/60 rounded-xl p-3">

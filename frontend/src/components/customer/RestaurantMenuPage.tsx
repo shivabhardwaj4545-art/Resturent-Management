@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
-import { Search, Filter, ShoppingCart, Clock, MapPin, Star, Bot, X, ChevronUp, QrCode, ChevronRight, BellRing, Gift, Ban, Bed, Sparkles, Utensils, Shirt, Bath, Luggage, Wrench, MessageSquare, CheckCircle2, ChevronDown, Lock, RefreshCw, Phone, Check } from 'lucide-react';
+import { Search, Filter, ShoppingCart, Clock, MapPin, Star, Bot, X, ChevronUp, QrCode, ChevronRight, BellRing, Ban, Bed, Sparkles, Utensils, Shirt, Bath, Luggage, Wrench, MessageSquare, CheckCircle2, ChevronDown, Lock, RefreshCw, Phone, Check } from 'lucide-react';
 import api, { getSocketUrl } from '@/services/api';
 import { useCartStore } from '@/store/cart.store';
 import { useAuthStore } from '@/store/auth.store';
@@ -27,6 +27,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { useRouter } from 'next/navigation';
 import { io } from 'socket.io-client';
 import { generateTableToken } from '@qr-restaurant/shared';
+import { formatTableLabel } from '@/utils/tableCode';
 import { applyThemeColor } from '@/utils/theme';
 
 const WAITER_COOLDOWN_SECONDS = 30;
@@ -421,33 +422,8 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
 
   const { items: cartItems, itemCount, setRestaurant, total: getCartTotal } = useCartStore();
   const { user: rawUser, accessToken, logout } = useAuthStore();
-  const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
   const [showNotifModal, setShowNotifModal] = useState(false);
   const [customerAlert, setCustomerAlert] = useState<CustomerAlertData | null>(null);
-
-  // Fetch latest user profile to keep loyalty points synced in real-time
-  const { data: userProfileData } = useQuery({
-    queryKey: ['user-profile-loyalty'],
-    queryFn: async () => {
-      const res = await api.get('/profile');
-      return res.data.data.user as { id: string; loyaltyPoints: number };
-    },
-    enabled: !!rawUser?.id && !!accessToken,
-    staleTime: 60000,
-    retry: false,
-    refetchInterval: 60000,
-  });
-
-  // Fetch dynamic loyalty program rules configured by Super Admin
-  const { data: loyaltySettings } = useQuery({
-    queryKey: ['loyalty-settings'],
-    queryFn: async () => {
-      const res = await api.get('/menu/loyalty-settings');
-      return res.data.data?.settings || {};
-    },
-  });
-
-  const loyaltyEnabled = loyaltySettings?.enabled !== false;
 
   // Fetch unread notifications count for customer
   const { data: customerNotifData } = useQuery({
@@ -464,8 +440,6 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
 
   const unreadNotifCount = customerNotifData?.unreadCount ?? 0;
 
-  const currentPoints = userProfileData?.loyaltyPoints ?? rawUser?.loyaltyPoints ?? 0;
-
   const activeUser = useMemo(() => {
     if (!rawUser) return null;
     return rawUser;
@@ -474,7 +448,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
   const [showHours, setShowHours] = useState(false);
   const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
 
-  const isAnyModalOpen = showLoyaltyModal || showTableInput || showHours || showNotifModal || showServiceModal;
+  const isAnyModalOpen = showTableInput || showHours || showNotifModal || showServiceModal;
 
   useEffect(() => {
     if (isAnyModalOpen) {
@@ -1001,7 +975,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
             isOpen: true,
             type: 'WAITER_COMING',
             title: '👨‍🍳 Waiter Is Coming!',
-            message: resData.message || `Waiter is coming in a few minutes to Table ${resData.tableNumber}!`,
+            message: resData.message || `Waiter is coming in a few minutes to ${formatTableLabel(resData.tableNumber)}!`,
             tableNumber: resData.tableNumber,
             timerSeconds: 60,
           });
@@ -1037,16 +1011,28 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
       queryClient.invalidateQueries({ queryKey: ['customer-notifications-count'] });
     });
 
-    socket.on('user:loyalty_updated', () => {
-      queryClient.invalidateQueries({ queryKey: ['user-profile-loyalty'] });
-    });
-
     const handleOrderStatusUpdated = (payload: { orderId?: string; status?: string; paymentStatus?: string; reason?: string; userId?: string }) => {
       queryClient.invalidateQueries({ queryKey: ['active-orders'] });
       queryClient.invalidateQueries({ queryKey: ['previous-orders'] });
 
       const isMyOrder = !payload?.orderId || recentOrders.some((o) => o.orderId === payload.orderId) || (activeUser?.id && payload?.userId === activeUser.id);
       if (!isMyOrder) return;
+
+      if (payload?.paymentStatus === 'PAID') {
+        processRealTimeEvent('order_status_changed', () => {
+          playNewOrderSound();
+          setCustomerAlert({
+            isOpen: true,
+            type: 'PAYMENT_CONFIRMED',
+            title: '🎉 Payment Confirmed!',
+            message: 'Your bill payment has been successfully completed. How was your food and service today? Please share a quick review!',
+            orderId: payload?.orderId,
+            actionUrl: payload?.orderId ? `/r/${slug}/order/${payload.orderId}` : undefined,
+            actionLabel: '⭐ Rate & Review Order',
+          });
+        });
+        return;
+      }
 
       const isCancelled = payload?.status === 'CANCELLED';
       const eventType = isCancelled ? 'order_cancelled' : 'order_status_changed';
@@ -1477,22 +1463,6 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
           <span className="font-display font-bold text-xs sm:text-sm tracking-tight hidden sm:block truncate max-w-[120px] md:max-w-none text-foreground">{restaurantName || 'Digital Menu'}</span>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2.5 overflow-x-auto no-scrollbar py-0.5 shrink min-w-0 touch-pan-x">
-          {/* Loyalty Points Header Badge */}
-          {loyaltyEnabled && (
-            <button
-              onClick={() => setShowLoyaltyModal(true)}
-              className="text-[10px] sm:text-xs bg-amber-500/15 hover:bg-amber-500/30 border border-amber-400/40 text-amber-600 dark:text-amber-400 px-2 sm:px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1 shadow-sm transition-all active:scale-95 whitespace-nowrap shrink-0 min-h-[36px]"
-              title="Click to view Loyalty Points details"
-            >
-              <Gift className="w-3.5 h-3.5 text-amber-500 animate-pulse shrink-0" />
-              {activeUser ? (
-                <span>⭐ {currentPoints} Pts</span>
-              ) : (
-                <span>⭐ Points</span>
-              )}
-            </button>
-          )}
-
           {/* Notifications Bell Button */}
           {activeUser && (
             <button
@@ -1509,32 +1479,17 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
             </button>
           )}
 
-          {activeUser ? (
+          {activeUser && activeUser.role !== 'CUSTOMER' && (
             <div className="flex items-center gap-1 sm:gap-2 shrink-0">
               <span className="text-xs text-muted-foreground font-semibold bg-muted px-2.5 py-1.5 rounded-lg hidden sm:inline-block">
                 Hi, {activeUser.name.split(' ')[0]}
               </span>
-              {activeUser.role !== 'CUSTOMER' ? (
-                <Link
-                  href={activeUser.role === 'SUPER_ADMIN' ? '/admin/dashboard' : '/owner/dashboard'}
-                  className="text-[10px] sm:text-xs bg-primary hover:bg-primary/95 border border-primary/20 px-2 sm:px-2.5 py-1.5 rounded-lg text-white font-semibold shadow-sm transition-all whitespace-nowrap shrink-0"
-                >
-                  Dashboard
-                </Link>
-              ) : null}
-              {activeUser.role === 'CUSTOMER' && (
-                <button
-                  onClick={() => {
-                    setActiveTab('history');
-                    setTimeout(() => {
-                      document.getElementById('orders-section')?.scrollIntoView({ behavior: 'smooth' });
-                    }, 100);
-                  }}
-                  className="text-[10px] sm:text-xs bg-muted hover:bg-muted/80 border border-border px-2 sm:px-2.5 py-1.5 rounded-lg text-foreground font-semibold shadow-sm transition-all whitespace-nowrap shrink-0"
-                >
-                  History
-                </button>
-              )}
+              <Link
+                href={activeUser.role === 'SUPER_ADMIN' ? '/admin/dashboard' : '/owner/dashboard'}
+                className="text-[10px] sm:text-xs bg-primary hover:bg-primary/95 border border-primary/20 px-2 sm:px-2.5 py-1.5 rounded-lg text-white font-semibold shadow-sm transition-all whitespace-nowrap shrink-0"
+              >
+                Dashboard
+              </Link>
               <button
                 onClick={() => {
                   logout();
@@ -1545,16 +1500,6 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                 Logout
               </button>
             </div>
-          ) : (
-            <>
-              <Link
-                href={`/login?restaurant=${slug}`}
-                className="text-[10px] sm:text-xs bg-primary hover:bg-primary/95 border border-primary/20 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg text-white font-semibold shadow-sm transition-all whitespace-nowrap shrink-0"
-                title="Login is optional for earning loyalty points & order history"
-              >
-                Login (Optional)
-              </Link>
-            </>
           )}
           <ThemeToggle size="sm" className="shrink-0" />
         </div>
@@ -1997,9 +1942,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                               <>
                                 <span>•</span>
                                 <span className="font-semibold text-primary">
-                                  {isHotelRoom || order.tableNumber.toLowerCase().includes('room')
-                                    ? (order.tableNumber.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`)
-                                    : (order.tableNumber.toLowerCase().startsWith('table') ? order.tableNumber : `Table ${order.tableNumber}`)}
+                                  {formatTableLabel(order.tableNumber)}
                                 </span>
                               </>
                             ) : (
@@ -2085,9 +2028,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                               <>
                                 <span>•</span>
                                 <span className="font-semibold text-primary">
-                                  {isHotelRoom || order.tableNumber.toLowerCase().includes('room')
-                                    ? (order.tableNumber.toLowerCase().startsWith('room') ? order.tableNumber : `Room ${order.tableNumber}`)
-                                    : (order.tableNumber.toLowerCase().startsWith('table') ? order.tableNumber : `Table ${order.tableNumber}`)}
+                                  {formatTableLabel(order.tableNumber)}
                                 </span>
                               </>
                             ) : (
@@ -2100,7 +2041,13 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
                         </div>
 
                         <div className="flex items-center justify-between pt-1 text-[11px] font-bold text-primary group-hover:translate-x-0.5 transition-transform min-w-0 w-full">
-                          <span>View Order Details & Invoice</span>
+                          <span>
+                            {order.review
+                              ? `⭐ ${order.review.rating} Reviewed · View Order`
+                              : order.paymentStatus === 'PAID'
+                              ? '⭐ Payment Done · Leave Review'
+                              : 'View Order Details'}
+                          </span>
                           <ChevronRight className="w-3.5 h-3.5 shrink-0" style={{ color: themeColor }} />
                         </div>
                       </Link>
@@ -2521,102 +2468,7 @@ export function RestaurantMenuPage({ slug, tableNumber, tableToken, isTableVerif
         )}
       </AnimatePresence>
 
-      {/* Loyalty Points Instructions & Info Modal */}
-      <AnimatePresence>
-        {showLoyaltyModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-card border border-border rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5 relative overflow-y-auto max-h-[85vh] text-foreground"
-            >
-              <button
-                onClick={() => setShowLoyaltyModal(false)}
-                className="absolute top-4 right-4 p-1.5 rounded-full bg-muted hover:bg-muted-foreground/20 text-muted-foreground transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
 
-              <div className="flex items-center gap-3 border-b border-border pb-4">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white shadow-lg flex-shrink-0">
-                  <Gift className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="font-display font-bold text-lg text-foreground">⭐ Customer Loyalty Program</h3>
-                  <p className="text-xs text-muted-foreground">Earn rewards on every meal order!</p>
-                </div>
-              </div>
-
-              {/* Current Balance Banner */}
-              <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-500/30 space-y-1">
-                <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Your Balance</p>
-                <div className="flex items-baseline justify-between">
-                  <p className="text-2xl font-black text-amber-600 dark:text-amber-400">
-                    {activeUser ? `${currentPoints} Points` : '0 Points'}
-                  </p>
-                  <p className="text-sm font-bold text-foreground">
-                    ₹{(currentPoints / (Number(loyaltySettings?.pointsPerDiscountRupee) || 50)).toFixed(2)} Value
-                  </p>
-                </div>
-                {!activeUser && (
-                  <p className="text-[11px] text-orange-600 dark:text-orange-400 font-semibold mt-1">
-                    🔑 Log in to start earning and redeeming loyalty points!
-                  </p>
-                )}
-              </div>
-
-              {/* Instructions */}
-              <div className="space-y-3 text-xs">
-                <h4 className="font-bold text-foreground uppercase tracking-wider text-[11px]">How Loyalty Points Work:</h4>
-
-                <div className="p-3 bg-muted/40 rounded-xl space-y-1 border border-border/40">
-                  <p className="font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
-                    💳 Conversion Ratio
-                  </p>
-                  <p className="text-muted-foreground leading-relaxed">
-                    {loyaltySettings?.conversionRuleText || '50 Loyalty Points = ₹1.00 Discount. Every 50 points saved gives you ₹1 off your total bill!'}
-                  </p>
-                </div>
-
-                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-xl space-y-1 border border-emerald-200 dark:border-emerald-900/40">
-                  <p className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                    📈 How Points Increase (+)
-                  </p>
-                  <p className="text-muted-foreground leading-relaxed">
-                    {loyaltySettings?.increaseRuleText || 'Earn 1 point for every ₹10 spent. Points are credited to your account when the restaurant owner completes/confirms payment on your order.'}
-                  </p>
-                </div>
-
-                <div className="p-3 bg-blue-50 dark:bg-blue-950/30 rounded-xl space-y-1 border border-blue-200 dark:border-blue-900/40">
-                  <p className="font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
-                    📉 How Points Decrease (-)
-                  </p>
-                  <p className="text-muted-foreground leading-relaxed">
-                    {loyaltySettings?.decreaseRuleText || 'When placing an order, tick "Redeem Loyalty Points" on checkout. Points are deducted to give you an instant bill discount!'}
-                  </p>
-                </div>
-              </div>
-
-              {!activeUser ? (
-                <Link
-                  href={`/login?restaurant=${slug}`}
-                  className="w-full py-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-bold text-xs shadow-md block"
-                >
-                  Log In to Access Loyalty Points
-                </Link>
-              ) : (
-                <button
-                  onClick={() => setShowLoyaltyModal(false)}
-                  className="w-full py-3 rounded-xl bg-muted hover:bg-muted/80 text-foreground font-bold text-xs transition-colors"
-                >
-                  Close
-                </button>
-              )}
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       {/* Customer Notification Modal */}
       <CustomerNotificationModal
