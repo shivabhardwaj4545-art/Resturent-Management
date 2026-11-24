@@ -58,6 +58,11 @@ export function OwnerDashboard() {
           isSuspended?: boolean;
           themeColor: string | null;
           qrSettings?: { enabled?: boolean } | null;
+          featureFlags?: {
+            kotMode?: 'PRINT_KOT' | 'DIGITAL_KDS';
+            kotEnabled?: boolean;
+            [key: string]: any;
+          } | null;
         };
         subscription?: {
           id: string;
@@ -177,6 +182,34 @@ export function OwnerDashboard() {
   const [isTogglingQr, setIsTogglingQr] = useState(false);
   const isQrEnabled = data?.restaurant?.qrSettings?.enabled !== false;
 
+  const [isTogglingKot, setIsTogglingKot] = useState(false);
+  const isKotOn = data?.restaurant?.featureFlags?.kotMode !== 'DIGITAL_KDS' && data?.restaurant?.featureFlags?.kotEnabled !== false;
+
+  const toggleKotService = async () => {
+    if (!data) return;
+    try {
+      setIsTogglingKot(true);
+      const res = await api.patch('/owner/restaurant/toggle-kot', {
+        enabled: !isKotOn,
+      });
+      if (res.data?.success) {
+        const nextState = res.data.data?.kotEnabled;
+        if (nextState) {
+          toast.success('🖨️ Physical KOT Printing Mode is now ON!');
+        } else {
+          toast.warning('🖥️ KOT Printing is now OFF (Switched to Digital KDS mode).');
+        }
+        qc.invalidateQueries({ queryKey: ['owner-dashboard'] });
+        qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
+        qc.invalidateQueries({ queryKey: ['owner-restaurant-layout'] });
+      }
+    } catch {
+      toast.error('Failed to toggle KOT status');
+    } finally {
+      setIsTogglingKot(false);
+    }
+  };
+
   const toggleQrService = async () => {
     if (!data) return;
     try {
@@ -244,15 +277,36 @@ export function OwnerDashboard() {
                 <span>{isQrEnabled ? 'QR Service: Active' : 'QR Service: Shut (Maintenance)'}</span>
               </button>
             )}
-            {/* + New Manual KOT Fast Entry */}
-            <button
-              onClick={() => setShowManualKotModal(true)}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs sm:text-sm font-black transition-all shadow-sm shrink-0 cursor-pointer active:scale-95"
-              title="Create Manual Order & Print KOT"
-            >
-              <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-              <span>+ New Manual KOT</span>
-            </button>
+
+            {/* KOT ON / OFF Toggle */}
+            {data && (
+              <button
+                type="button"
+                onClick={toggleKotService}
+                disabled={isTogglingKot}
+                title={isKotOn ? 'Click to turn OFF KOT printing mode (Switches to Digital KDS)' : 'Click to turn ON physical KOT printing mode'}
+                className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-black transition-all shrink-0 cursor-pointer shadow-xs active:scale-95 ${
+                  isKotOn
+                    ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-500/30 hover:bg-blue-100'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                <span>{isKotOn ? 'KOT: ON' : 'KOT: OFF'}</span>
+              </button>
+            )}
+
+            {/* + New Manual KOT Fast Entry (Active when KOT is ON) */}
+            {isKotOn && (
+              <button
+                onClick={() => setShowManualKotModal(true)}
+                className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs sm:text-sm font-black transition-all shadow-sm shrink-0 cursor-pointer active:scale-95"
+                title="Create Manual Order & Print KOT"
+              >
+                <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                <span>+ New Manual KOT</span>
+              </button>
+            )}
 
             {/* Waiter Calls Bell */}
             <WaiterBell />

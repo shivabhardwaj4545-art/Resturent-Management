@@ -610,6 +610,52 @@ export async function toggleQrService(req: AuthenticatedRequest, res: Response, 
   } catch (error) { next(error); }
 }
 
+export async function toggleKotMode(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const restaurant = await getOwnerRestaurant(req);
+    const { enabled } = req.body as { enabled?: boolean };
+    const currentFlags = (restaurant.featureFlags as Record<string, any>) || {};
+    const currentlyOn = currentFlags.kotMode !== 'DIGITAL_KDS' && currentFlags.kotEnabled !== false;
+    const nextOn = typeof enabled === 'boolean' ? enabled : !currentlyOn;
+
+    const nextFlags = {
+      ...currentFlags,
+      kotMode: nextOn ? 'PRINT_KOT' : 'DIGITAL_KDS',
+      kotEnabled: nextOn,
+      kitchenDisplayEnabled: !nextOn,
+    };
+
+    const updated = await prisma.restaurant.update({
+      where: { id: restaurant.id },
+      data: { featureFlags: nextFlags },
+    });
+
+    await cacheDelPattern(`menu:${restaurant.slug}*`);
+    await cacheDelPattern(`menu:${restaurant.slug.toLowerCase()}*`);
+
+    try {
+      const io = getSocketServer();
+      io?.to(`restaurant:${restaurant.id}`).emit('restaurant:kot_mode_toggled', {
+        kotMode: nextFlags.kotMode,
+        kotEnabled: nextOn,
+        restaurantId: restaurant.id,
+      });
+    } catch (e) {
+      logger.warn('Failed to emit kot_mode_toggled socket:', e);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        kotMode: nextFlags.kotMode,
+        kotEnabled: nextOn,
+        featureFlags: nextFlags,
+      },
+      message: `KOT mode is now ${nextOn ? 'ON (Physical Print KOT)' : 'OFF (Digital KDS)'}`,
+    });
+  } catch (error) { next(error); }
+}
+
 export async function uploadLogo(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const restaurant = await getOwnerRestaurant(req);
