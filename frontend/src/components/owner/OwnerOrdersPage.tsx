@@ -752,17 +752,19 @@ export function OwnerOrdersPage() {
                           </div>
                         )}
 
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            printKitchenOrderTicket({ order, restaurantName });
-                          }}
-                          className="px-2.5 py-1.5 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 shadow-2xs"
-                          title="Print Kitchen Order Ticket (KOT)"
-                        >
-                          <Printer className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline">Print KOT</span>
-                        </button>
+                        {isPrintKotMode && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              printKitchenOrderTicket({ order, restaurantName });
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 shadow-2xs"
+                            title="Print Kitchen Order Ticket (KOT)"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Print KOT</span>
+                          </button>
+                        )}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1089,13 +1091,24 @@ export function OwnerOrdersPage() {
                                     <button
                                       onClick={() => {
                                         updateStatusMutation.mutate({ id: order.id, status: 'CONFIRMED' });
-                                        printKitchenOrderTicket({ order, restaurantName });
+                                        if (isPrintKotMode) {
+                                          printKitchenOrderTicket({ order, restaurantName });
+                                        }
                                       }}
                                       disabled={updateStatusMutation.isPending}
                                       className="flex-1 py-2 px-3 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
                                     >
-                                      <Printer className="w-3.5 h-3.5" />
-                                      Accept & Print KOT
+                                      {isPrintKotMode ? (
+                                        <>
+                                          <Printer className="w-3.5 h-3.5" />
+                                          Accept & Print KOT
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Check className="w-3.5 h-3.5" />
+                                          Accept Order
+                                        </>
+                                      )}
                                     </button>
                                     <button
                                       onClick={() => {
@@ -1116,13 +1129,24 @@ export function OwnerOrdersPage() {
                                     <button
                                       onClick={() => {
                                         updateStatusMutation.mutate({ id: order.id, addOnStatus: 'CONFIRMED' });
-                                        printKitchenOrderTicket({ order: { ...order, isAddon: true }, restaurantName, isAddonOnly: true });
+                                        if (isPrintKotMode) {
+                                          printKitchenOrderTicket({ order: { ...order, isAddon: true }, restaurantName, isAddonOnly: true });
+                                        }
                                       }}
                                       disabled={updateStatusMutation.isPending}
                                       className="flex-1 py-2 px-3 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer animate-pulse"
                                     >
-                                      <Printer className="w-3.5 h-3.5" />
-                                      Accept & Print Add-on KOT
+                                      {isPrintKotMode ? (
+                                        <>
+                                          <Printer className="w-3.5 h-3.5" />
+                                          Accept & Print Add-on KOT
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Check className="w-3.5 h-3.5" />
+                                          Accept Add-on
+                                        </>
+                                      )}
                                     </button>
                                     <button
                                       onClick={() => {

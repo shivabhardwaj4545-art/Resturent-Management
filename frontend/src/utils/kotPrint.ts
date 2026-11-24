@@ -313,6 +313,14 @@ export function generateKotHtml(options: KotPrintOptions): string {
       </style>
     </head>
     <body>
+      <div class="no-print" style="margin-bottom: 8px; padding: 6px 8px; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 6px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 11px; display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+        <span style="font-weight: 600; color: #1f2937;">🖨️ Auto-printing KOT Ticket...</span>
+        <div style="display: flex; gap: 4px;">
+          <button onclick="window.print()" style="padding: 4px 10px; background: #059669; color: #fff; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 11px;">Print Now</button>
+          <button onclick="window.close()" style="padding: 4px 8px; background: #6b7280; color: #fff; border: none; border-radius: 4px; font-weight: 500; cursor: pointer; font-size: 11px;">Close</button>
+        </div>
+      </div>
+
       ${isReprint ? '<div class="reprint-banner">** REPRINT **</div>' : ''}
 
       <div class="text-center">
@@ -385,14 +393,25 @@ export function generateKotHtml(options: KotPrintOptions): string {
         ${isReprint ? '<div style="font-weight:900; margin-bottom:2px;">*** REPRINT COPY — DO NOT DUPLICATE PREPARATION ***</div>' : ''}
         Printed: ${printTimestamp} • Direct Kitchen Ticket
       </div>
+      <script>
+        window.addEventListener('load', function() {
+          setTimeout(function() {
+            try {
+              window.focus();
+              window.print();
+            } catch (e) {
+              console.error('Auto print error', e);
+            }
+          }, 350);
+        });
+      </script>
     </body>
     </html>
   `;
 }
 
 /**
- * Opens the KOT in a new window/tab so the user can print it manually.
- * No auto-print — avoids double-dialog bugs and browser suppression issues.
+ * Opens the KOT in a formatted thermal receipt window and automatically triggers the print dialog.
  */
 export function printKitchenOrderTicket(options: KotPrintOptions): void {
   if (typeof window === 'undefined') return;
@@ -400,17 +419,28 @@ export function printKitchenOrderTicket(options: KotPrintOptions): void {
   const html = generateKotHtml(options);
 
   try {
-    const win = window.open('', '_blank', 'width=500,height=700,menubar=no,toolbar=no,scrollbars=yes');
+    const win = window.open('', '_blank', 'width=520,height=750,menubar=no,toolbar=no,scrollbars=yes');
     if (win) {
       win.document.open();
       win.document.write(html);
       win.document.close();
       win.focus();
+      setTimeout(() => {
+        try {
+          win.focus();
+          win.print();
+        } catch (e) {
+          console.error('Trigger print failed:', e);
+        }
+      }, 500);
     } else {
-      // Popup blocked — write into a data URL as last resort
+      // Popup blocked — write into a data URL as fallback
       const blob = new Blob([html], { type: 'text/html' });
       const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
+      const fallbackWin = window.open(url, '_blank');
+      if (fallbackWin) {
+        fallbackWin.focus();
+      }
     }
   } catch (e) {
     console.error('KOT print open failed:', e);

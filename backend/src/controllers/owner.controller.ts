@@ -1668,110 +1668,7 @@ export async function confirmPayment(req: AuthenticatedRequest, res: Response, n
     const instrument = rawInstrument === 'CARD' ? 'CARD' : rawInstrument.includes('UPI') ? 'UPI' : 'CASH';
     const now = new Date();
 
-    if (order.paymentStatus === 'PAID') {
-      if (req.body?.instrument || req.body?.paymentMethod) {
-        await prisma.order.update({
-          where: { id },
-          data: {
-            counterPaymentMethod: instrument,
-            paymentConfirmedBy: req.user?.email || req.user?.name || 'Owner',
-            paymentConfirmedAt: now,
-          },
-        });
-        emitOrderStatusUpdate(id, restaurant.id, {
-          orderId: id,
-          paymentStatus: 'PAID',
-          counterPaymentMethod: instrument,
-          isPaymentEvent: true,
-          updatedAt: now.toISOString(),
-        });
-        res.json({ success: true, message: `Payment mode updated to ${instrument}` });
-        return;
-      }
-      throw new AppError('Payment is already marked as paid.', 400, 'ALREADY_PAID');
-    }
-
-    const loyaltySetting = await prisma.systemSetting.findUnique({
-      where: { key: 'loyalty_settings' },
-    });
-    const loyaltyVal = (loyaltySetting?.value as Record<string, any>) ?? {};
-    const loyaltyEnabled = loyaltyVal.enabled !== false;
-    const pointsPerSpendRupees = Number(loyaltyVal.pointsPerSpendRupees) || 10;
-
-    const pointsEarned = loyaltyEnabled ? Math.floor(Number(order.total) / pointsPerSpendRupees) : 0;
-
-    await prisma.$transaction(async (tx) => {
-      await tx.order.update({
-        where: { id },
-        data: {
-          paymentStatus: 'PAID',
-          counterPaymentMethod: instrument,
-          paymentConfirmedBy: req.user?.email || req.user?.name || 'Owner',
-          paymentConfirmedAt: now,
-        },
-      });
-
-      await tx.payment.updateMany({
-        where: { orderId: id },
-        data: {
-          status: 'PAID',
-          paidAt: now,
-          providerTxnId: `OFFLINE_${instrument}_${Date.now()}`,
-        },
-      });
-
-      await tx.paymentAuditLog.create({
-        data: {
-          orderId: id,
-          actorType: 'EMPLOYEE',
-          actorId: req.user!.id,
-          actorName: req.user?.email || 'Restaurant Staff',
-          action: 'CASH_CONFIRMED',
-          details: {
-            instrument,
-            amount: order.total,
-            confirmedAt: now.toISOString(),
-          },
-        },
-      });
-
-      if (order.userId && pointsEarned > 0) {
-        await tx.user.update({
-          where: { id: order.userId },
-          data: { loyaltyPoints: { increment: pointsEarned } },
-        });
-
-        await tx.loyaltyTransaction.create({
-          data: {
-            userId: order.userId,
-            orderId: order.id,
-            points: pointsEarned,
-            type: 'EARNED',
-          },
-        });
-      }
-    });
-
-    if (order.userId && pointsEarned > 0) {
-      const updatedUser = await prisma.user.findUnique({
-        where: { id: order.userId },
-        select: { loyaltyPoints: true },
-      });
-      if (updatedUser) {
-        emitUserLoyaltyUpdate(order.userId, updatedUser.loyaltyPoints);
-      }
-    }
-
-    // Emit real-time socket update to customer
-    emitOrderStatusUpdate(id, restaurant.id, {
-      orderId: id,
-      paymentStatus: 'PAID',
-      counterPaymentMethod: instrument,
-      isPaymentEvent: true,
-      updatedAt: new Date().toISOString(),
-    });
-
-    // Synchronize TableSession if order is associated with a table
+    // Synchronize TableSession if order is associated with a table session
     const targetSessionId = order.tableSessionId;
     let tableSession = targetSessionId
       ? await prisma.tableSession.findUnique({
@@ -1799,22 +1696,152 @@ export async function confirmPayment(req: AuthenticatedRequest, res: Response, n
       });
     }
 
-    if (tableSession && tableSession.status === 'ACTIVE') {
-      const sessionOrders = tableSession.orders;
-      const unpaidOrders = sessionOrders.filter(
-        (o) => o.id !== order.id && o.status !== 'CANCELLED' && o.paymentStatus !== 'PAID'
-      );
-      const totalAmount = sessionOrders
-        .filter((o) => o.status !== 'CANCELLED')
-        .reduce((sum, o) => sum + (o.total || 0), 0);
-      const paidAmount = sessionOrders
-        .filter((o) => o.status !== 'CANCELLED' && (o.id === order.id || o.paymentStatus === 'PAID'))
-        .reduce((sum, o) => sum + (o.total || 0), 0);
+    // Determine all active orders for this table session so companion orders are settled together
+    let allSessionOrders = tableSession && tableSession.status === 'ACTIVE'
+      ? tableSession.orders.filter((o) => o.status !== 'CANCELLED')
+      : [order];
 
-      const isAllPaid = unpaidOrders.length === 0;
+    if (!allSessionOrders.some((o) => o.id === order.id)) {
+      allSessionOrders.push(order);
+    }
+
+    const ordersToSettle = allSessionOrders.filter((o) => o.paymentStatus !== 'PAID');
+
+    if (ordersToSettle.length === 0) {
+      if (req.body?.instrument || req.body?.paymentMethod) {
+        await prisma.order.updateMany({
+          where: { id: { in: allSessionOrders.map((o) => o.id) } },
+          data: {
+            counterPaymentMethod: instrument,
+            paymentConfirmedBy: req.user?.email || req.user?.name || 'Owner',
+            paymentConfirmedAt: now,
+          },
+        });
+        for (const ord of allSessionOrders) {
+          emitOrderStatusUpdate(ord.id, restaurant.id, {
+            orderId: ord.id,
+            paymentStatus: 'PAID',
+            counterPaymentMethod: instrument,
+            isPaymentEvent: true,
+            updatedAt: now.toISOString(),
+          });
+        }
+        res.json({ success: true, message: `Payment mode updated to ${instrument}` });
+        return;
+      }
+      throw new AppError('Payment is already marked as paid.', 400, 'ALREADY_PAID');
+    }
+
+    const loyaltySetting = await prisma.systemSetting.findUnique({
+      where: { key: 'loyalty_settings' },
+    });
+    const loyaltyVal = (loyaltySetting?.value as Record<string, any>) ?? {};
+    const loyaltyEnabled = loyaltyVal.enabled !== false;
+    const pointsPerSpendRupees = Number(loyaltyVal.pointsPerSpendRupees) || 10;
+
+    const settleOrderIds = ordersToSettle.map((o) => o.id);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.order.updateMany({
+        where: { id: { in: settleOrderIds } },
+        data: {
+          paymentStatus: 'PAID',
+          counterPaymentMethod: instrument,
+          paymentConfirmedBy: req.user?.email || req.user?.name || 'Owner',
+          paymentConfirmedAt: now,
+        },
+      });
+
+      await tx.payment.updateMany({
+        where: { orderId: { in: settleOrderIds } },
+        data: {
+          status: 'PAID',
+          paidAt: now,
+          providerTxnId: `OFFLINE_${instrument}_${Date.now()}`,
+        },
+      });
+
+      for (const ord of ordersToSettle) {
+        await tx.paymentAuditLog.create({
+          data: {
+            orderId: ord.id,
+            actorType: 'EMPLOYEE',
+            actorId: req.user!.id,
+            actorName: req.user?.email || 'Restaurant Staff',
+            action: 'CASH_CONFIRMED',
+            details: {
+              instrument,
+              amount: ord.total,
+              confirmedAt: now.toISOString(),
+            },
+          },
+        });
+
+        const pointsEarned = loyaltyEnabled && ord.userId ? Math.floor(Number(ord.total) / pointsPerSpendRupees) : 0;
+        if (ord.userId && pointsEarned > 0) {
+          await tx.user.update({
+            where: { id: ord.userId },
+            data: { loyaltyPoints: { increment: pointsEarned } },
+          });
+
+          await tx.loyaltyTransaction.create({
+            data: {
+              userId: ord.userId,
+              orderId: ord.id,
+              points: pointsEarned,
+              type: 'EARNED',
+            },
+          });
+        }
+      }
+    });
+
+    for (const ord of ordersToSettle) {
+      if (ord.userId) {
+        const pointsEarned = loyaltyEnabled ? Math.floor(Number(ord.total) / pointsPerSpendRupees) : 0;
+        if (pointsEarned > 0) {
+          const updatedUser = await prisma.user.findUnique({
+            where: { id: ord.userId },
+            select: { loyaltyPoints: true },
+          });
+          if (updatedUser) {
+            emitUserLoyaltyUpdate(ord.userId, updatedUser.loyaltyPoints);
+          }
+        }
+
+        await prisma.notification.create({
+          data: {
+            userId: ord.userId,
+            restaurantId: restaurant.id,
+            type: 'PAYMENT_RECEIPT',
+            title: '✅ Payment Confirmed!',
+            message: `Your payment of ₹${Number(ord.total).toFixed(2)} via ${instrument} has been confirmed. Enjoy your meal!`,
+          },
+        }).catch(() => {});
+
+        emitNotification(ord.userId, {
+          type: 'PAYMENT_RECEIPT',
+          title: '✅ Payment Confirmed!',
+          message: `Your payment of ₹${Number(ord.total).toFixed(2)} via ${instrument} has been confirmed!`,
+          orderId: ord.id,
+        });
+      }
+
+      // Emit real-time socket update to EVERY customer's device in this table session
+      emitOrderStatusUpdate(ord.id, restaurant.id, {
+        orderId: ord.id,
+        paymentStatus: 'PAID',
+        counterPaymentMethod: instrument,
+        isPaymentEvent: true,
+        updatedAt: now.toISOString(),
+      });
+    }
+
+    if (tableSession && tableSession.status === 'ACTIVE') {
+      const totalAmount = allSessionOrders.reduce((sum, o) => sum + (o.total || 0), 0);
       const effectiveMode = tableSession.restaurant?.sessionManagementMode || restaurant.sessionManagementMode || tableSession.sessionManagementModeSnapshot || 'MANUAL';
 
-      if (isAllPaid && effectiveMode === 'AUTO') {
+      if (effectiveMode === 'AUTO') {
         // Mode A: AUTO SESSION RESET
         // Fast automatic table release as soon as payment is confirmed
         await prisma.tableSession.update({
@@ -1849,8 +1876,8 @@ export async function confirmPayment(req: AuthenticatedRequest, res: Response, n
         await prisma.tableSession.update({
           where: { id: tableSession.id },
           data: {
-            paymentStatus: isAllPaid ? 'PAID' : 'PARTIALLY_PAID',
-            paidAmount,
+            paymentStatus: 'PAID',
+            paidAmount: totalAmount,
           },
         });
 
@@ -1859,33 +1886,20 @@ export async function confirmPayment(req: AuthenticatedRequest, res: Response, n
           event: 'PAYMENT_UPDATED',
           status: tableSession.status,
           tableNumber: tableSession.tableNumber,
-          paymentStatus: isAllPaid ? 'PAID' : 'PARTIALLY_PAID',
+          paymentStatus: 'PAID',
           totalAmount,
-          paidAmount,
+          paidAmount: totalAmount,
         });
       }
     }
 
-    if (order.userId) {
-      await prisma.notification.create({
-        data: {
-          userId: order.userId,
-          restaurantId: restaurant.id,
-          type: 'PAYMENT_RECEIPT',
-          title: '✅ Payment Confirmed!',
-          message: `Your payment of ₹${Number(order.total).toFixed(2)} has been confirmed by the restaurant!`,
-        },
-      });
-
-      emitNotification(order.userId, {
-        type: 'PAYMENT_RECEIPT',
-        title: '✅ Payment Confirmed!',
-        message: `Your payment of ₹${Number(order.total).toFixed(2)} has been confirmed!`,
-        orderId: id,
-      });
-    }
-
-    res.json({ success: true, message: 'Payment confirmed successfully.' });
+    res.json({
+      success: true,
+      message: ordersToSettle.length > 1
+        ? `Payment of ₹${ordersToSettle.reduce((sum, o) => sum + Number(o.total || 0), 0)} confirmed for ${ordersToSettle.length} table orders via ${instrument}`
+        : `Payment of ₹${order.total} confirmed via ${instrument}`,
+      settledOrdersCount: ordersToSettle.length,
+    });
   } catch (error) { next(error); }
 }
 
