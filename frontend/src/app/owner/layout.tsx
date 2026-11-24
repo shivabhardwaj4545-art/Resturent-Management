@@ -775,11 +775,14 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                                 ? currentOrder.items
                                 : (returnedOrder?.items || []),
                             };
-                            printKitchenOrderTicket({
-                              order: orderToPrint,
-                              restaurantName: restaurantData?.name || 'Restaurant',
-                              isAddonOnly: isAddon,
-                            });
+                            const isKotOn = (restaurantData?.featureFlags as any)?.kotEnabled !== false && (restaurantData?.featureFlags as any)?.kotMode !== 'DISABLED';
+                            if (isKotOn) {
+                              printKitchenOrderTicket({
+                                order: orderToPrint,
+                                restaurantName: restaurantData?.name || 'Restaurant',
+                                isAddonOnly: isAddon,
+                              });
+                            }
                             toast.success(isAddon ? 'Add-on accepted!' : 'Order accepted!');
                           }
                         } catch (err: any) {

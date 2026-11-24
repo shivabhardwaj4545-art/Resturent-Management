@@ -246,14 +246,15 @@ export function OwnerOrdersPage() {
         gstin?: string;
         fssaiNumber?: string;
         featureFlags?: {
-          kotMode?: 'DIGITAL_KDS' | 'PRINT_KOT';
+          kotMode?: 'PRINT_KOT' | 'DISABLED' | string;
+          kotEnabled?: boolean;
           [key: string]: any;
         };
       };
     },
   });
 
-  const isPrintKotMode = (restaurantData?.featureFlags?.kotMode === 'PRINT_KOT') || ((data as any)?.data?.restaurant?.featureFlags?.kotMode === 'PRINT_KOT');
+  const isPrintKotMode = Boolean(restaurantData?.featureFlags?.kotEnabled !== false && (restaurantData?.featureFlags as any)?.kotMode !== 'DISABLED');
   const restaurantName = restaurantData?.name || (data as any)?.data?.restaurant?.name || 'Restaurant';
 
   const currentRestaurantInfo: InvoiceRestaurantInfo = {
@@ -398,13 +399,15 @@ export function OwnerOrdersPage() {
             )}
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            <button
-              onClick={() => setShowManualKotModal(true)}
-              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer shrink-0"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>+ New Manual KOT</span>
-            </button>
+            {isPrintKotMode && (
+              <button
+                onClick={() => setShowManualKotModal(true)}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer shrink-0"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>+ New Manual KOT</span>
+              </button>
+            )}
             <WaiterBell />
             <button onClick={() => refetch()} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground shrink-0">
               <RefreshCw className="w-4 h-4" />

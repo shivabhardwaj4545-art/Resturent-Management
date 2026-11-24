@@ -615,14 +615,13 @@ export async function toggleKotMode(req: AuthenticatedRequest, res: Response, ne
     const restaurant = await getOwnerRestaurant(req);
     const { enabled } = req.body as { enabled?: boolean };
     const currentFlags = (restaurant.featureFlags as Record<string, any>) || {};
-    const currentlyOn = currentFlags.kotMode !== 'DIGITAL_KDS' && currentFlags.kotEnabled !== false;
+    const currentlyOn = currentFlags.kotEnabled !== false && currentFlags.kotMode !== 'DISABLED';
     const nextOn = typeof enabled === 'boolean' ? enabled : !currentlyOn;
 
     const nextFlags = {
       ...currentFlags,
-      kotMode: nextOn ? 'PRINT_KOT' : 'DIGITAL_KDS',
+      kotMode: nextOn ? 'PRINT_KOT' : 'DISABLED',
       kotEnabled: nextOn,
-      kitchenDisplayEnabled: !nextOn,
     };
 
     const updated = await prisma.restaurant.update({
@@ -651,7 +650,7 @@ export async function toggleKotMode(req: AuthenticatedRequest, res: Response, ne
         kotEnabled: nextOn,
         featureFlags: nextFlags,
       },
-      message: `KOT mode is now ${nextOn ? 'ON (Physical Print KOT)' : 'OFF (Digital KDS)'}`,
+      message: `KOT is now ${nextOn ? 'ON' : 'OFF'}`,
     });
   } catch (error) { next(error); }
 }

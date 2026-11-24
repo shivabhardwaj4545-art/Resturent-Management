@@ -59,7 +59,7 @@ export function OwnerDashboard() {
           themeColor: string | null;
           qrSettings?: { enabled?: boolean } | null;
           featureFlags?: {
-            kotMode?: 'PRINT_KOT' | 'DIGITAL_KDS';
+            kotMode?: 'PRINT_KOT' | 'DISABLED' | string;
             kotEnabled?: boolean;
             [key: string]: any;
           } | null;
@@ -183,7 +183,7 @@ export function OwnerDashboard() {
   const isQrEnabled = data?.restaurant?.qrSettings?.enabled !== false;
 
   const [isTogglingKot, setIsTogglingKot] = useState(false);
-  const isKotOn = data?.restaurant?.featureFlags?.kotMode !== 'DIGITAL_KDS' && data?.restaurant?.featureFlags?.kotEnabled !== false;
+  const isKotOn = data?.restaurant?.featureFlags?.kotEnabled !== false && data?.restaurant?.featureFlags?.kotMode !== 'DISABLED';
 
   const toggleKotService = async () => {
     if (!data) return;
@@ -195,13 +195,14 @@ export function OwnerDashboard() {
       if (res.data?.success) {
         const nextState = res.data.data?.kotEnabled;
         if (nextState) {
-          toast.success('🖨️ Physical KOT Printing Mode is now ON!');
+          toast.success('🟢 KOT is now ON!');
         } else {
-          toast.warning('🖥️ KOT Printing is now OFF (Switched to Digital KDS mode).');
+          toast.warning('🔴 KOT is now OFF!');
         }
         qc.invalidateQueries({ queryKey: ['owner-dashboard'] });
         qc.invalidateQueries({ queryKey: ['owner-restaurant'] });
         qc.invalidateQueries({ queryKey: ['owner-restaurant-layout'] });
+        qc.invalidateQueries({ queryKey: ['owner-orders'] });
       }
     } catch {
       toast.error('Failed to toggle KOT status');
@@ -284,7 +285,7 @@ export function OwnerDashboard() {
                 type="button"
                 onClick={toggleKotService}
                 disabled={isTogglingKot}
-                title={isKotOn ? 'Click to turn OFF KOT printing mode (Switches to Digital KDS)' : 'Click to turn ON physical KOT printing mode'}
+                title={isKotOn ? 'Click to turn OFF KOT' : 'Click to turn ON KOT'}
                 className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-black transition-all shrink-0 cursor-pointer shadow-xs active:scale-95 ${
                   isKotOn
                     ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-500/30 hover:bg-blue-100'
